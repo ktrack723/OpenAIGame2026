@@ -1,7 +1,57 @@
-html,body,#app{margin:0;width:100%;height:100%;overflow:hidden;background:#030712;color:#e5e7eb;font-family:Inter,system-ui,Apple SD Gothic Neo,Malgun Gothic,sans-serif;touch-action:none}canvas{display:block}.hud{position:fixed;left:max(14px,env(safe-area-inset-left));top:max(14px,env(safe-area-inset-top));width:min(330px,calc(100vw - 28px));box-sizing:border-box;padding:18px;border:1px solid #334155;border-radius:18px;background:rgba(2,6,23,.82);box-shadow:0 20px 60px #0008;backdrop-filter:blur(10px)}h1{margin:0;color:#67e8f9;letter-spacing:.18em}.sub{color:#cbd5e1;line-height:1.45}.grid{display:grid;gap:10px;margin:14px 0}label{display:grid;gap:6px;color:#93c5fd}input{width:100%;accent-color:#22d3ee}button{margin:4px 6px 4px 0;padding:11px 13px;border:0;border-radius:10px;background:#2563eb;color:white;font-weight:800;cursor:pointer;touch-action:manipulation}button:hover,button:focus-visible{background:#38bdf8}pre{white-space:pre-wrap;line-height:1.6;color:#fef3c7}.hud:after{content:'팩스 수신: “너희 태양, 우리가 데워 봤다.”';display:block;margin-top:12px;color:#fda4af;border-top:1px dashed #475569;padding-top:10px;font-size:12px}
-@media (max-width: 700px){.hud{left:max(10px,env(safe-area-inset-left));right:max(10px,env(safe-area-inset-right));top:auto;bottom:max(10px,env(safe-area-inset-bottom));width:auto;padding:12px;border-radius:16px}.sub,.hud:after{display:none}.grid{grid-template-columns:1fr 1fr;margin:10px 0;gap:8px}h1{font-size:18px}button{padding:12px 10px;font-size:14px}pre{margin:8px 0 0;font-size:12px;line-height:1.35}}
-.boot{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);padding:16px 18px;border:1px solid #334155;border-radius:14px;background:rgba(2,6,23,.9);color:#67e8f9;font-weight:800;letter-spacing:.08em;text-align:center;z-index:1}
-.toast{position:fixed;left:50%;top:42%;transform:translate(-50%,-50%);padding:12px 22px;border:1px solid #f59e0b;border-radius:12px;background:rgba(69,26,3,.92);color:#fbbf24;font-weight:800;letter-spacing:.06em;text-align:center;z-index:2;pointer-events:none;font-family:inherit}
+html,body,#app{margin:0;width:100%;height:100%;overflow:hidden;background:#03060f;color:#e5e7eb;font-family:Inter,system-ui,Apple SD Gothic Neo,Malgun Gothic,sans-serif;touch-action:none}
+canvas{display:block;position:fixed;inset:0;touch-action:none}
+
+/* HUD — 캔버스 위에 뜨는 관제 패널. 패널 밖은 전부 카메라 조작(핀치/드래그) 영역이다 */
+.hud{position:fixed;left:max(14px,env(safe-area-inset-left));top:max(14px,env(safe-area-inset-top));width:min(340px,calc(100vw - 28px));max-height:calc(100dvh - max(28px,env(safe-area-inset-top)) - 14px);overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;box-sizing:border-box;padding:16px 18px;border:1px solid #334155;border-radius:18px;background:rgba(2,6,23,.84);box-shadow:0 20px 60px #0008;backdrop-filter:blur(10px);z-index:3}
+.hudtop{display:flex;align-items:center;justify-content:space-between;gap:8px}
+h1{margin:0;color:#67e8f9;letter-spacing:.18em;font-size:26px}
+.sub{color:#cbd5e1;line-height:1.45;font-size:13px;margin:10px 0}
+.hud.folded .body{display:none}
+
+/* 작전 목표 블록 — "조르그 행성이 어딘지 모르겠다"를 없애는 자리 */
+.obj{margin:12px 0;padding:11px 12px;border:1px solid #0e7490;border-left:4px solid #22d3ee;border-radius:12px;background:linear-gradient(180deg,rgba(8,51,68,.55),rgba(8,47,73,.25))}
+.objhead{color:#7dd3fc;font-size:11px;font-weight:800;letter-spacing:.14em}
+.objname{color:#a5f3fc;font-size:17px;font-weight:800;margin:4px 0 2px}
+.objhp{color:#e0f2fe;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em}
+.objhint{margin-top:7px;color:#94a3b8;font-size:11.5px;line-height:1.5}
+.objhint b{font-weight:800}
+.cy{color:#67e8f9}.bl{color:#93c5fd}.rd{color:#fca5a5}
+
+.grid{display:grid;gap:10px;margin:14px 0}
+label{display:grid;gap:6px;color:#93c5fd;font-size:13px}
 label span{color:#e0f2fe;font-weight:700;margin-left:4px}
+input{width:100%;accent-color:#22d3ee}
+button{margin:4px 6px 4px 0;padding:11px 13px;border:0;border-radius:10px;background:#2563eb;color:white;font-weight:800;cursor:pointer;touch-action:manipulation}
+button:hover,button:focus-visible{background:#38bdf8}
 button#next{background:#16a34a}
 button#next:hover,button#next:focus-visible{background:#22c55e}
+button.ghost{background:#1e293b;border:1px solid #475569;color:#cbd5e1;padding:8px 12px;margin:0}
+button.ghost:hover,button.ghost:focus-visible{background:#334155;color:#f8fafc}
+#fold{padding:4px 10px;font-size:14px;line-height:1}
+
+/* 카메라 조작 줄 (§14.1 휠 줌 / 드래그 패닝의 터치 대체) */
+.viewrow{display:flex;align-items:center;gap:6px;margin:10px 0 4px;flex-wrap:wrap}
+.vlabel{color:#64748b;font-size:11px;font-weight:800;letter-spacing:.1em;margin-right:2px}
+.zoomv{color:#7dd3fc;font-size:11.5px;font-weight:700;font-variant-numeric:tabular-nums;margin-left:2px}
+.hint{color:#64748b;font-size:11px;margin:2px 0 6px}
+
+pre{white-space:pre-wrap;line-height:1.6;color:#fef3c7;margin:10px 0 0;font-size:12.5px}
+.hud .body:after{content:'팩스 수신: “너희 태양, 우리가 데워 봤다.”';display:block;margin-top:12px;color:#fda4af;border-top:1px dashed #475569;padding-top:10px;font-size:12px}
+
+.boot{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);padding:16px 18px;border:1px solid #334155;border-radius:14px;background:rgba(2,6,23,.9);color:#67e8f9;font-weight:800;letter-spacing:.08em;text-align:center;z-index:4}
+.toast{position:fixed;left:50%;top:38%;transform:translate(-50%,-50%);padding:12px 22px;border:1px solid #f59e0b;border-radius:12px;background:rgba(69,26,3,.92);color:#fbbf24;font-weight:800;letter-spacing:.06em;text-align:center;z-index:5;pointer-events:none;font-family:inherit}
+
+/* 태블릿 세로(아이패드) — 패널이 판을 가리지 않게 아래로 붙이고 2열로 접는다 */
+@media (max-width: 1000px){
+  .hud{left:max(10px,env(safe-area-inset-left));right:max(10px,env(safe-area-inset-right));top:auto;bottom:max(10px,env(safe-area-inset-bottom));width:auto;max-height:52dvh;padding:12px 14px;border-radius:16px}
+  .sub{display:none}
+  .grid{grid-template-columns:1fr 1fr;margin:10px 0;gap:10px}
+  h1{font-size:19px}
+  .objhint{font-size:11px}
+}
+@media (max-width: 700px){
+  .hud{max-height:46dvh}
+  .hud .body:after{display:none}
+  button{padding:12px 10px;font-size:14px}
+  pre{margin:8px 0 0;font-size:12px;line-height:1.35}
+}
