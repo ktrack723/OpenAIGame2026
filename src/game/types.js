@@ -1,1 +1,1 @@
-export const planetTypes = ['rock','lava','ice','ocean','gas','toxic','life','earth','zork','debris']
+export const planetTypes = ['rock', 'lava', 'ice', 'ocean', 'gas', 'toxic', 'life', 'iron', 'earth', 'debris']
