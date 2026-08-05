@@ -22,6 +22,7 @@ export class Game {
     this.aim = Math.atan2(this.target.pos.y - this.earth.pos.y, this.target.pos.x - this.earth.pos.x)
     this.power = 82; this.observing = false; this.time = 0
     this.toast = null; this.toastT = 0
+    this.fx = []   // 렌더러가 매 프레임 비워가는 연출 이벤트 큐 (§14.5)
     this.message = `작전 개시 — ${this.target.name} 섬멸 (차폐도 B=${s.B.toFixed(1)}). 시간 정지 중: 관측(SHIFT)으로 판을 돌려라`
   }
 
@@ -47,8 +48,11 @@ export class Game {
       encountered: false, captured: false, minSunDist: Infinity, foul: false, hit: null, out: null,
     })
     this.rockets--
+    this.addFx({ kind: 'launch', x: p.x, y: p.y, a: this.aim })
     this.message = 'MISSILE AWAY — 행성 중력권으로 감아 치세요'
   }
+
+  addFx(e) { if (this.fx.length < 64) this.fx.push(e) }
 
   // 관제실 모드(§5.1): 조준 중 시간 정지, 관측 홀드 4×, 미사일 비행 중 1×
   effTimeScale() {
@@ -70,7 +74,10 @@ export class Game {
       m.lastVel = { ...m.vel }
       stepMissile(m, this.bodies, dt)
       updateEncounters(m, this.bodies, {
-        swing: (b, deg) => { this.message = `${b.name} 스윙바이 ${deg.toFixed(0)}°! 체인 x${m.chain}` },
+        swing: (b, deg) => {
+          this.message = `${b.name} 스윙바이 ${deg.toFixed(0)}°! 체인 x${m.chain}`
+          this.addFx({ kind: 'swing', x: b.pos.x, y: b.pos.y, r: b.radius })
+        },
         capture: (b) => { this.resolveHit(m, b); this.setToast('포획됨 — 너무 느렸다 (강제 추락)') },   // §5.2
       })
       if (m.alive) this.contact(m)
@@ -90,6 +97,7 @@ export class Game {
 
   resolveHit(m, b) {
     m.alive = false
+    this.addFx({ kind: 'hit', x: m.pos.x, y: m.pos.y, r: b.radius, foul: b.type !== 'debris' && !this.legal(b) })
     if (b.type === 'debris') { m.hit = 'debris'; this.message = '파편 명중 — 미사일 소실 (파울 아님)'; return }
     if (!this.legal(b)) {   // §5.3 파울: 점수 0 + 외교 +1
       m.foul = true; this.diplomacy++
@@ -117,6 +125,7 @@ export class Game {
 
   killBody(b) {
     b.alive = false
+    this.addFx({ kind: 'kill', x: b.pos.x, y: b.pos.y, r: b.radius })
     shatter(b, this.bodies, () => this.rng.next())
     if (b === this.target) { this.won = true; this.message = '조르그 행성 말살 완료! — 연구비 정산' }
   }
@@ -134,6 +143,7 @@ export class Game {
       const r = len(b.pos)
       if (r < CFG.R_STAR + 15) {
         b.alive = false
+        this.addFx({ kind: 'sun', x: b.pos.x, y: b.pos.y })
         if (b.isEarth) { b.hp = 0; this.message = '지구가 태양으로…' }
         else if (b === this.target) { this.won = true; this.score += 30; this.message = `항성 처분! ${b.name} 태양행 — 스타일 +30점` }
         else if (b.type !== 'debris') { this.score += 10; this.message = `${b.name} 항성 처분 (+10)` }
