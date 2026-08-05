@@ -1,0 +1,9 @@
+{
+  "scripts": {
+    "check": "node --check src/main.js && node --check src/game/game.js && node --check src/render/Scene.js",
+    "serve": "python3 -m http.server 4173"
+  },
+  "dependencies": {},
+  "devDependencies": {},
+  "type": "module"
+}
