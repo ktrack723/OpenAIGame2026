@@ -11,6 +11,7 @@ const seed = ((+params.get('seed') || daily) >>> 0) || 1
 const game = new Game(seed)
 const view = new SceneView(document.querySelector('#app'), game)
 const hud = makeHud(game, view)
+window.__game = game; window.__view = view   // 콘솔/자동 검증용 훅
 document.querySelector('.boot')?.remove()
 
 let last = performance.now()

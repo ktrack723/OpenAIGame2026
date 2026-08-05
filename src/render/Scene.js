@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { CFG, VIS, hitRadiusOf } from '../game/config.js'
+import { makeArrow, setArrow } from './Arrow.js'
 import { CameraRig } from './CameraRig.js'
 import { Particles } from './Particles.js'
 import { Markers } from './Markers.js'
@@ -108,6 +109,22 @@ export class SceneView {
     this.pad.renderOrder = 14
     this.scene.add(this.pad)
 
+    // 조준 보조 — 임펄스 방향(노랑) / 타격 직후 공의 진로(흰색) / 폭풍 반경(주황 링)
+    this.pushArrow = makeArrow(0xfbbf24, 0.95)
+    this.courseArrow = makeArrow(0xffffff, 0.9)
+    this.blastRing = new THREE.Mesh(new THREE.RingGeometry(0.985, 1, 96), new THREE.MeshBasicMaterial({
+      color: 0xf59e0b, transparent: true, opacity: 0.35, depthTest: false, depthWrite: false, side: THREE.DoubleSide,
+    }))
+    this.blastRing.renderOrder = 11
+    this.blastRing.visible = false
+    this.scene.add(this.pushArrow, this.courseArrow, this.blastRing)
+
+    // 전면 섬광 — 핵을 "과장"하는 가장 싼 수단. 폭발 프레임에 화면 전체가 탄다
+    this.flashEl = document.createElement('div')
+    this.flashEl.className = 'nukeflash'
+    document.body.appendChild(this.flashEl)
+    this.flashV = 0
+
     this.bodyFx = new Map()   // b.id → { mesh, halo, ring, trueRing }
     this.missileFx = new Map()
     this.lines = []
@@ -201,7 +218,17 @@ export class SceneView {
     }
     const uScale = (innerHeight * this.renderer.getPixelRatio()) / (2 * Math.tan(VIS.FOV * Math.PI / 360))
     this.parts.update(dt, uScale)
+    // 섬광 감쇠 — 터진 프레임에 확 붙었다가 0.35초 안에 빠진다
+    if (this.flashV > 0) {
+      this.flashV = Math.max(0, this.flashV - dt * 3.2)
+      this.flashEl.style.opacity = (this.flashV * this.flashV).toFixed(3)
+    } else if (this.flashEl.style.opacity !== '0') this.flashEl.style.opacity = '0'
     this.renderer.render(this.scene, this.camera)
+  }
+
+  flash(v, color) {
+    if (color) this.flashEl.style.background = color
+    this.flashV = Math.min(1, this.flashV + v)
   }
 
   resetStage() {
@@ -275,27 +302,31 @@ export class SceneView {
       fx.mesh.visible = b.alive
       fx.halo.visible = b.alive && solid
       fx.ring.visible = b.alive && solid
-      fx.trueRing.visible = b.alive && solid && r > b.radius * VIS.TRUE_R_HINT
+      fx.trueRing.visible = b.alive && solid && r > hitRadiusOf(b) * VIS.TRUE_R_HINT
       if (!b.alive) continue
 
       fx.mesh.position.set(b.pos.x, b.pos.y, 0)
       fx.mesh.scale.setScalar(r)
       fx.mesh.rotation.y += fx.spin * dt
 
-      // 텍스처 데미지 4단계 + 히트 플래시 (§14.5)
+      // 핵을 맞을 때마다 그을음이 남는다(부서지진 않는다) + 히트 플래시 (§14.5)
       const c = fx.mesh.material.color
       if (b.hitFlash > 0) c.setRGB(2.4, 2.4, 2.4)
-      else { const k = 1 - Math.min(3, b.textureState || 0) * 0.17; c.setRGB(k, k, k) }
+      else { const k = 1 - Math.min(3, b.scorch || 0) * 0.15; c.setRGB(k, k, k) }
 
       fx.halo.position.set(b.pos.x, b.pos.y, -3)
       fx.halo.scale.setScalar(b.radius * CFG.SWING_ZONE)
 
       fx.ring.position.set(b.pos.x, b.pos.y, 0)
       fx.ring.scale.setScalar(r * 1.22)
-      // R6 대응: LEGAL_HIT 아닌 행성은 상시 붉은 외곽선. 목표=시안, 지구=파랑
-      if (b === g.target) { fx.ring.material.color.setHex(0x22d3ee); fx.ring.material.opacity = 0.95 }
-      else if (b.isEarth) { fx.ring.material.color.setHex(0x60a5fa); fx.ring.material.opacity = 0.85 }
-      else { fx.ring.material.color.setHex(0xef4444); fx.ring.material.opacity = 0.45 }
+      // 목표=시안, 지구=파랑(치면 즉사), 중립=흰색(자유롭게 쓰는 큐볼).
+      // 캐롬 스테이지의 목표는 보라색 — "직격이 안 통하는 공"이라는 뜻이다.
+      if (b.isEarth) { fx.ring.material.color.setHex(0x60a5fa); fx.ring.material.opacity = 0.9 }
+      else if (b.isTarget) {
+        const shielded = g.goal.shielded
+        fx.ring.material.color.setHex(shielded ? 0xa78bfa : 0x22d3ee)
+        fx.ring.material.opacity = 0.7 + 0.25 * Math.abs(Math.sin(performance.now() / 320))
+      } else { fx.ring.material.color.setHex(0xe2e8f0); fx.ring.material.opacity = 0.34 }
 
       if (fx.trueRing.visible) {   // 줌아웃으로 부풀었을 때만 실제 명중 반경을 얇게 병기
         fx.trueRing.position.set(b.pos.x, b.pos.y, 0.2)
@@ -340,25 +371,94 @@ export class SceneView {
       if (e.kind === 'launch') {
         this.parts.burst(e.x, e.y, { n: 40, color: 0xbfdbfe, speed: 90, size: 8, ttl: 0.5, spread: 1.4, dir: e.a })
         this.parts.shock(e.x, e.y, 26, 0x93c5fd, 0.4)
-      } else if (e.kind === 'hit') {
-        this.parts.burst(e.x, e.y, { n: 110, color: e.foul ? 0xef4444 : 0xffd166, speed: 190, size: 13, ttl: 1.0 })
-        this.parts.burst(e.x, e.y, { n: 40, color: 0xffffff, speed: 300, size: 7, ttl: 0.45 })
-        this.parts.shock(e.x, e.y, Math.max(20, e.r ?? 20), e.foul ? 0xf87171 : 0xfde68a, 0.5)
-        this.rig.hit(e.foul ? 8 : 14)
-      } else if (e.kind === 'kill') {
-        this.parts.burst(e.x, e.y, { n: 220, color: e.color ?? 0xffb347, speed: 300, size: 18, ttl: 1.8 })
-        this.parts.burst(e.x, e.y, { n: 90, color: 0xffffff, speed: 460, size: 9, ttl: 0.7 })
-        this.parts.shock(e.x, e.y, Math.max(30, e.r ?? 30), 0xffffff, 0.8)
-        this.rig.hit(VIS.SHAKE_MAX)
-      } else if (e.kind === 'swing') {
+      } else if (e.kind === 'nuke') this.nukeFx(e)
+      else if (e.kind === 'destroy') this.destroyFx(e)
+      else if (e.kind === 'swing') {
         this.parts.shock(e.x, e.y, Math.max(24, (e.r ?? 10) * CFG.SWING_ZONE * 0.5), 0x67e8f9, 0.6)
         this.parts.burst(e.x, e.y, { n: 26, color: 0x67e8f9, speed: 110, size: 8, ttl: 0.7 })
+      } else if (e.kind === 'exile') {
+        this.parts.puff(e.x, e.y, { r0: 6, r1: 90, ttl: 1.2, color: 0x94a3b8, alpha: 0.8 })
+        this.parts.shock(e.x, e.y, 70, 0xcbd5e1, 0.9, { thin: true, to: 2.2 })
+        this.parts.burst(e.x, e.y, { n: 70, color: 0xcbd5e1, speed: 180, size: 12, ttl: 1.2 })
+        this.rig.hit(8)
       } else if (e.kind === 'sun') {
-        this.parts.burst(e.x, e.y, { n: 120, color: 0xffa53b, speed: 220, size: 14, ttl: 1.2 })
-        this.rig.hit(10)
+        this.parts.burst(e.x, e.y, { n: 160, color: 0xffa53b, speed: 260, size: 16, ttl: 1.4 })
+        this.parts.puff(e.x, e.y, { r0: 8, r1: 130, ttl: 1.0, color: 0xffb247 })
+        this.parts.shock(e.x, e.y, 90, 0xfdba74, 0.9)
+        this.rig.hit(16)
       }
     }
     q.length = 0
+  }
+
+  // ─── 핵 기폭 (§14.5 개정) ────────────────────────────────────
+  // 순서가 전부다: 흰 섬광 → 창살 → 화구 팽창 → 이중 충격파 → 잔불 →
+  // 늦게 퍼지는 폭풍 링. 작약량이 이 모든 것의 스케일을 한꺼번에 끌어올린다.
+  nukeFx(e) {
+    const yld = e.yld ?? CFG.YIELD_DEFAULT
+    const k = yld / CFG.YIELD_MAX                    // 0~1 정규화 작약량
+    const base = Math.max(26, (e.r ?? 20) * 1.4)     // 표적 크기에 비례한 최소 부피
+    const R = base * (0.75 + 1.9 * k)
+    const P = this.parts
+
+    if (e.shield) {   // 방어막에 삼켜짐 — 소리만 요란하고 아무 일도 안 난다
+      P.puff(e.x, e.y, { r0: 3, r1: R * 0.55, ttl: 0.45, color: 0x67e8f9, alpha: 0.85 })
+      P.shock(e.x, e.y, R, 0x22d3ee, 0.55, { thin: true, to: 1.6 })
+      P.burst(e.x, e.y, { n: 40, color: 0x67e8f9, speed: 150, size: 8, ttl: 0.5 })
+      this.rig.hit(6)
+      this.flash(0.12, '#a5f3fc')
+      return
+    }
+
+    // ① 흰 섬광 — 프레임 하나를 통째로 태운다
+    P.puff(e.x, e.y, { r0: R * 0.25, r1: R * 0.9, ttl: 0.16, color: 0xffffff, alpha: 1 })
+    this.flash(e.earth ? 1 : 0.25 + 0.55 * k, e.earth ? '#fff5f5' : '#fff8e6')
+
+    // ② 방사 창살 — 폭발이 "찌르고" 나가는 실루엣
+    P.spikes(e.x, e.y, { n: 12 + Math.round(14 * k), color: 0xfff3cd, speed: 480 + 900 * k, size: 5 + 6 * k, ttl: 0.35 + 0.3 * k })
+
+    // ③ 화구 — 세 겹이 시차를 두고 부풀며 식는다 (흰 코어 → 주황 → 붉은 연기)
+    P.puff(e.x, e.y, { r0: R * 0.12, r1: R * 1.05, ttl: 0.55 + 0.5 * k, color: 0xfff1c4, alpha: 1 })
+    P.puff(e.x, e.y, { r0: R * 0.10, r1: R * 1.65, ttl: 0.9 + 0.8 * k, color: 0xff9a3c, alpha: 0.85, delay: 0.05 })
+    P.puff(e.x, e.y, { r0: R * 0.20, r1: R * 2.3, ttl: 1.5 + 1.0 * k, color: 0x8f3b1b, alpha: 0.5, delay: 0.14, drift: 12 })
+
+    // ④ 이중 충격파 — 얇은 링이 먼저 튀고, 두꺼운 링이 뒤따른다
+    P.shock(e.x, e.y, R, 0xffffff, 0.42, { thin: true, from: 0.1, to: 3.1, alpha: 1 })
+    P.shock(e.x, e.y, R, 0xffc879, 0.85 + 0.5 * k, { from: 0.15, to: 2.4, delay: 0.06 })
+
+    // ⑤ 파편·잔불 — 오래 남아 "여기서 뭔가 터졌다"를 유지한다
+    P.burst(e.x, e.y, { n: 90 + Math.round(160 * k), color: 0xffc14d, speed: 230 + 320 * k, size: 12 + 8 * k, ttl: 1.1 + 0.8 * k })
+    P.burst(e.x, e.y, { n: 50, color: 0xffffff, speed: 420 + 500 * k, size: 7, ttl: 0.5 })
+    P.burst(e.x, e.y, { n: 40, color: 0xff5a2b, speed: 90, size: 15 + 10 * k, ttl: 2.2 + 1.4 * k, drag: 0.5 })
+
+    // ⑥ 폭풍 링 — 실제로 주변 천체를 미는 반경 그대로. 보이는 것 = 미는 것
+    if (e.wave) P.shock(e.x, e.y, e.wave, 0xfb923c, 0.85, { thin: true, from: 0.05, to: 1.0, alpha: 0.55, delay: 0.02 })
+
+    // ⑦ 임펄스 방향으로 뿜어나가는 분사 — 어느 쪽으로 밀었는지 눈으로 확인시킨다
+    if (e.px !== undefined) {
+      const a = Math.atan2(e.py, e.px)
+      P.burst(e.x, e.y, { n: 60, color: 0xffe9a8, speed: 340 + 380 * k, size: 10, ttl: 0.75, spread: 1.1, dir: a })
+    }
+    this.rig.hit(Math.min(VIS.SHAKE_MAX, (e.earth ? VIS.SHAKE_MAX : 12 + 30 * k)))
+  }
+
+  // ─── 행성 폭파 — 핵으로는 절대 볼 수 없는 그림 ───────────────
+  destroyFx(e) {
+    const R = Math.max(40, (e.r ?? 30) * 2.2)
+    const P = this.parts
+    this.flash(e.earth ? 1 : 0.55, e.earth ? '#ffe4e6' : '#fff1d6')
+    P.puff(e.x, e.y, { r0: R * 0.3, r1: R * 1.2, ttl: 0.22, color: 0xffffff, alpha: 1 })
+    P.puff(e.x, e.y, { r0: R * 0.15, r1: R * 2.2, ttl: 1.3, color: e.earth ? 0x60a5fa : 0xffb347, alpha: 0.95, delay: 0.04 })
+    P.puff(e.x, e.y, { r0: R * 0.30, r1: R * 3.4, ttl: 2.6, color: 0x7c2d12, alpha: 0.55, delay: 0.16, drift: 16 })
+    P.spikes(e.x, e.y, { n: 26, color: 0xffffff, speed: 1300, size: 9, ttl: 0.6 })
+    P.shock(e.x, e.y, R, 0xffffff, 0.5, { thin: true, from: 0.08, to: 4.2, alpha: 1 })
+    P.shock(e.x, e.y, R, 0xfde68a, 1.1, { from: 0.12, to: 3.0, delay: 0.08 })
+    P.shock(e.x, e.y, R, 0xf97316, 1.6, { thin: true, from: 0.1, to: 5.5, delay: 0.2, alpha: 0.5 })
+    P.burst(e.x, e.y, { n: 340, color: e.earth ? 0x93c5fd : 0xffb347, speed: 460, size: 20, ttl: 2.4 })
+    P.burst(e.x, e.y, { n: 120, color: 0xffffff, speed: 900, size: 10, ttl: 0.8 })
+    P.burst(e.x, e.y, { n: 90, color: 0xff4d2b, speed: 120, size: 22, ttl: 3.4, drag: 0.45 })
+    this.rig.hit(VIS.SHAKE_MAX)
+    this.rig.focus(e.x, e.y, R * 2.5)   // 화면 밖에서 터져도 보이게 붙잡는다
   }
 
   // 리본 — THREE.Line의 굵기는 WebGL에서 1px로 고정이라 트레일이 실오라기가 된다.
@@ -425,25 +525,23 @@ export class SceneView {
       this.ribbon(m.path, m.alive ? 7 : 4, m.alive ? 0xffffff : 0x7c8798, { opacity: m.alive ? 1 : 0.42, z: 1 })
     }
 
-    // 조준선 + 풀 예측 경로 (§14.3)
+    // 조준선 + 큐 예측 (§14.3 개정)
     if (g.canAim) {
       const p = g.launchPos()
       this.ribbon([g.earth.pos, p], 2, 0x3b82f6, { fade: false, opacity: 0.35, z: -3, tailWidth: 1 })
       const pred = g.predictPath()
       if (pred.pts.length > 1) {
-        // 예측 결말에 따라 색이 바뀐다 — 쏘기 전에 결과를 읽을 수 있게
-        const tone = pred.outcome === 'target' ? 0x4ade80
-          : pred.outcome === 'earth' || pred.outcome === 'foul' ? 0xf87171
-            : pred.outcome === 'sun' ? 0xfb923c
-              : pred.outcome === 'lost' ? 0x94a3b8 : 0x67e8f9
-        this.ribbon(pred.pts, 4.5, tone, { fade: false, opacity: 0.85, z: 0, tailWidth: 1 })
-        this.markPredEnd(pred, tone)
+        this.ribbon(pred.pts, 4.5, PRED_TONE[pred.outcome] ?? 0x67e8f9, { fade: false, opacity: 0.85, z: 0, tailWidth: 1 })
+        this.markPredEnd(pred)
       }
     } else this.hidePredEnd()
   }
 
-  // 예측 종점 마커 — 어디에 무엇으로 끝나는지 한 점으로 못 박는다
-  markPredEnd(pred, tone) {
+  // ─── 큐 예측: "무슨 일이 날지"가 아니라 "어느 살을 치는지"만 ────
+  // 폭심 · 임펄스 방향 · 타격 직후 공의 진로 · 폭풍 반경. 그 뒤 판이 어떻게
+  // 굴러갈지는 일부러 안 보여준다 — 그게 이 게임의 문제다.
+  markPredEnd(pred) {
+    const tone = PRED_TONE[pred.outcome] ?? 0x67e8f9
     if (!this.predEnd) {
       this.predEnd = new THREE.Mesh(new THREE.RingGeometry(0.55, 1, 28), new THREE.MeshBasicMaterial({
         transparent: true, depthTest: false, depthWrite: false, side: THREE.DoubleSide,
@@ -451,10 +549,10 @@ export class SceneView {
       this.predEnd.renderOrder = 15
       this.scene.add(this.predEnd)
     }
-    const e = pred.pts[pred.pts.length - 1]
+    const end = pred.pts[pred.pts.length - 1]
     this.predEnd.visible = true
-    this.predEnd.position.set(e.x, e.y, 5)
-    this.predEnd.scale.setScalar(Math.max(9, 15 * this.rig.worldPerPx))
+    this.predEnd.position.set(end.x, end.y, 5)
+    this.predEnd.scale.setScalar(Math.max(7, 11 * this.rig.worldPerPx))
     this.predEnd.material.color.setHex(tone)
     this.predEnd.material.opacity = pred.outcome === 'timeout' ? 0.45 : 0.95
 
@@ -466,16 +564,48 @@ export class SceneView {
       this.predGhost.renderOrder = 4
       this.scene.add(this.predGhost)
     }
-    this.predGhost.visible = !!pred.hit
-    if (pred.hit) {
-      this.predGhost.position.set(pred.hit.x, pred.hit.y, -1)
-      this.predGhost.scale.setScalar(pred.hit.r)
+    const h = pred.hit
+    this.predGhost.visible = !!h
+    if (h) {
+      this.predGhost.position.set(h.x, h.y, -1)
+      this.predGhost.scale.setScalar(h.r)
       this.predGhost.material.color.setHex(tone)
+    }
+
+    const ppw = this.rig.worldPerPx
+    const push = h && h.dv > 0
+    this.pushArrow.visible = !!push
+    this.courseArrow.visible = !!push
+    this.blastRing.visible = !!h
+    if (h) {
+      this.blastRing.position.set(h.px, h.py, 2)
+      this.blastRing.scale.setScalar(h.blast)
+      this.blastRing.material.opacity = h.outcome === 'earth' ? 0.6 : 0.3
+      this.blastRing.material.color.setHex(h.outcome === 'earth' ? 0xf87171 : 0xf59e0b)
+    }
+    if (push) {
+      // 임펄스(노랑): 폭심에서 공의 중심을 뚫고 나가는 방향 — 길이 ∝ Δv
+      const len = Math.max(26 * ppw, h.dv * 5)
+      setArrow(this.pushArrow, h.px, h.py, Math.atan2(h.dy, h.dx), len, Math.max(3 * ppw, len * 0.06), 6)
+      // 진로(흰색): 원래 궤도 속도 + 임펄스 = 공이 실제로 출발하는 방향.
+      // 플레이어가 실제로 겨냥하는 건 이 화살표라 임펄스 화살표보다 굵고 길게 뽑는다.
+      const sp = Math.hypot(h.vx, h.vy) || 1
+      const cl = Math.max(90 * ppw, h.r * 2 + sp * 6)
+      setArrow(this.courseArrow, h.x, h.y, Math.atan2(h.vy, h.vx), cl, Math.max(4 * ppw, cl * 0.05), 7)
     }
   }
 
   hidePredEnd() {
     if (this.predEnd) this.predEnd.visible = false
     if (this.predGhost) this.predGhost.visible = false
+    this.pushArrow.visible = false
+    this.courseArrow.visible = false
+    this.blastRing.visible = false
   }
+}
+
+// 경로 색 = 무엇에 닿는가 (결과가 아니라 접촉 대상)
+const PRED_TONE = {
+  target: 0x4ade80, neutral: 0xe2e8f0, shield: 0xa78bfa, earth: 0xf87171,
+  debris: 0x94a3b8, sun: 0xfb923c, lost: 0x94a3b8, timeout: 0x67e8f9,
 }

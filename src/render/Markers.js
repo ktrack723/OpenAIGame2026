@@ -61,9 +61,9 @@ export class Markers {
     this.scene = scene
     this.targetLabel = null; this.earthLabel = null
     this.targetArrow = arrowMesh(0x22d3ee); this.earthArrow = arrowMesh(0x60a5fa)
-    this.reticle = reticle(0x22d3ee)
+    this.reticles = []            // 목표가 둘 이상인 안테가 있다 — 전부 물어준다
     this.corridor = null
-    scene.add(this.targetArrow, this.earthArrow, this.reticle)
+    scene.add(this.targetArrow, this.earthArrow)
     this.names = { target: null, earth: null }
     this.t = 0
   }
@@ -106,21 +106,31 @@ export class Markers {
   update(game, rig, dt, radiusOfRender) {
     this.t += dt
     const t = game.target, e = game.earth
-    this.setLabel('target', `◎ 목표  ${t.name}`, '#a5f3fc', 'rgba(8,47,73,.92)')
-    this.setLabel('earth', '◉ 지구 · 발사대', '#bfdbfe', 'rgba(23,37,84,.92)')
+    const nAlive = game.aliveTargets
+    const suffix = game.targets.length > 1 ? ` (남은 조르그 ${nAlive})` : ''
+    this.setLabel('target', `◎ 목표  ${t.name}${suffix}`, '#a5f3fc', 'rgba(8,47,73,.92)')
+    this.setLabel('earth', '◉ 지구 · 발사대 (핵 직격 = 즉사)', '#bfdbfe', 'rgba(23,37,84,.92)')
 
     const tr = radiusOfRender(t), er = radiusOfRender(e)
     this.place(this.targetLabel, this.targetArrow, t, rig, tr)
     this.place(this.earthLabel, this.earthArrow, e, rig, er)
 
-    // 레티클 — 목표 반경의 2.1배에서 천천히 회전 + 맥동
-    this.reticle.visible = t.alive
-    if (t.alive) {
-      const s = tr * (2.1 + 0.16 * Math.sin(this.t * 3))
-      this.reticle.position.set(t.pos.x, t.pos.y, 6)
-      this.reticle.scale.set(s, s, 1)
-      this.reticle.rotation.z = this.t * 0.6
-      for (const m of this.reticle.children) m.material.opacity = 0.55 + 0.4 * Math.abs(Math.sin(this.t * 3))
-    }
+    // 레티클 — 목표마다 하나씩. 반경의 2.1배에서 천천히 회전 + 맥동
+    const tone = game.goal.shielded ? 0xa78bfa : 0x22d3ee
+    game.targets.forEach((b, i) => {
+      if (!this.reticles[i]) { this.reticles[i] = reticle(tone); this.scene.add(this.reticles[i]) }
+      const grp = this.reticles[i]
+      grp.visible = b.alive
+      if (!b.alive) return
+      const s = radiusOfRender(b) * (2.1 + 0.16 * Math.sin(this.t * 3))
+      grp.position.set(b.pos.x, b.pos.y, 6)
+      grp.scale.set(s, s, 1)
+      grp.rotation.z = this.t * 0.6
+      for (const m of grp.children) {
+        m.material.color.setHex(tone)
+        m.material.opacity = 0.55 + 0.4 * Math.abs(Math.sin(this.t * 3))
+      }
+    })
+    for (let i = game.targets.length; i < this.reticles.length; i++) this.reticles[i].visible = false
   }
 }

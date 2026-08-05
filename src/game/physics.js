@@ -1,4 +1,4 @@
-import { CFG, hpOf, radiusOf } from './config.js'
+import { CFG, blastRadius, contactDist, nukeDv, radiusOf } from './config.js'
 import { clone, len, sub, vec } from '../core/vector.js'
 
 // ─── T1-1: N체 가속도 — 태양(원점 고정) + 행성 상호작용 (§4.2) ───
@@ -55,6 +55,25 @@ export function segHitsCircle(ax, ay, bx, by, cx, cy, r) {
   return px * px + py * py < r * r
 }
 
+// 원에 "처음 닿는" 지점 — 폭심이다. 어느 쪽 살을 쳤는지가 곧 임펄스 방향이라
+// 스텝 끝 위치(행성 속이나 반대편일 수 있다)를 그대로 쓰면 안 된다.
+export function segCircleEntry(ax, ay, bx, by, cx, cy, r) {
+  const dx = bx - ax, dy = by - ay
+  const fx = ax - cx, fy = ay - cy
+  const a = dx * dx + dy * dy
+  if (a < 1e-9) return { x: ax, y: ay }
+  const b = 2 * (fx * dx + fy * dy), c = fx * fx + fy * fy - r * r
+  const disc = b * b - 4 * a * c
+  if (disc < 0) return { x: ax, y: ay }              // 접선급 — 시작점이 가장 가깝다
+  const t = (-b - Math.sqrt(disc)) / (2 * a)          // 첫 교점
+  if (t <= 0) {                                       // 이미 원 안에서 시작 → 중심 반대편 표면으로 투영
+    const l = Math.hypot(fx, fy) || 1
+    return { x: cx + fx / l * r, y: cy + fy / l * r }
+  }
+  const tc = Math.min(1, t)
+  return { x: ax + dx * tc, y: ay + dy * tc }
+}
+
 export function stepMissile(m, bodies, dt) {
   m.prev = { x: m.pos.x, y: m.pos.y }   // 스윕 판정용 직전 위치
   let n = 1
@@ -103,18 +122,37 @@ export function updateEncounters(m, bodies, ev) {
   }
 }
 
-// ─── T1-5/6: 데미지 + 임펄스 (§6.1, §6.2) ───
-export function applyHit(m, b) {
-  const v = len(m.vel)
-  const dmg = m.power * (0.5 + 0.5 * Math.min(v / 120, 2)) * (1 + 0.2 * m.chain)
-  b.hp -= dmg; b.hitFlash = 0.6
-  b.textureState = Math.max(0, Math.min(3, Math.floor((1 - b.hp / b.hpMax) * 4)))
-  let dx = 0.7 * m.vel.x / (v || 1) + 0.3 * (b.pos.x - m.pos.x), dy = 0.7 * m.vel.y / (v || 1) + 0.3 * (b.pos.y - m.pos.y)
-  const dl = Math.hypot(dx, dy) || 1
-  const dv = 75 * m.power / b.mu
-  b.vel.x += dx / dl * dv; b.vel.y += dy / dl * dv
-  b.trailFlash = 1.5   // P4: "내가 민 것" 트레일 강조
-  return dmg
+// ─── 핵 임펄스 — 이 게임의 큐 (§6.2 개정) ────────────────────────
+// 규칙 한 줄: **입사각도 입사속도도 보지 않는다.**
+// 방향 = 폭심 → 행성 중심 (= 공의 어느 살을 쳤는가),
+// 크기 = 작약량 / 질량. 그래서 조준은 "어디를 맞히느냐" 하나로 환원된다.
+export function applyNuke(b, blastX, blastY, yld) {
+  let dx = b.pos.x - blastX, dy = b.pos.y - blastY
+  const d = Math.hypot(dx, dy) || 1
+  dx /= d; dy /= d
+  const dv = nukeDv(yld, b.mu)
+  b.vel.x += dx * dv; b.vel.y += dy * dv
+  b.hitFlash = 0.9; b.trailFlash = 2.0
+  b.scorch = Math.min(3, (b.scorch || 0) + 1)   // 핵 맞은 자국이 표면에 남는다
+  return { dx, dy, dv }
+}
+
+// 폭풍 — 폭심 반경 안의 다른 천체들도 약하게 밀린다. 작약량을 올릴수록
+// 넓어지므로, 큰 탄두는 판 전체를 흔들고 지구까지 밀어낼 수 있다.
+export function blastWave(bodies, blastX, blastY, yld, skip) {
+  const R = blastRadius(yld), out = []
+  for (const o of bodies) {
+    if (!o.alive || o === skip) continue
+    let dx = o.pos.x - blastX, dy = o.pos.y - blastY
+    const d = Math.hypot(dx, dy)
+    if (d > R || d < 1e-6) continue
+    const falloff = 1 - d / R
+    const dv = nukeDv(yld, o.mu) * CFG.BLAST_PUSH * falloff * falloff
+    o.vel.x += dx / d * dv; o.vel.y += dy / d * dv
+    o.trailFlash = 1.5
+    out.push({ body: o, dv })
+  }
+  return { radius: R, pushed: out }
 }
 
 // ─── 파편 생성 (§6.1): n = clamp(4+⌊μ/150⌋, 4, 9), 총질량 55% ───
@@ -129,12 +167,14 @@ export function shatter(b, bodies, rnd) {
       id: `${b.id}f${bodies.length}`, name: '파편', mu: muF, radius: Math.max(2.5, radiusOf(muF)),
       pos: { x: b.pos.x + Math.cos(ang) * b.radius * 1.3, y: b.pos.y + Math.sin(ang) * b.radius * 1.3 },
       vel: { x: b.vel.x + Math.cos(ang) * sp, y: b.vel.y + Math.sin(ang) * sp },
-      hp: 5, hpMax: 5, type: 'debris', isEarth: false, alive: true, trail: [], hitFlash: 0, trailFlash: 0, textureState: 0,
+      type: 'debris', isEarth: false, alive: true, trail: [], hitFlash: 0, trailFlash: 0, scorch: 0,
     })
   }
 }
 
-// ─── T1-7: 행성↔행성 충돌 — 파쇄 문턱 v_shatter (§6.3) + 합성표 (§11) ───
+// ─── T1-7 개정: 행성끼리의 접촉 = 무조건 폭파 ───────────────────
+// 핵으로는 못 부순다. 부수는 건 오직 여기다. 규칙을 하나로 못 박아야
+// "어느 각도로 밀어야 저 둘이 만나는가"가 게임의 전부가 된다.
 export function resolveBodyPairs(bodies, game) {
   const n = bodies.length
   for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
@@ -142,86 +182,14 @@ export function resolveBodyPairs(bodies, game) {
     if (!a || !b || !a.alive || !b.alive) continue
     const aD = a.type === 'debris', bD = b.type === 'debris'
     if (aD && bD) continue
-    if (len(sub(a.pos, b.pos)) >= 0.9 * (a.radius + b.radius)) continue
-    if (aD || bD) {
-      const deb = aD ? a : b, pl = aD ? b : a
-      if (pl.isEarth) {   // 파편 스침 → 지구 HP −1 (§5.3)
-        deb.alive = false; pl.hp -= 1; pl.hitFlash = 0.8
-        game.message = `파편이 지구를 스침 — 지구 HP ${Math.max(0, pl.hp)}`
-        if (pl.hp <= 0) pl.alive = false
-      }
-      continue   // 일반 행성은 파편을 그냥 흡수하지 않음 (파편은 미사일 해저드)
-    }
-    if (a.isEarth || b.isEarth) {
-      const e = a.isEarth ? a : b
-      e.hp = 0; e.alive = false; game.message = '행성이 지구와 충돌…'
+    if (len(sub(a.pos, b.pos)) >= contactDist(a, b)) continue
+    if (aD || bD) {   // 파편은 행성 대기권에서 소멸 — 미사일 해저드일 뿐이다
+      (aD ? a : b).alive = false
       continue
     }
-    collideBodies(a, b, game)
-    return   // 한 스텝에 하나의 대형 충돌만 정산 (파편 생성으로 배열이 변함)
+    game.onPlanetCollision(a, b)
+    return   // 한 스텝에 한 번의 대형 충돌만 정산 (파편 생성으로 배열이 변한다)
   }
-}
-
-function collideBodies(a, b, game) {
-  const rnd = () => game.rng.next()
-  const vRel = Math.hypot(a.vel.x - b.vel.x, a.vel.y - b.vel.y)
-  const vShatter = 2.5 * Math.sqrt(2 * (a.mu + b.mu) / (a.radius + b.radius))
-  const wasTarget = a === game.target || b === game.target
-  if (vRel >= vShatter) {
-    game.message = `${a.name} ✕ ${b.name} — 고속 충돌 개박살 (v ${vRel.toFixed(0)} ≥ 문턱 ${vShatter.toFixed(0)})`
-    shatter(a, game.bodies, rnd); shatter(b, game.bodies, rnd)
-    if (wasTarget) { game.won = true; game.score += 20; game.message += ' — 목표 파괴!' }
-    return
-  }
-  fuse(a, b, game)
-}
-
-const pairKey = (a, b) => [a, b].sort().join('+')
-const RECIPES = {
-  'ice+lava': { type: 'rock', note: '수증기 폭발!', steam: true },
-  'lava+ocean': { type: 'rock', note: '온천 행성 (+20)', score: 20 },
-  'ocean+toxic': { type: 'life', note: '생명 행성 탄생! (+50)', score: 50 },
-  'rock+rock': { type: 'iron', note: '철 행성 — 최고의 당구공 (HP×2)', iron: true },
-}
-
-function fuse(a, b, game) {
-  const rnd = () => game.rng.next()
-  const t1 = a.type, t2 = b.type, key = pairKey(t1, t2)
-  const wasTarget = a === game.target || b === game.target
-  if (t1 === 'life' || t2 === 'life') {   // 생명 + 아무거나 → 파쇄 강제 + 외교 ("그건 좀…")
-    game.diplomacy++
-    game.message = `생명 행성이 부서졌다… 외교 ${Math.min(CFG.DIPLO_MAX, game.diplomacy)}/3 ("그건 좀…")`
-    shatter(a, game.bodies, rnd); shatter(b, game.bodies, rnd)
-    if (wasTarget) { game.won = true; game.score += 20 }
-    return
-  }
-  if (key === 'ice+ice') {   // 얼음+얼음 → 혜성 파편 다수
-    game.message = '얼음 충돌 — 혜성 파편 산개'
-    shatter(a, game.bodies, rnd); shatter(b, game.bodies, rnd)
-    if (wasTarget) { game.won = true; game.score += 20 }
-    return
-  }
-  let base = a.mu >= b.mu ? a : b
-  if (t1 === 'gas' || t2 === 'gas') base = t1 === 'gas' ? a : b   // 가스 + 아무거나 → 가스가 흡수·성장
-  const other = base === a ? b : a
-  const mu = a.mu + b.mu
-  base.pos = { x: (a.pos.x * a.mu + b.pos.x * b.mu) / mu, y: (a.pos.y * a.mu + b.pos.y * b.mu) / mu }
-  base.vel = { x: (a.vel.x * a.mu + b.vel.x * b.mu) / mu, y: (a.vel.y * a.mu + b.vel.y * b.mu) / mu }
-  base.mu = mu; base.radius = radiusOf(mu); base.textureState = 0; base.trailFlash = 1.5
-  other.alive = false
-  const r = RECIPES[key]
-  if (r) base.type = r.type
-  else if (t1 === 'gas' || t2 === 'gas') base.type = 'gas'
-  base.hpMax = hpOf(mu) * (r && r.iron ? 2 : 1); base.hp = base.hpMax
-  if (r && r.score) game.score += r.score
-  game.message = `합성: ${t1}+${t2} → ${base.type}${r ? ' — ' + r.note : ''}`
-  if (r && r.steam) for (const o of game.bodies) {   // 반경 300 전방위 Δv 3
-    if (!o.alive || o === base) continue
-    const d = sub(o.pos, base.pos), l = len(d)
-    if (l > 300 || l === 0) continue
-    o.vel.x += d.x / l * 3; o.vel.y += d.y / l * 3; o.trailFlash = 1.5
-  }
-  if (other === game.target) { game.target = base; game.message += ' — 목표가 합성체가 됐다' }
 }
 
 export function cloneBodies(bodies) { return bodies.map(b => ({ ...b, pos: clone(b.pos), vel: clone(b.vel), trail: null })) }

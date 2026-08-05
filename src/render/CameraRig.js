@@ -72,6 +72,8 @@ export class CameraRig {
     push(g.target, CFG.SWING_ZONE + 2)
     if (g.canAim) { const p = g.launchPos(); pts.push({ x: p.x, y: p.y, r: 60 }) }   // 발사대도 화면 안에
     for (const m of g.missiles) if (m.alive) pts.push({ x: m.pos.x, y: m.pos.y, r: 70 })
+    // 폭발은 이 게임의 보상이다 — 화면 밖에서 터지면 못 본다. 잠깐 프레임에 붙잡아 둔다.
+    if (this.focusPt && this.focusPt.t > 0) pts.push(this.focusPt)
     let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity
     for (const p of pts) {
       x0 = Math.min(x0, p.x - p.r); x1 = Math.max(x1, p.x + p.r)
@@ -192,9 +194,13 @@ export class CameraRig {
   // ── 프레임 갱신 ─────────────────────────────────────────────
   hit(strength) { this.shake = Math.min(VIS.SHAKE_MAX, this.shake + strength) }
 
+  // 자동 프레이밍이 잠시 물고 있을 지점 (폭발 지점 등)
+  focus(x, y, r = 220, t = 3) { this.focusPt = { x, y, r, t } }
+
   update(dt) {
     this.aspect = Math.max(0.2, innerWidth / Math.max(1, innerHeight))
     this.updateInsets()
+    if (this.focusPt && this.focusPt.t > 0) this.focusPt.t -= dt
     if (this.auto) {   // 자동 모드: 목표 프레임으로 부드럽게 수렴 (스윙바이 리드 포함)
       const f = this.autoFrame(), k = 1 - Math.pow(0.002, dt)
       this.center.x += (f.cx - this.center.x) * k
