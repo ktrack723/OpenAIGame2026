@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "check": "node --check src/main.js && node --check src/game/game.js && node --check src/render/Scene.js",
+    "check": "node --check src/main.js && node --check src/game/game.js && node --check src/game/stage.js && node --check src/game/physics.js && node --check src/game/config.js && node --check src/render/Scene.js && node --check src/ui/hud.js",
     "serve": "python3 -m http.server 4173"
   },
   "dependencies": {},
