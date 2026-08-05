@@ -1,5 +1,5 @@
 import { Rng } from '../core/random.js'
-import { CFG, aMaxOf, hpOf, radiusOf } from './config.js'
+import { CFG, aMaxOf, hitRadiusOf, hpOf, radiusOf } from './config.js'
 import { cloneBodies, stepBodies } from './physics.js'
 
 const NAMES = ['Vesta', 'Bront', 'Mir', 'Kappa', 'Oort', 'Faro', 'Nix', 'Teph', 'Ruun', 'Golda']
@@ -169,7 +169,7 @@ function trySim(eph, bodies, earthIdx, tIdx, aMax, t0, ang, pw) {
     if (rs < CFG.R_STAR + 8 || rs > 2.8 * aMax) return false
     for (let i = 0; i < bodies.length; i++) {
       const p = eph.at(i, t), d = Math.hypot(x - p.x, y - p.y)
-      if (d < bodies[i].radius) return i === tIdx && swings >= 1   // 직격 외 명중 = 파울/지구 피해 → 실패
+      if (d < hitRadiusOf(bodies[i])) return i === tIdx && swings >= 1   // 직격 외 명중 = 파울/지구 피해 → 실패
       if (i === tIdx || i === earthIdx) continue
       if (d < CFG.SWING_ZONE * bodies[i].radius) { if (!enc[i]) enc[i] = { vx, vy } }
       else if (enc[i]) {

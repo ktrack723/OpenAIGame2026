@@ -17,7 +17,12 @@ export const CFG = {
   LAUNCH_OFFSET: 100,
   MISSILE_TTL: 40,                    // 미사일 자폭(초). 결판난 샷의 95%가 42초 안에 끝난다
   SHELL_P: 10,                        // 표준탄 위력 P (§6.1)
-  SWING_ZONE: 6, SWING_DEG: 25, NEAR_MISS: 1.8, CAPTURE_WRAP: 0.75,   // §5.2
+  SWING_ZONE: 6, SWING_DEG: 25, NEAR_MISS: 2.8, CAPTURE_WRAP: 0.75,   // §5.2
+  // 미사일 명중 판정 반경 배율. 기하 반지름 그대로 쓰면 "행성에 닿았는데 통과"가
+  // 계속 난다 — 렌더 구체와 판정이 어긋나기 때문. 렌더도 이 값으로 그려서
+  // 보이는 원 = 맞는 원이 되게 맞춘다. 파편은 해저드라 그대로(1.0).
+  // 니어미스(1.8→2.8)는 명중 반경 위에 유효한 띠를 남기려고 같이 올렸다.
+  HIT_R: 1.6,
   A_MIN: 260,
   EARTH_MU: 300, EARTH_R: 11, EARTH_HP: 3,
   DIPLO_MAX: 3, SUN_BONUS_R: 215,     // 외교 게이지 / 태양 가속 보너스(§9.1) — R★의 3배 유지
@@ -28,6 +33,9 @@ export const CFG = {
   TIME_BASE: 260, TIME_PER_ANTE: 20, TIME_BONUS: 0.6,
 }
 export const radiusOf = (mu) => 1.6 * Math.cbrt(mu)   // T1-9
+// 미사일 명중 반경 — 물리(행성끼리 충돌·힐 반경)는 여전히 b.radius를 쓴다.
+// 이 함수는 "미사일이 무엇에 맞는가"에만 쓰이고, 렌더도 같은 값을 그린다.
+export const hitRadiusOf = (b) => b.type === 'debris' ? b.radius : b.radius * CFG.HIT_R
 export const hpOf = (mu) => 12 + mu / 12              // T1-9
 export const aMaxOf = (A) => 1150 + 90 * Math.min(A, 6)   // §7.2
 
@@ -37,9 +45,9 @@ export const aMaxOf = (A) => 1150 + 90 * Math.min(A, 6)   // §7.2
 // SOI 확대율 κ^(2/5)≈5.1× 가 근거) + 화면 최소 크기 바닥값 + 3D 구체 셰이딩.
 export const VIS = {
   FOV: 42,                    // 탑다운 원근 카메라 — 시점은 위에서, 입체감은 유지 (§14.1)
-  MIN_PLANET_PX: 36,          // 행성 최소 화면 지름(px). 판정 반경은 그대로, 보이기만 키운다
+  MIN_PLANET_PX: 30,          // 행성 최소 화면 지름(px). 판정 반경은 그대로, 보이기만 키운다
   MIN_DEBRIS_PX: 9,
-  MAX_INFLATE: 4.0,           // 최소 크기 바닥값이 실제 반경을 넘길 수 있는 최대 배율
+  MAX_INFLATE: 2.2,           // 최소 크기 바닥값이 실제 반경을 넘길 수 있는 최대 배율
   TRUE_R_HINT: 1.6,           // 이 배 이상 부풀면 실제 판정 반경을 얇은 링으로 병기
   ZOOM_MIN: 0.5, ZOOM_MAX: 10, ZOOM_STEP: 1.4,
   FIT_MARGIN: 1.25,           // 자동 프레이밍 여백

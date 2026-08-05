@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { CFG, VIS } from '../game/config.js'
+import { CFG, VIS, hitRadiusOf } from '../game/config.js'
 import { CameraRig } from './CameraRig.js'
 import { Particles } from './Particles.js'
 import { Markers } from './Markers.js'
@@ -118,13 +118,15 @@ export class SceneView {
     this.resize()
   }
 
-  // ── 화면 최소 크기 바닥값 ────────────────────────────────────
-  // 판정 반경(R_p = 1.6·μ^(1/3), §4.1)은 그대로 두고 화면 최소 지름만 보장한다.
-  // 줌인할수록 부풀림 배율이 1로 수렴 → 가까이 가면 실제 크기 그대로 보인다.
+  // ── 렌더 반경 = 명중 반경 ───────────────────────────────────
+  // 기하 반지름(§4.1)은 물리용으로 그대로 두되, 화면에는 미사일 명중 반경
+  // (b.radius × HIT_R)을 그린다 → "닿았는데 통과"가 원천적으로 사라진다.
+  // 화면 최소 지름 바닥값은 줌아웃 시에만 작동하고, 그때는 얇은 링으로 실제 반경을 병기한다.
   renderRadius(b) {
+    const hr = hitRadiusOf(b)   // 그리는 원 = 맞는 원
     const minPx = b.type === 'debris' ? VIS.MIN_DEBRIS_PX : VIS.MIN_PLANET_PX
     const minWorld = minPx * 0.5 * this.rig.worldPerPx
-    return Math.min(b.radius * VIS.MAX_INFLATE, Math.max(b.radius, minWorld))
+    return Math.min(hr * VIS.MAX_INFLATE, Math.max(hr, minWorld))
   }
 
   // 별 배경 — 성계 "바깥"에만 뿌리면 정작 판 위가 텅 빈다.
@@ -295,9 +297,9 @@ export class SceneView {
       else if (b.isEarth) { fx.ring.material.color.setHex(0x60a5fa); fx.ring.material.opacity = 0.85 }
       else { fx.ring.material.color.setHex(0xef4444); fx.ring.material.opacity = 0.45 }
 
-      if (fx.trueRing.visible) {   // 부풀린 상태에서는 실제 판정 반경을 얇게 병기
+      if (fx.trueRing.visible) {   // 줌아웃으로 부풀었을 때만 실제 명중 반경을 얇게 병기
         fx.trueRing.position.set(b.pos.x, b.pos.y, 0.2)
-        fx.trueRing.scale.setScalar(b.radius)
+        fx.trueRing.scale.setScalar(hitRadiusOf(b))
       }
     }
   }
@@ -359,38 +361,121 @@ export class SceneView {
     q.length = 0
   }
 
+  // 리본 — THREE.Line의 굵기는 WebGL에서 1px로 고정이라 트레일이 실오라기가 된다.
+  // 폭을 가진 삼각형 띠를 직접 만들어 화면상 두께를 확보한다(줌에 따라 같이 커짐).
+  ribbon(pts, widthPx, color, { fade = true, opacity = 1, z = -1, tailWidth = 0.25 } = {}) {
+    const n = pts.length
+    if (n < 2) return
+    const w = widthPx * this.rig.worldPerPx * 0.5
+    const pos = new Float32Array(n * 6), col = new Float32Array(n * 6)
+    const c = new THREE.Color(color)
+    for (let i = 0; i < n; i++) {
+      const p = pts[i], a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)]
+      let tx = b.x - a.x, ty = b.y - a.y
+      const l = Math.hypot(tx, ty) || 1
+      tx /= l; ty /= l
+      const u = n > 1 ? i / (n - 1) : 1            // 0 = 꼬리(오래됨), 1 = 머리(최신)
+      const ww = w * (tailWidth + (1 - tailWidth) * u)
+      const nx = -ty * ww, ny = tx * ww
+      pos[i * 6] = p.x + nx; pos[i * 6 + 1] = p.y + ny; pos[i * 6 + 2] = z
+      pos[i * 6 + 3] = p.x - nx; pos[i * 6 + 4] = p.y - ny; pos[i * 6 + 5] = z
+      // 가산 합성이라 색을 검게 죽이면 그대로 페이드가 된다
+      const k = (fade ? u * u : 1) * opacity
+      for (const o of [0, 3]) {
+        col[i * 6 + o] = c.r * k; col[i * 6 + o + 1] = c.g * k; col[i * 6 + o + 2] = c.b * k
+      }
+    }
+    const idx = new Uint32Array((n - 1) * 6)
+    for (let i = 0; i < n - 1; i++) {
+      const o = i * 6, v = i * 2
+      idx[o] = v; idx[o + 1] = v + 1; idx[o + 2] = v + 2
+      idx[o + 3] = v + 1; idx[o + 4] = v + 3; idx[o + 5] = v + 2
+    }
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3))
+    geo.setIndex(new THREE.BufferAttribute(idx, 1))
+    const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+      vertexColors: true, transparent: true, depthTest: false, depthWrite: false,
+      blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    }))
+    mesh.renderOrder = 3
+    this.lines.push(mesh); this.scene.add(mesh)
+  }
+
   syncLines() {
     for (const l of this.lines) { this.scene.remove(l); l.geometry.dispose(); l.material.dispose() }
     this.lines = []
     const g = this.game
-    const add = (pts, color, opacity = 0.55, dashed = false, z = -1) => {
-      if (pts.length < 2) return
-      const geo = new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(p.x, p.y, z)))
-      const mat = dashed
-        ? new THREE.LineDashedMaterial({ color, transparent: true, opacity, dashSize: 14, gapSize: 11, depthTest: false })
-        : new THREE.LineBasicMaterial({ color, transparent: true, opacity, depthTest: false })
-      const line = new THREE.Line(geo, mat)
-      if (dashed) line.computeLineDistances()
-      line.renderOrder = 3
-      this.lines.push(line); this.scene.add(line)
-    }
-    // 발사 회랑 — §7.5 차폐도 B를 재는 그 선. "목표가 어느 쪽인지"를 즉시 알려준다
+
+    // 발사 회랑 — §7.5 차폐도 B를 재는 그 선
     if (g.earth.alive && g.target.alive)
-      add([g.earth.pos, g.target.pos], 0x22d3ee, 0.22, true, -4)
+      this.ribbon([g.earth.pos, g.target.pos], 2, 0x22d3ee, { fade: false, opacity: 0.2, z: -5, tailWidth: 1 })
+
     // 궤도 트레일 — 플레이어 임펄스 직후 강조 (P4, §14.2)
-    for (const b of g.bodies) if (b.trail) {
+    for (const b of g.bodies) {
+      if (!b.trail || b.trail.length < 2) continue
       const hot = b.trailFlash > 0
-      add(b.trail, hot ? 0xffffff : colorOf(b.type), hot ? 0.95 : 0.32)
+      this.ribbon(b.trail, hot ? 9 : 5.5, hot ? 0xffffff : colorOf(b.type), { opacity: hot ? 1 : 0.75, z: -2 })
     }
-    // 미사일 궤적 — 빗나간 샷은 회색 점선으로 스테이지 끝까지 남긴다 (§14.4)
-    for (const m of g.missiles) add(m.path, m.alive ? 0xffffff : 0x64748b, m.alive ? 0.9 : 0.4, !m.alive)
-    // 조준선 + 예측선 3초 (§5.1)
+
+    // 미사일 궤적 — 빗나간 샷은 흐리게 스테이지 끝까지 남긴다 (§14.4)
+    for (const m of g.missiles) {
+      if (m.path.length < 2) continue
+      this.ribbon(m.path, m.alive ? 7 : 4, m.alive ? 0xffffff : 0x7c8798, { opacity: m.alive ? 1 : 0.42, z: 1 })
+    }
+
+    // 조준선 + 풀 예측 경로 (§14.3)
     if (g.canAim) {
       const p = g.launchPos()
-      // 지구 → 발사대 지지선. 발사점이 지구에서 100 GU 떨어져 있는 이유를 눈으로 보여준다
-      add([g.earth.pos, p], 0x3b82f6, 0.3, true, -2)
-      add([p, { x: p.x + Math.cos(g.aim) * (60 + g.power * 2), y: p.y + Math.sin(g.aim) * (60 + g.power * 2) }], 0x22d3ee, 0.95)
-      add(g.predict(), 0x67e8f9, 0.75, true)
+      this.ribbon([g.earth.pos, p], 2, 0x3b82f6, { fade: false, opacity: 0.35, z: -3, tailWidth: 1 })
+      const pred = g.predictPath()
+      if (pred.pts.length > 1) {
+        // 예측 결말에 따라 색이 바뀐다 — 쏘기 전에 결과를 읽을 수 있게
+        const tone = pred.outcome === 'target' ? 0x4ade80
+          : pred.outcome === 'earth' || pred.outcome === 'foul' ? 0xf87171
+            : pred.outcome === 'sun' ? 0xfb923c
+              : pred.outcome === 'lost' ? 0x94a3b8 : 0x67e8f9
+        this.ribbon(pred.pts, 4.5, tone, { fade: false, opacity: 0.85, z: 0, tailWidth: 1 })
+        this.markPredEnd(pred, tone)
+      }
+    } else this.hidePredEnd()
+  }
+
+  // 예측 종점 마커 — 어디에 무엇으로 끝나는지 한 점으로 못 박는다
+  markPredEnd(pred, tone) {
+    if (!this.predEnd) {
+      this.predEnd = new THREE.Mesh(new THREE.RingGeometry(0.55, 1, 28), new THREE.MeshBasicMaterial({
+        transparent: true, depthTest: false, depthWrite: false, side: THREE.DoubleSide,
+      }))
+      this.predEnd.renderOrder = 15
+      this.scene.add(this.predEnd)
     }
+    const e = pred.pts[pred.pts.length - 1]
+    this.predEnd.visible = true
+    this.predEnd.position.set(e.x, e.y, 5)
+    this.predEnd.scale.setScalar(Math.max(9, 15 * this.rig.worldPerPx))
+    this.predEnd.material.color.setHex(tone)
+    this.predEnd.material.opacity = pred.outcome === 'timeout' ? 0.45 : 0.95
+
+    // 충돌 대상의 "그때 위치" 고스트 — 지금 자리가 아니라 도착 시점의 자리에 맞는다
+    if (!this.predGhost) {
+      this.predGhost = new THREE.Mesh(this.discGeo, new THREE.MeshBasicMaterial({
+        transparent: true, opacity: 0.16, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending,
+      }))
+      this.predGhost.renderOrder = 4
+      this.scene.add(this.predGhost)
+    }
+    this.predGhost.visible = !!pred.hit
+    if (pred.hit) {
+      this.predGhost.position.set(pred.hit.x, pred.hit.y, -1)
+      this.predGhost.scale.setScalar(pred.hit.r)
+      this.predGhost.material.color.setHex(tone)
+    }
+  }
+
+  hidePredEnd() {
+    if (this.predEnd) this.predEnd.visible = false
+    if (this.predGhost) this.predGhost.visible = false
   }
 }

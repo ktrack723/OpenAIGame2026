@@ -1,7 +1,7 @@
-import { fromAngle, len, sub, vec } from '../core/vector.js'
+import { fromAngle, len, sub } from '../core/vector.js'
 import { Rng } from '../core/random.js'
-import { CFG } from './config.js'
-import { applyHit, fieldAccel, resolveBodyPairs, shatter, stepBodies, stepMissile, updateEncounters } from './physics.js'
+import { CFG, hitRadiusOf } from './config.js'
+import { applyHit, cloneBodies, resolveBodyPairs, segHitsCircle, shatter, stepBodies, stepMissile, updateEncounters } from './physics.js'
 import { makeStage } from './stage.js'
 
 export class Game {
@@ -110,9 +110,16 @@ export class Game {
     }
   }
 
+  // 스윕 판정 — 직전 위치에서 현재 위치까지의 선분이 명중 반경과 겹치면 명중.
+  // 점 판정만 하면 빠른 미사일이 행성을 한 스텝에 건너뛴다.
   contact(m) {
-    for (const b of this.bodies)
-      if (b.alive && len(sub(m.pos, b.pos)) < b.radius) { this.resolveHit(m, b); return }
+    const a = m.prev || m.pos
+    for (const b of this.bodies) {
+      if (!b.alive) continue
+      if (segHitsCircle(a.x, a.y, m.pos.x, m.pos.y, b.pos.x, b.pos.y, hitRadiusOf(b))) {
+        this.resolveHit(m, b); return
+      }
+    }
   }
 
   resolveHit(m, b) {
@@ -217,19 +224,49 @@ export class Game {
     return !this.won && !this.lost && this.rockets > 0 && this.earth.alive && !this.missiles.some(m => m.alive)
   }
 
-  // §5.1 예측선 3초 — "현재 중력장 프리즈" 근사 (의도적으로 부정확)
-  predict() {
-    if (!this.canAim) return []
-    const pts = [], p = this.launchPos(), v = fromAngle(this.aim, this.power), a = vec(), dt = 1 / 60
-    for (let i = 0; i < 180; i++) {
-      fieldAccel(p.x, p.y, this.bodies, a)
-      v.x += a.x * dt; v.y += a.y * dt; p.x += v.x * dt; p.y += v.y * dt
-      pts.push({ x: p.x, y: p.y })
-      if (Math.hypot(p.x, p.y) < CFG.R_STAR) break
-      let hit = false
-      for (const b of this.bodies) if (b.alive && b !== this.earth && len(sub(p, b.pos)) < b.radius) { hit = true; break }
-      if (hit) break
+  // 예측선 — 행성 이동까지 반영한 풀 시뮬 (기획서 §14.3의 "라플라스의 악마" 수준).
+  // 실제 비행과 같은 적분기·같은 dt·같은 순서라 조준 중에는 정확히 그 궤적이 된다.
+  // 조준 중에는 시간이 멈춰 있으므로 (조준각, 파워, 판 상태)가 그대로면 캐시가 유효하다.
+  predictPath() {
+    if (!this.canAim) return { pts: [], outcome: null, hit: null }
+    const key = `${this.aim.toFixed(5)}|${this.power}|${this.stageIdx}|${this.time.toFixed(3)}|${this.rockets}|${this.bodies.length}`
+    if (this._predKey === key) return this._pred
+    // 풀 시뮬은 안테 8에서 ~9ms라 슬라이더를 끄는 동안 매 프레임 돌리면 프레임을 깎는다.
+    // 정확도를 낮추는 대신 갱신 빈도를 20fps로 묶는다 — 경로 자체는 실제 비행과 동일하게 유지.
+    const now = performance.now()
+    if (this._pred && now - (this._predAt || 0) < 45) return this._pred
+    this._predAt = now
+    const sim = cloneBodies(this.bodies)
+    const p = this.launchPos()
+    const m = {
+      pos: { ...p }, vel: fromAngle(this.aim, this.power), age: 0,
+      pathN: 0, path: [], minSunDist: Infinity, prev: { ...p },
     }
-    return pts
+    const pts = [{ ...p }]
+    let outcome = 'timeout', hit = null
+    const steps = Math.round(CFG.MISSILE_TTL / CFG.DT)
+    for (let i = 0; i < steps; i++) {
+      stepBodies(sim, CFG.DT)
+      stepMissile(m, sim, CFG.DT)
+      if (i % 6 === 0) pts.push({ x: m.pos.x, y: m.pos.y })
+      let b = null
+      for (const o of sim) {
+        if (!o.alive) continue
+        if (segHitsCircle(m.prev.x, m.prev.y, m.pos.x, m.pos.y, o.pos.x, o.pos.y, hitRadiusOf(o))) { b = o; break }
+      }
+      if (b) {
+        pts.push({ x: m.pos.x, y: m.pos.y })
+        // 명중 지점의 천체 위치 = "그때 그 행성이 있을 자리". 지금 위치가 아니다.
+        hit = { name: b.name, isEarth: b.isEarth, type: b.type, id: b.id, x: b.pos.x, y: b.pos.y, r: hitRadiusOf(b) }
+        outcome = b.type === 'debris' ? 'debris' : (b.id === this.target.id ? 'target' : (b.isEarth ? 'earth' : 'foul'))
+        break
+      }
+      const r = Math.hypot(m.pos.x, m.pos.y)
+      if (r < CFG.R_STAR + 8) { outcome = 'sun'; pts.push({ x: m.pos.x, y: m.pos.y }); break }
+      if (r > 2.8 * this.aMax) { outcome = 'lost'; pts.push({ x: m.pos.x, y: m.pos.y }); break }
+    }
+    this._predKey = key
+    this._pred = { pts, outcome, hit }
+    return this._pred
   }
 }

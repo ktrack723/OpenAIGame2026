@@ -43,7 +43,20 @@ export function fieldAccel(px, py, bodies, out) {
   }
 }
 
+// 선분(직전 위치→현재 위치)이 원과 겹치는지. 점 판정만 하면 빠른 미사일이
+// 행성 디스크를 한 스텝에 건너뛰어 "닿고도 통과"가 난다.
+export function segHitsCircle(ax, ay, bx, by, cx, cy, r) {
+  const dx = bx - ax, dy = by - ay
+  const fx = ax - cx, fy = ay - cy
+  const len2 = dx * dx + dy * dy
+  let t = len2 > 0 ? -(fx * dx + fy * dy) / len2 : 0
+  t = Math.max(0, Math.min(1, t))
+  const px = fx + dx * t, py = fy + dy * t
+  return px * px + py * py < r * r
+}
+
 export function stepMissile(m, bodies, dt) {
+  m.prev = { x: m.pos.x, y: m.pos.y }   // 스윕 판정용 직전 위치
   let n = 1
   for (const b of bodies) if (b.alive && len(sub(b.pos, m.pos)) < CFG.SUBSTEP_DIST * b.radius) { n = CFG.SUBSTEP_N; break }
   const a = vec(), sd = dt / n

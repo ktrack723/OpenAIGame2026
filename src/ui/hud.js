@@ -25,6 +25,7 @@ export function makeHud(game, view) {
   <div class="clockbar"><i id="clockFill"></i></div>
   <div class="clocknote" id="clockNote"></div>
 </div>
+<div class="pred" id="pred"></div>
 <div class="grid">
 <label>각도 <span id="angleV"></span><input id="angle" type="range" min="-180" max="180" step="0.5"></label>
 <label>발사 속도 <span id="powerV"></span><input id="power" type="range" min="${CFG.LAUNCH_MIN}" max="${CFG.LAUNCH_MAX}"></label>
@@ -115,6 +116,24 @@ export function updateHud(el, game) {
     ? `정지 — 시간 보너스 +${game.timeBonus} 확정`
     : scale === 0 ? `정지 (조준 중) · 클리어 시 시간 보너스 +${game.timeBonus}`
       : `${scale}× 진행 중 ▼ · 시간 보너스 +${game.timeBonus}`
+
+  // 예측 결말 — 경로가 화면 밖에서 끝나도 결과를 읽을 수 있게 글로도 적는다
+  const predEl = el.querySelector('#pred')
+  if (game.canAim) {
+    const p = game.predictPath()
+    const label = {
+      target: ['hit', `목표 명중 — ${game.target.name}`],
+      earth: ['bad', '지구 오폭! 각도를 바꿔라'],
+      foul: ['bad', `파울 — ${p.hit ? p.hit.name : '중립 행성'} 침범`],
+      debris: ['warn', '파편에 소실'],
+      sun: ['warn', '태양 소멸 — 근일점이 너무 낮다'],
+      lost: ['warn', '유실 — 성계 이탈'],
+      timeout: ['warn', `${CFG.MISSILE_TTL}초 내 미도달 (자폭)`],
+    }[p.outcome] || ['warn', '—']
+    predEl.hidden = false
+    predEl.className = `pred ${label[0]}`
+    predEl.textContent = `예상 결말 ▸ ${label[1]}`
+  } else predEl.hidden = true
 
   el.querySelector('#stats').textContent =
     `안테 ${game.ante} · 스테이지 ${game.stageIdx + 1} — 섬멸전 (차폐도 B ${game.stage.B.toFixed(1)})
