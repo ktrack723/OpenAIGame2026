@@ -70,6 +70,7 @@ export class CameraRig {
     const push = (b, pad) => { if (b && b.alive) pts.push({ x: b.pos.x, y: b.pos.y, r: b.radius * pad }) }
     push(g.earth, CFG.SWING_ZONE)
     push(g.target, CFG.SWING_ZONE + 2)
+    if (g.canAim) { const p = g.launchPos(); pts.push({ x: p.x, y: p.y, r: 60 }) }   // 발사대도 화면 안에
     for (const m of g.missiles) if (m.alive) pts.push({ x: m.pos.x, y: m.pos.y, r: 70 })
     let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity
     for (const p of pts) {

@@ -16,8 +16,16 @@ export function makeHud(game, view) {
   <div class="objname" id="objName">—</div>
   <div class="objhp"><span id="objHp"></span></div>
   <div class="objhint">화면의 <b class="cy">시안 레티클 ◎</b>이 목표다. 화면 밖이면 가장자리 <b class="cy">화살표</b>가 방향을 가리킨다.
-  <b class="bl">파란 링 ◉</b>은 지구(발사대), <b class="rd">붉은 링</b>은 맞히면 파울.</div>
+  <b class="bl">파란 링 ◉</b>은 지구, <b class="rd">붉은 링</b>은 맞히면 파울.
+  발사는 지구 중력권 <b class="bl">바깥 발사대</b>(파란 점선 끝)에서 나간다.
+  <b class="cy">느리게 쏠수록 크게 휜다</b> — 스윙바이로 가속해서 때려라.</div>
 </div>
+<div class="clock" id="clock">
+  <div class="clockrow"><span class="clocklabel">작전 시한</span><span class="clockv" id="clockV">—</span></div>
+  <div class="clockbar"><i id="clockFill"></i></div>
+  <div class="clocknote" id="clockNote"></div>
+</div>
+<div class="pred" id="pred"></div>
 <div class="grid">
 <label>각도 <span id="angleV"></span><input id="angle" type="range" min="-180" max="180" step="0.5"></label>
 <label>발사 속도 <span id="powerV"></span><input id="power" type="range" min="${CFG.LAUNCH_MIN}" max="${CFG.LAUNCH_MAX}"></label>
@@ -95,6 +103,37 @@ export function updateHud(el, game) {
 
   const rig = el._rig
   if (rig) el.querySelector('#zoomV').textContent = `${rig.zoom.toFixed(1)}×${rig.auto ? ' 자동' : ''}`
+
+  // 작전 시한 — 인게임 시간. 조준 중엔 안 흐르고 관측(4×)/비행 중에만 줄어든다
+  const left = game.timeLeft, frac = left / game.stageTime
+  const mm = Math.floor(left / 60), ss = Math.floor(left % 60)
+  const clock = el.querySelector('#clock')
+  el.querySelector('#clockV').textContent = `${mm}:${String(ss).padStart(2, '0')}`
+  el.querySelector('#clockFill').style.width = `${Math.max(0, frac * 100).toFixed(1)}%`
+  clock.className = 'clock' + (frac <= 0.15 ? ' crit' : frac <= 0.4 ? ' warn' : '')
+  const scale = game.effTimeScale()
+  el.querySelector('#clockNote').textContent = game.won
+    ? `정지 — 시간 보너스 +${game.timeBonus} 확정`
+    : scale === 0 ? `정지 (조준 중) · 클리어 시 시간 보너스 +${game.timeBonus}`
+      : `${scale}× 진행 중 ▼ · 시간 보너스 +${game.timeBonus}`
+
+  // 예측 결말 — 경로가 화면 밖에서 끝나도 결과를 읽을 수 있게 글로도 적는다
+  const predEl = el.querySelector('#pred')
+  if (game.canAim) {
+    const p = game.predictPath()
+    const label = {
+      target: ['hit', `목표 명중 — ${game.target.name}`],
+      earth: ['bad', '지구 오폭! 각도를 바꿔라'],
+      foul: ['bad', `파울 — ${p.hit ? p.hit.name : '중립 행성'} 침범`],
+      debris: ['warn', '파편에 소실'],
+      sun: ['warn', '태양 소멸 — 근일점이 너무 낮다'],
+      lost: ['warn', '유실 — 성계 이탈'],
+      timeout: ['warn', `${CFG.MISSILE_TTL}초 내 미도달 (자폭)`],
+    }[p.outcome] || ['warn', '—']
+    predEl.hidden = false
+    predEl.className = `pred ${label[0]}`
+    predEl.textContent = `예상 결말 ▸ ${label[1]}`
+  } else predEl.hidden = true
 
   el.querySelector('#stats').textContent =
     `안테 ${game.ante} · 스테이지 ${game.stageIdx + 1} — 섬멸전 (차폐도 B ${game.stage.B.toFixed(1)})

@@ -1,7 +1,7 @@
-import { fromAngle, len, sub, vec } from '../core/vector.js'
+import { fromAngle, len, sub } from '../core/vector.js'
 import { Rng } from '../core/random.js'
-import { CFG } from './config.js'
-import { applyHit, fieldAccel, resolveBodyPairs, shatter, stepBodies, stepMissile, updateEncounters } from './physics.js'
+import { CFG, hitRadiusOf } from './config.js'
+import { applyHit, cloneBodies, resolveBodyPairs, segHitsCircle, shatter, stepBodies, stepMissile, updateEncounters } from './physics.js'
 import { makeStage } from './stage.js'
 
 export class Game {
@@ -14,15 +14,23 @@ export class Game {
 
   get ante() { return Math.min(8, 1 + Math.floor(this.stageIdx / 3)) }
 
+  // ─── 작전 시한 (인게임 시간) ───
+  // this.time은 step()에서만 누적되고, step()은 effTimeScale()>0일 때만 돈다.
+  // → 조준만 하고 있으면 시계가 멈춰 있고, 관측(4×)하거나 미사일이 날 때만 줄어든다.
+  get stageTime() { return CFG.TIME_BASE + CFG.TIME_PER_ANTE * Math.min(this.ante - 1, 5) }
+  get timeLeft() { return Math.max(0, this.stageTime - this.time) }
+  get timeBonus() { return Math.round(this.timeLeft * CFG.TIME_BONUS) }
+
   loadStage() {
     const s = makeStage((this.seed + this.stageIdx * 7919) >>> 0, this.ante)
     this.stage = s; this.bodies = s.bodies; this.earth = s.earth; this.target = s.target; this.aMax = s.aMax
     this.missiles = []; this.rockets = CFG.ROCKETS; this.diplomacy = 0; this.score = 0; this.chainLast = 0
     this.won = false; this.lost = false; this.failReason = null
     this.aim = Math.atan2(this.target.pos.y - this.earth.pos.y, this.target.pos.x - this.earth.pos.x)
-    this.power = 82; this.observing = false; this.time = 0
+    this.power = 30; this.observing = false; this.time = 0
     this.toast = null; this.toastT = 0
     this.fx = []   // 렌더러가 매 프레임 비워가는 연출 이벤트 큐 (§14.5)
+    this.winBanked = false; this.timeWarn = 0
     this.message = `작전 개시 — ${this.target.name} 섬멸 (차폐도 B=${s.B.toFixed(1)}). 시간 정지 중: 관측(SHIFT)으로 판을 돌려라`
   }
 
@@ -34,7 +42,7 @@ export class Game {
   legal(b) { return b === this.target }   // 섬멸전 LEGAL_HIT = {목표} (§5.3)
 
   launchPos() {
-    const d = this.earth.radius + 8
+    const d = CFG.LAUNCH_OFFSET   // 지구 중력권 밖에서 발사 (§4.3 κ 증폭 때문)
     return { x: this.earth.pos.x + Math.cos(this.aim) * d, y: this.earth.pos.y + Math.sin(this.aim) * d }
   }
 
@@ -56,7 +64,7 @@ export class Game {
 
   // 관제실 모드(§5.1): 조준 중 시간 정지, 관측 홀드 4×, 미사일 비행 중 1×
   effTimeScale() {
-    if (this.lost) return 0
+    if (this.lost || this.won) return 0   // 클리어 후에는 시계를 세운다
     if (this.missiles.some(m => m.alive)) return this.observing ? 4 : 1
     return this.observing ? 4 : 0
   }
@@ -87,12 +95,31 @@ export class Game {
     resolveBodyPairs(this.bodies, this)
     this.bodyBounds()
     this.time += dt
+    this.warnTime()
     this.checkEnd()
   }
 
+  // 시한이 줄고 있다는 걸 토스트로 못 박는다 (남은 60/30/10초)
+  warnTime() {
+    if (this.won || this.lost) return
+    const marks = [60, 30, 10], left = this.timeLeft
+    while (this.timeWarn < marks.length && left <= marks[this.timeWarn]) {
+      const s = marks[this.timeWarn]
+      this.timeWarn++
+      this.setToast(`작전 시한 ${s}초 — 서둘러라 (시간 보너스 ${this.timeBonus})`)
+    }
+  }
+
+  // 스윕 판정 — 직전 위치에서 현재 위치까지의 선분이 명중 반경과 겹치면 명중.
+  // 점 판정만 하면 빠른 미사일이 행성을 한 스텝에 건너뛴다.
   contact(m) {
-    for (const b of this.bodies)
-      if (b.alive && len(sub(m.pos, b.pos)) < b.radius) { this.resolveHit(m, b); return }
+    const a = m.prev || m.pos
+    for (const b of this.bodies) {
+      if (!b.alive) continue
+      if (segHitsCircle(a.x, a.y, m.pos.x, m.pos.y, b.pos.x, b.pos.y, hitRadiusOf(b))) {
+        this.resolveHit(m, b); return
+      }
+    }
   }
 
   resolveHit(m, b) {
@@ -134,7 +161,7 @@ export class Game {
     const r = len(m.pos)
     if (r < CFG.R_STAR + 8) { m.alive = false; m.out = 'sun' }
     else if (r > 2.8 * this.aMax) { m.alive = false; m.out = 'lost' }
-    else if (m.age > 45) { m.alive = false; m.out = 'timeout' }
+    else if (m.age > CFG.MISSILE_TTL) { m.alive = false; m.out = 'timeout' }
   }
 
   bodyBounds() {   // §7.8 항성 처분 / 행성 추방 — 정식 킬
@@ -170,8 +197,18 @@ export class Game {
     if (tag) { this.setToast(tag); this.message = tag }
   }
 
-  checkEnd() {   // §16 실패 3종: 로켓 소진 / 지구 상실 / 외교 3
+  checkEnd() {   // §16 실패 3종 + 작전 시한 초과
+    if (this.won && !this.winBanked) {   // 클리어 시점의 남은 시간을 보너스로 정산
+      this.winBanked = true
+      const b = this.timeBonus
+      if (b > 0) { this.score += b; this.message += ` · 시간 보너스 +${b}` }
+    }
     if (this.won || this.lost) return
+    // 시한 초과 — 날아가고 있는 마지막 한 발은 끝까지 보내준다
+    if (this.time >= this.stageTime && !this.missiles.some(m => m.alive)) {
+      this.fail('TIME_UP', '작전 실패 — 작전 시한 초과. 조르그가 회랑을 재정비했다. 런 종료')
+      return
+    }
     if (!this.earth.alive || this.earth.hp <= 0) { this.fail('EARTH_LOST', '작전 실패 — 지구 상실. 런 종료'); return }
     if (this.diplomacy >= CFG.DIPLO_MAX) { this.fail('DIPLOMATIC_INCIDENT', '작전 실패 — 은하 여론 악화 (외교 3). 런 종료'); return }
     if (!this.target.alive) { this.won = true; return }
@@ -187,19 +224,49 @@ export class Game {
     return !this.won && !this.lost && this.rockets > 0 && this.earth.alive && !this.missiles.some(m => m.alive)
   }
 
-  // §5.1 예측선 3초 — "현재 중력장 프리즈" 근사 (의도적으로 부정확)
-  predict() {
-    if (!this.canAim) return []
-    const pts = [], p = this.launchPos(), v = fromAngle(this.aim, this.power), a = vec(), dt = 1 / 60
-    for (let i = 0; i < 180; i++) {
-      fieldAccel(p.x, p.y, this.bodies, a)
-      v.x += a.x * dt; v.y += a.y * dt; p.x += v.x * dt; p.y += v.y * dt
-      pts.push({ x: p.x, y: p.y })
-      if (Math.hypot(p.x, p.y) < CFG.R_STAR) break
-      let hit = false
-      for (const b of this.bodies) if (b.alive && b !== this.earth && len(sub(p, b.pos)) < b.radius) { hit = true; break }
-      if (hit) break
+  // 예측선 — 행성 이동까지 반영한 풀 시뮬 (기획서 §14.3의 "라플라스의 악마" 수준).
+  // 실제 비행과 같은 적분기·같은 dt·같은 순서라 조준 중에는 정확히 그 궤적이 된다.
+  // 조준 중에는 시간이 멈춰 있으므로 (조준각, 파워, 판 상태)가 그대로면 캐시가 유효하다.
+  predictPath() {
+    if (!this.canAim) return { pts: [], outcome: null, hit: null }
+    const key = `${this.aim.toFixed(5)}|${this.power}|${this.stageIdx}|${this.time.toFixed(3)}|${this.rockets}|${this.bodies.length}`
+    if (this._predKey === key) return this._pred
+    // 풀 시뮬은 안테 8에서 ~9ms라 슬라이더를 끄는 동안 매 프레임 돌리면 프레임을 깎는다.
+    // 정확도를 낮추는 대신 갱신 빈도를 20fps로 묶는다 — 경로 자체는 실제 비행과 동일하게 유지.
+    const now = performance.now()
+    if (this._pred && now - (this._predAt || 0) < 45) return this._pred
+    this._predAt = now
+    const sim = cloneBodies(this.bodies)
+    const p = this.launchPos()
+    const m = {
+      pos: { ...p }, vel: fromAngle(this.aim, this.power), age: 0,
+      pathN: 0, path: [], minSunDist: Infinity, prev: { ...p },
     }
-    return pts
+    const pts = [{ ...p }]
+    let outcome = 'timeout', hit = null
+    const steps = Math.round(CFG.MISSILE_TTL / CFG.DT)
+    for (let i = 0; i < steps; i++) {
+      stepBodies(sim, CFG.DT)
+      stepMissile(m, sim, CFG.DT)
+      if (i % 6 === 0) pts.push({ x: m.pos.x, y: m.pos.y })
+      let b = null
+      for (const o of sim) {
+        if (!o.alive) continue
+        if (segHitsCircle(m.prev.x, m.prev.y, m.pos.x, m.pos.y, o.pos.x, o.pos.y, hitRadiusOf(o))) { b = o; break }
+      }
+      if (b) {
+        pts.push({ x: m.pos.x, y: m.pos.y })
+        // 명중 지점의 천체 위치 = "그때 그 행성이 있을 자리". 지금 위치가 아니다.
+        hit = { name: b.name, isEarth: b.isEarth, type: b.type, id: b.id, x: b.pos.x, y: b.pos.y, r: hitRadiusOf(b) }
+        outcome = b.type === 'debris' ? 'debris' : (b.id === this.target.id ? 'target' : (b.isEarth ? 'earth' : 'foul'))
+        break
+      }
+      const r = Math.hypot(m.pos.x, m.pos.y)
+      if (r < CFG.R_STAR + 8) { outcome = 'sun'; pts.push({ x: m.pos.x, y: m.pos.y }); break }
+      if (r > 2.8 * this.aMax) { outcome = 'lost'; pts.push({ x: m.pos.x, y: m.pos.y }); break }
+    }
+    this._predKey = key
+    this._pred = { pts, outcome, hit }
+    return this._pred
   }
 }
