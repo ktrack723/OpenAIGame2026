@@ -1,1 +1,21 @@
-<!doctype html><html lang="ko"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>PLANETPOOL</title><script type="importmap">{"imports":{"three":"https://esm.sh/three@0.166.1"}}</script></head><body><div id="app"></div><script type="module" src="/src/main.js"></script></body></html>
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>PLANETPOOL</title>
+    <script type="importmap">{"imports":{"three":"https://esm.sh/three@0.166.1"}}</script>
+    <script>
+      window.addEventListener('error', () => {
+        const loading = document.querySelector('.boot')
+        if (loading) loading.textContent = '게임 로딩 실패: 로컬 서버로 index.html을 열었는지, 네트워크에서 Three.js를 받을 수 있는지 확인하세요.'
+      })
+    </script>
+  </head>
+  <body>
+    <div id="app" aria-label="PLANETPOOL Three.js game canvas">
+      <div class="boot">PLANETPOOL 로딩 중…</div>
+    </div>
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
