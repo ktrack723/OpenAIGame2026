@@ -140,21 +140,24 @@ function occlusion(eph, bodies, earthIdx, tIdx) {
   return sum / samples
 }
 
-// §7.6 솔버 검증(경량 스크리닝) — 스윙바이 ≥1 + 목표 직격 + 무파울 해가 하나라도 있는가
+// §7.6 솔버 검증(경량 스크리닝) — 스윙바이 ≥1 + 목표 직격 + 무파울 해가 하나라도 있는가.
+// 발사 오프셋·파워대역·κ★는 반드시 실제 게임과 같은 값을 써야 한다.
+// 아니면 "플레이어가 낼 수 없는 샷"을 기준으로 판을 통과시키게 된다.
+const PROBE_PW = [CFG.LAUNCH_MIN, (CFG.LAUNCH_MIN + CFG.LAUNCH_MAX) / 2, CFG.LAUNCH_MAX]
 function solvable(eph, bodies, earthIdx, tIdx, aMax) {
-  for (const t0 of [0, 4, 8]) for (const pw of [50, 85, 120]) for (let ai = 0; ai < 12; ai++) {
+  for (const t0 of [0, 5, 10]) for (const pw of PROBE_PW) for (let ai = 0; ai < 12; ai++) {
     if (trySim(eph, bodies, earthIdx, tIdx, aMax, t0, ai / 12 * Math.PI * 2, pw)) return true
   }
   return false
 }
 function trySim(eph, bodies, earthIdx, tIdx, aMax, t0, ang, pw) {
-  const dt = 1 / 30, from = eph.at(earthIdx, t0)
-  let x = from.x + Math.cos(ang) * (CFG.EARTH_R + 8), y = from.y + Math.sin(ang) * (CFG.EARTH_R + 8)
+  const dt = 1 / 30, from = eph.at(earthIdx, t0), off = CFG.LAUNCH_OFFSET
+  let x = from.x + Math.cos(ang) * off, y = from.y + Math.sin(ang) * off
   let vx = Math.cos(ang) * pw, vy = Math.sin(ang) * pw
   const enc = new Array(bodies.length).fill(null)
   let swings = 0
-  for (let t = t0; t < t0 + 20; t += dt) {
-    let d2 = x * x + y * y + CFG.EPS * CFG.EPS, inv = CFG.MU_STAR / (d2 * Math.sqrt(d2))
+  for (let t = t0; t < t0 + CFG.MISSILE_TTL; t += dt) {
+    let d2 = x * x + y * y + CFG.EPS * CFG.EPS, inv = CFG.KAPPA_STAR * CFG.MU_STAR / (d2 * Math.sqrt(d2))
     let ax = -x * inv, ay = -y * inv
     for (let i = 0; i < bodies.length; i++) {
       const p = eph.at(i, t), dx = p.x - x, dy = p.y - y
@@ -195,7 +198,7 @@ export function makeStage(seed = Date.now(), ante = 1) {
     if (!built) continue
     const { bodies, earth, aMax } = built
     if (!stablePresim(bodies, aMax)) continue
-    const eph = ephemeris(bodies, 40, 1 / 30)
+    const eph = ephemeris(bodies, 12 + CFG.MISSILE_TTL, 1 / 30)   // 솔버가 보는 구간을 전부 덮어야 한다
     const earthIdx = bodies.indexOf(earth)
     let tIdx = -1, tB = Infinity
     for (let i = 0; i < bodies.length; i++) {

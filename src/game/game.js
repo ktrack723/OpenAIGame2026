@@ -14,15 +14,23 @@ export class Game {
 
   get ante() { return Math.min(8, 1 + Math.floor(this.stageIdx / 3)) }
 
+  // ─── 작전 시한 (인게임 시간) ───
+  // this.time은 step()에서만 누적되고, step()은 effTimeScale()>0일 때만 돈다.
+  // → 조준만 하고 있으면 시계가 멈춰 있고, 관측(4×)하거나 미사일이 날 때만 줄어든다.
+  get stageTime() { return CFG.TIME_BASE + CFG.TIME_PER_ANTE * Math.min(this.ante - 1, 5) }
+  get timeLeft() { return Math.max(0, this.stageTime - this.time) }
+  get timeBonus() { return Math.round(this.timeLeft * CFG.TIME_BONUS) }
+
   loadStage() {
     const s = makeStage((this.seed + this.stageIdx * 7919) >>> 0, this.ante)
     this.stage = s; this.bodies = s.bodies; this.earth = s.earth; this.target = s.target; this.aMax = s.aMax
     this.missiles = []; this.rockets = CFG.ROCKETS; this.diplomacy = 0; this.score = 0; this.chainLast = 0
     this.won = false; this.lost = false; this.failReason = null
     this.aim = Math.atan2(this.target.pos.y - this.earth.pos.y, this.target.pos.x - this.earth.pos.x)
-    this.power = 82; this.observing = false; this.time = 0
+    this.power = 30; this.observing = false; this.time = 0
     this.toast = null; this.toastT = 0
     this.fx = []   // 렌더러가 매 프레임 비워가는 연출 이벤트 큐 (§14.5)
+    this.winBanked = false; this.timeWarn = 0
     this.message = `작전 개시 — ${this.target.name} 섬멸 (차폐도 B=${s.B.toFixed(1)}). 시간 정지 중: 관측(SHIFT)으로 판을 돌려라`
   }
 
@@ -34,7 +42,7 @@ export class Game {
   legal(b) { return b === this.target }   // 섬멸전 LEGAL_HIT = {목표} (§5.3)
 
   launchPos() {
-    const d = this.earth.radius + 8
+    const d = CFG.LAUNCH_OFFSET   // 지구 중력권 밖에서 발사 (§4.3 κ 증폭 때문)
     return { x: this.earth.pos.x + Math.cos(this.aim) * d, y: this.earth.pos.y + Math.sin(this.aim) * d }
   }
 
@@ -56,7 +64,7 @@ export class Game {
 
   // 관제실 모드(§5.1): 조준 중 시간 정지, 관측 홀드 4×, 미사일 비행 중 1×
   effTimeScale() {
-    if (this.lost) return 0
+    if (this.lost || this.won) return 0   // 클리어 후에는 시계를 세운다
     if (this.missiles.some(m => m.alive)) return this.observing ? 4 : 1
     return this.observing ? 4 : 0
   }
@@ -87,7 +95,19 @@ export class Game {
     resolveBodyPairs(this.bodies, this)
     this.bodyBounds()
     this.time += dt
+    this.warnTime()
     this.checkEnd()
+  }
+
+  // 시한이 줄고 있다는 걸 토스트로 못 박는다 (남은 60/30/10초)
+  warnTime() {
+    if (this.won || this.lost) return
+    const marks = [60, 30, 10], left = this.timeLeft
+    while (this.timeWarn < marks.length && left <= marks[this.timeWarn]) {
+      const s = marks[this.timeWarn]
+      this.timeWarn++
+      this.setToast(`작전 시한 ${s}초 — 서둘러라 (시간 보너스 ${this.timeBonus})`)
+    }
   }
 
   contact(m) {
@@ -134,7 +154,7 @@ export class Game {
     const r = len(m.pos)
     if (r < CFG.R_STAR + 8) { m.alive = false; m.out = 'sun' }
     else if (r > 2.8 * this.aMax) { m.alive = false; m.out = 'lost' }
-    else if (m.age > 45) { m.alive = false; m.out = 'timeout' }
+    else if (m.age > CFG.MISSILE_TTL) { m.alive = false; m.out = 'timeout' }
   }
 
   bodyBounds() {   // §7.8 항성 처분 / 행성 추방 — 정식 킬
@@ -170,8 +190,18 @@ export class Game {
     if (tag) { this.setToast(tag); this.message = tag }
   }
 
-  checkEnd() {   // §16 실패 3종: 로켓 소진 / 지구 상실 / 외교 3
+  checkEnd() {   // §16 실패 3종 + 작전 시한 초과
+    if (this.won && !this.winBanked) {   // 클리어 시점의 남은 시간을 보너스로 정산
+      this.winBanked = true
+      const b = this.timeBonus
+      if (b > 0) { this.score += b; this.message += ` · 시간 보너스 +${b}` }
+    }
     if (this.won || this.lost) return
+    // 시한 초과 — 날아가고 있는 마지막 한 발은 끝까지 보내준다
+    if (this.time >= this.stageTime && !this.missiles.some(m => m.alive)) {
+      this.fail('TIME_UP', '작전 실패 — 작전 시한 초과. 조르그가 회랑을 재정비했다. 런 종료')
+      return
+    }
     if (!this.earth.alive || this.earth.hp <= 0) { this.fail('EARTH_LOST', '작전 실패 — 지구 상실. 런 종료'); return }
     if (this.diplomacy >= CFG.DIPLO_MAX) { this.fail('DIPLOMATIC_INCIDENT', '작전 실패 — 은하 여론 악화 (외교 3). 런 종료'); return }
     if (!this.target.alive) { this.won = true; return }

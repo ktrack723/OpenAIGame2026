@@ -101,6 +101,13 @@ export class SceneView {
     this.parts = new Particles(this.scene)
     this.markers = new Markers(this.scene)
 
+    // 발사대 마커 — 미사일이 지구가 아니라 여기서 나간다는 걸 못 박는다
+    this.pad = new THREE.Mesh(new THREE.RingGeometry(0.62, 1, 24), new THREE.MeshBasicMaterial({
+      color: 0x22d3ee, transparent: true, opacity: 0.9, depthTest: false, depthWrite: false, side: THREE.DoubleSide,
+    }))
+    this.pad.renderOrder = 14
+    this.scene.add(this.pad)
+
     this.bodyFx = new Map()   // b.id → { mesh, halo, ring, trueRing }
     this.missileFx = new Map()
     this.lines = []
@@ -120,24 +127,39 @@ export class SceneView {
     return Math.min(b.radius * VIS.MAX_INFLATE, Math.max(b.radius, minWorld))
   }
 
+  // 별 배경 — 성계 "바깥"에만 뿌리면 정작 판 위가 텅 빈다.
+  // 원점을 포함한 원반 전체에 면적 균일로 깔고, 깊이를 3층으로 나눠 시차를 준다.
   buildStars() {
-    const n = 900, pos = new Float32Array(n * 3), col = new Float32Array(n * 3)
+    const layers = [
+      { n: 700, z: -2200, size: 20, op: 0.95 },
+      { n: 700, z: -4200, size: 26, op: 0.75 },
+      { n: 700, z: -7000, size: 34, op: 0.55 },
+    ]
     const c = new THREE.Color()
-    for (let i = 0; i < n; i++) {
-      const a = Math.random() * Math.PI * 2, r = 2600 + Math.random() * 5200
-      pos[i * 3] = Math.cos(a) * r; pos[i * 3 + 1] = Math.sin(a) * r
-      pos[i * 3 + 2] = -1800 - Math.random() * 2600
-      c.setHSL(0.55 + Math.random() * 0.12, 0.35, 0.55 + Math.random() * 0.4)
-      col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b
+    for (const L of layers) {
+      const pos = new Float32Array(L.n * 3), col = new Float32Array(L.n * 3)
+      for (let i = 0; i < L.n; i++) {
+        // sqrt 샘플링 = 원반 면적 균일. 중심(성계 위)에도 별이 깔린다
+        const a = Math.random() * Math.PI * 2
+        const r = Math.sqrt(Math.random()) * 11000
+        pos[i * 3] = Math.cos(a) * r; pos[i * 3 + 1] = Math.sin(a) * r
+        pos[i * 3 + 2] = L.z - Math.random() * 600
+        const bright = Math.random() < 0.08 ? 0.95 : 0.4 + Math.random() * 0.4
+        c.setHSL(0.52 + Math.random() * 0.16, 0.3 + Math.random() * 0.4, bright)
+        col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b
+      }
+      const geo = new THREE.BufferGeometry()
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+      geo.setAttribute('color', new THREE.BufferAttribute(col, 3))
+      geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e6)
+      const stars = new THREE.Points(geo, new THREE.PointsMaterial({
+        size: L.size, sizeAttenuation: true, vertexColors: true,
+        transparent: true, opacity: L.op, depthWrite: false, depthTest: false,
+      }))
+      stars.frustumCulled = false
+      stars.renderOrder = -10
+      this.scene.add(stars)
     }
-    const geo = new THREE.BufferGeometry()
-    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3))
-    geo.setAttribute('color', new THREE.BufferAttribute(col, 3))
-    const stars = new THREE.Points(geo, new THREE.PointsMaterial({
-      size: 26, sizeAttenuation: true, vertexColors: true, transparent: true, opacity: 0.85, depthWrite: false,
-    }))
-    stars.frustumCulled = false
-    this.scene.add(stars)
   }
 
   buildSun() {
@@ -169,6 +191,12 @@ export class SceneView {
     this.syncMissiles()
     this.syncLines()
     this.markers.update(this.game, this.rig, dt, (b) => this.renderRadius(b))
+    this.pad.visible = this.game.canAim
+    if (this.pad.visible) {
+      const p = this.game.launchPos()
+      this.pad.position.set(p.x, p.y, 4)
+      this.pad.scale.setScalar(Math.max(6, 11 * this.rig.worldPerPx))
+    }
     const uScale = (innerHeight * this.renderer.getPixelRatio()) / (2 * Math.tan(VIS.FOV * Math.PI / 360))
     this.parts.update(dt, uScale)
     this.renderer.render(this.scene, this.camera)
@@ -359,7 +387,9 @@ export class SceneView {
     // 조준선 + 예측선 3초 (§5.1)
     if (g.canAim) {
       const p = g.launchPos()
-      add([p, { x: p.x + Math.cos(g.aim) * (50 + g.power), y: p.y + Math.sin(g.aim) * (50 + g.power) }], 0x22d3ee, 0.95)
+      // 지구 → 발사대 지지선. 발사점이 지구에서 100 GU 떨어져 있는 이유를 눈으로 보여준다
+      add([g.earth.pos, p], 0x3b82f6, 0.3, true, -2)
+      add([p, { x: p.x + Math.cos(g.aim) * (60 + g.power * 2), y: p.y + Math.sin(g.aim) * (60 + g.power * 2) }], 0x22d3ee, 0.95)
       add(g.predict(), 0x67e8f9, 0.75, true)
     }
   }

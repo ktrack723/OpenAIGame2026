@@ -17,6 +17,22 @@ h1{margin:0;color:#67e8f9;letter-spacing:.18em;font-size:26px}
 .objhint b{font-weight:800}
 .cy{color:#67e8f9}.bl{color:#93c5fd}.rd{color:#fca5a5}
 
+/* 작전 시한 — 존버를 막는 유일한 장치라 눈에 띄어야 한다 */
+.clock{margin:10px 0;padding:9px 11px;border:1px solid #334155;border-radius:11px;background:rgba(15,23,42,.6)}
+.clockrow{display:flex;align-items:baseline;justify-content:space-between}
+.clocklabel{color:#94a3b8;font-size:11px;font-weight:800;letter-spacing:.14em}
+.clockv{color:#7dd3fc;font-size:20px;font-weight:800;font-variant-numeric:tabular-nums}
+.clockbar{margin-top:6px;height:7px;border-radius:4px;background:#1e293b;overflow:hidden}
+.clockbar i{display:block;height:100%;width:100%;background:linear-gradient(90deg,#22d3ee,#38bdf8);transition:width .2s linear}
+.clocknote{margin-top:5px;color:#64748b;font-size:11px}
+.clock.warn{border-color:#b45309}
+.clock.warn .clockv{color:#fbbf24}
+.clock.warn .clockbar i{background:linear-gradient(90deg,#f59e0b,#fbbf24)}
+.clock.crit{border-color:#dc2626;animation:pulse 1s ease-in-out infinite}
+.clock.crit .clockv{color:#fca5a5}
+.clock.crit .clockbar i{background:linear-gradient(90deg,#dc2626,#f87171)}
+@keyframes pulse{0%,100%{background:rgba(15,23,42,.6)}50%{background:rgba(69,10,10,.75)}}
+
 .grid{display:grid;gap:10px;margin:14px 0}
 label{display:grid;gap:6px;color:#93c5fd;font-size:13px}
 label span{color:#e0f2fe;font-weight:700;margin-left:4px}

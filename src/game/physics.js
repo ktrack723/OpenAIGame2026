@@ -28,10 +28,13 @@ export function stepBodies(bodies, dt) {
   bodies.forEach((b, i) => { if (!b.alive) return; accelOn(i, bodies, acc[i]); b.vel.x += acc[i].x * h; b.vel.y += acc[i].y * h })
 }
 
-// ─── T1-3: 미사일 중력장 — 태양 κ=1, 행성만 κ 증폭 (§4.3). 예측선과 공용 ───
+// ─── T1-3: 미사일 중력장 — 행성은 κ, 태양은 κ★ 배율 (§4.3). 예측선과 공용 ───
+// κ★는 기획서 원본의 "태양 κ=1"을 노브로 뺀 것. 태양이 미사일을 지나치게
+// 빨아들여 행성 곁을 그냥 스쳐 지나가던 문제(R1)를 잡는 용도이며,
+// 행성끼리의 상호작용(accelOn)은 여전히 진짜 물리 κ=1이라 세계는 왜곡되지 않는다.
 export function fieldAccel(px, py, bodies, out) {
   let dx = -px, dy = -py
-  let d2 = dx * dx + dy * dy + CFG.EPS * CFG.EPS, inv = CFG.MU_STAR / (d2 * Math.sqrt(d2))
+  let d2 = dx * dx + dy * dy + CFG.EPS * CFG.EPS, inv = CFG.KAPPA_STAR * CFG.MU_STAR / (d2 * Math.sqrt(d2))
   out.x = dx * inv; out.y = dy * inv
   for (const b of bodies) if (b.alive) {
     dx = b.pos.x - px; dy = b.pos.y - py
