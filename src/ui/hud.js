@@ -30,6 +30,12 @@ export function makeHud(game, view) {
   <div class="clocknote" id="clockNote"></div>
 </div>
 <div class="pred" id="pred"></div>
+<div class="findrow">
+  <span class="vlabel">접촉각</span>
+  <button id="findPrev" class="ghost" title="닿는 각도를 반시계로 탐색">◀ 이전</button>
+  <button id="findNext" class="ghost" title="닿는 각도를 시계로 탐색">다음 ▶</button>
+  <span class="findnote">지구·파편은 건너뛴다</span>
+</div>
 <div class="grid">
 <label>각도 <span id="angleV"></span><input id="angle" type="range" min="-180" max="180" step="0.5"></label>
 <label>발사 속도 <span id="powerV"></span><input id="power" type="range" min="${CFG.LAUNCH_MIN}" max="${CFG.LAUNCH_MAX}"></label>
@@ -45,10 +51,16 @@ export function makeHud(game, view) {
   <button id="zfull" class="ghost" title="성계 전체 ( 9 )">전체</button>
   <span class="zoomv" id="zoomV"></span>
 </div>
-<div class="hint">두 손가락으로 확대·축소, 한 손가락으로 화면 끌기 · 작약량 [ ]</div>
+<div class="hint">← → 각도 · ↑ ↓ 속도 · [ ] 작약량 · F 접촉각 · SHIFT+키 = 미세조정<br>두 손가락으로 확대·축소, 한 손가락으로 화면 끌기</div>
 <pre id="stats"></pre>
 </div>`
   document.body.appendChild(el)
+  const over = document.createElement('div')
+  over.className = 'gameover'; over.hidden = true
+  over.innerHTML = `<h2 id="overTitle">작전 실패</h2><p id="overWhy"></p><button id="overNew">새 런 시작</button>`
+  document.body.appendChild(over)
+  over.querySelector('#overNew').onclick = () => { location.href = location.pathname + '?seed=' + ((Math.random() * 1e9) | 0) }
+  el._over = over
   const toast = document.createElement('div')
   toast.className = 'toast'; toast.hidden = true
   document.body.appendChild(toast)
@@ -68,10 +80,13 @@ export function makeHud(game, view) {
   }
   el._setSliders()
 
-  angle.oninput = (e) => { game.aim = (+e.target.value) * Math.PI / 180; syncLabels() }
-  power.oninput = (e) => { game.power = +e.target.value; syncLabels() }
+  // disabled 속성만으로는 프로그램적 input 이벤트를 못 막는다 — 핸들러에서도 막는다
+  angle.oninput = (e) => { if (!game.canAim) return; game.aim = (+e.target.value) * Math.PI / 180; syncLabels() }
+  power.oninput = (e) => { if (!game.canAim) return; game.power = +e.target.value; syncLabels() }
   yieldIn.oninput = (e) => { game.yieldMt = +e.target.value; syncLabels() }
   qs('#fire').onclick = () => game.fire()
+  qs('#findNext').onclick = () => { game.scanContact(1); el._setSliders() }
+  qs('#findPrev').onclick = () => { game.scanContact(-1); el._setSliders() }
   qs('#next').onclick = () => game.nextStage()
   qs('#new').onclick = () => { location.href = location.pathname + '?seed=' + ((Math.random() * 1e9) | 0) }
   qs('#fold').onclick = () => {
@@ -103,6 +118,13 @@ export function makeHud(game, view) {
       game.yieldMt = Math.max(CFG.YIELD_MIN, Math.min(CFG.YIELD_MAX, game.yieldMt + (e.key === ']' ? 1 : -1)))
       el._setSliders()
     }
+    if (!game.canAim) return
+    const fine = e.shiftKey ? 0.5 : 2
+    if (e.key === 'ArrowLeft') { e.preventDefault(); game.aim -= fine * Math.PI / 180; el._setSliders() }
+    if (e.key === 'ArrowRight') { e.preventDefault(); game.aim += fine * Math.PI / 180; el._setSliders() }
+    if (e.key === 'ArrowUp') { e.preventDefault(); game.power = Math.min(CFG.LAUNCH_MAX, game.power + 1); el._setSliders() }
+    if (e.key === 'ArrowDown') { e.preventDefault(); game.power = Math.max(CFG.LAUNCH_MIN, game.power - 1); el._setSliders() }
+    if (e.key === 'f' || e.key === 'F') { game.scanContact(e.shiftKey ? -1 : 1); el._setSliders() }
   })
   addEventListener('keyup', (e) => { if (e.key === 'Shift') game.observing = false })
   return el
@@ -136,9 +158,39 @@ function predLine(game, p) {
   }
 }
 
+// 실패 사유별 "무엇이 잘못됐나" 한 줄 — 런이 끝난 이유를 화면 한가운데서 못 박는다
+const FAIL_WHY = {
+  EARTH_LOST: '지구를 잃었다. 조르그보다 먼저 인류가 끝났다.',
+  TIME_UP: '작전 시한이 끝났다. 조르그가 회랑을 재정비했다.',
+  GOAL_LOST: '목표를 채울 표적이 남지 않았다. 요구된 방식으로는 더 이상 불가능하다.',
+}
+
 export function updateHud(el, game) {
   if (el._stageIdx !== game.stageIdx) { el._stageIdx = game.stageIdx; el._setSliders() }
   el.querySelector('#next').hidden = !(game.won && !game.runOver)
+
+  // 조준할 수 없는 동안엔 조준 UI를 잠근다.
+  // (잠그지 않으면 비행 중 슬라이더를 만졌을 때 아무 반응이 없다가
+  //  미사일이 끝나는 순간 조준각이 엉뚱한 곳으로 튀어 있다 — 계측으로 확인한 버그)
+  const aimable = game.canAim
+  if (el._aimable !== aimable) {
+    el._aimable = aimable
+    for (const id of ['#angle', '#power', '#yield', '#fire', '#findPrev', '#findNext'])
+      el.querySelector(id).disabled = !aimable
+    el.classList.toggle('locked', !aimable)
+  }
+
+  // 런 종료 — 조작을 전부 잠그고 이유를 가운데에 띄운다
+  const over = el._over
+  if (over.hidden === game.runOver) {
+    over.hidden = !game.runOver
+    if (game.runOver) {
+      over.querySelector('#overTitle').textContent = '작전 실패'
+      over.querySelector('#overWhy').textContent =
+        `${FAIL_WHY[game.failReason] ?? game.message}  ·  최종 점수 ${game.runScore + game.score}`
+      el.querySelector('#wait').disabled = true
+    }
+  }
   const t = game.target, e = game.earth, g = game.goal
 
   // 목표 패널 — 목표 종류 · 진행도 · 규칙 한 줄
@@ -185,12 +237,22 @@ export function updateHud(el, game) {
     `Δv = ${CFG.NUKE_IMPULSE}×${game.yieldMt}/질량 · 폭풍 반경 ${(CFG.BLAST_R * game.yieldMt).toFixed(0)} GU (입사각·속도는 힘에 영향 없음)`
 
   const predEl = el.querySelector('#pred')
+  const fireBtn = el.querySelector('#fire')
   if (game.canAim) {
-    const [cls, text] = predLine(game, game.predictPath())
+    const p = game.predictPath()
+    const [cls, text] = predLine(game, p)
     predEl.hidden = false
     predEl.className = `pred ${cls}`
     predEl.textContent = `조준 ▸ ${text}`
-  } else predEl.hidden = true
+    // 경고는 클릭하는 자리에 있어야 한다 — 패널 위쪽 문구만으로는 안 읽힌다
+    const danger = p.outcome === 'earth'
+    fireBtn.classList.toggle('danger', danger)
+    fireBtn.textContent = danger ? '발사 — 지구 직격!' : '발사 SPACE'
+  } else {
+    predEl.hidden = true
+    fireBtn.classList.remove('danger')
+    fireBtn.textContent = '발사 SPACE'
+  }
 
   el.querySelector('#stats').textContent =
     `안테 ${game.ante} · 스테이지 ${game.stageIdx + 1}

@@ -66,6 +66,28 @@ button.ghost{background:#1e293b;border:1px solid #475569;color:#cbd5e1;padding:8
 button.ghost:hover,button.ghost:focus-visible{background:#334155;color:#f8fafc}
 #fold{padding:4px 10px;font-size:14px;line-height:1}
 
+/* 접촉각 탐색 — 계측상 360° 중 닿는 각도가 99칸뿐이라 손으로 훑기엔 너무 성기다 */
+.findrow{display:flex;align-items:center;gap:6px;margin:8px 0 0;flex-wrap:wrap}
+.findnote{color:#64748b;font-size:11px}
+.findrow button{padding:6px 10px;font-size:12px}
+
+/* 조준 불가 상태 — 잠겼다는 걸 눈으로 보여준다 */
+.hud.locked .grid,.hud.locked .findrow{opacity:.45}
+button:disabled{opacity:.4;cursor:not-allowed}
+button:disabled:hover{background:#2563eb}
+button.ghost:disabled:hover{background:#1e293b}
+button.danger{background:#b91c1c}
+button.danger:hover,button.danger:focus-visible{background:#dc2626}
+
+/* 런 종료 — 죽었는데 조작이 살아 있으면 플레이어는 계속 시도하다 혼란만 쌓인다 */
+.gameover{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:6;text-align:center;
+  padding:26px 34px;border:1px solid #b91c1c;border-radius:18px;background:rgba(24,4,4,.94);
+  box-shadow:0 24px 80px #000a;backdrop-filter:blur(8px);max-width:min(460px,calc(100vw - 40px))}
+.gameover h2{margin:0 0 8px;color:#fca5a5;font-size:26px;letter-spacing:.12em}
+.gameover p{margin:0 0 16px;color:#fecaca;font-size:13.5px;line-height:1.6}
+.gameover button{background:#dc2626;padding:12px 20px}
+.gameover button:hover,.gameover button:focus-visible{background:#ef4444}
+
 /* 카메라 조작 줄 (§14.1 휠 줌 / 드래그 패닝의 터치 대체) */
 .viewrow{display:flex;align-items:center;gap:6px;margin:10px 0 4px;flex-wrap:wrap}
 .vlabel{color:#64748b;font-size:11px;font-weight:800;letter-spacing:.1em;margin-right:2px}

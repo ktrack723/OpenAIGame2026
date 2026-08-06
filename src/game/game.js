@@ -91,11 +91,14 @@ export class Game {
   addFx(e) { if (this.fx.length < 96) this.fx.push(e) }
 
   // 관제실 모드(§5.1): 조준 중 시간 정지, 관측 홀드 4×, 미사일 비행 중 1×.
-  // 전탄 소진 후엔 1× 자동 진행 — 당구는 큐를 놓은 뒤가 본편이라 멈춰 있으면 안 된다.
+  // 전탄 소진 후엔 자동 진행 — 당구는 큐를 놓은 뒤가 본편이라 멈춰 있으면 안 된다.
+  // ※ 배속은 "실제로 기다리는 시간"만 줄인다. 작전 시한은 인게임 초 단위라
+  //    몇 배속으로 보든 소모량이 같다 — 전탄 소진 후 4분을 멍하니 보는 걸
+  //    막으려고 배속만 올렸지, 난이도는 건드리지 않았다.
   effTimeScale() {
     if (this.lost || this.won) return 0   // 클리어 후에는 시계를 세운다
     if (this.missiles.some(m => m.alive)) return this.observing ? 4 : 1
-    if (this.rockets <= 0) return this.observing ? 4 : 1
+    if (this.rockets <= 0) return this.observing ? 8 : 2
     return this.observing ? 4 : 0
   }
 
@@ -458,6 +461,56 @@ export class Game {
     this._predKey = key
     this._pred = { pts, outcome, hit }
     return this._pred
+  }
+
+  // ─── 접촉각 탐색 (§14.3) ────────────────────────────────────
+  // 계측 결과 360° 중 뭔가에 닿는 각도가 99칸뿐이고, 그중 67칸이 지구였다.
+  // 즉 슬라이더를 돌리는 시간의 대부분이 "여긴 아님"을 확인하는 데 쓰인다.
+  // 기획 의도가 "어느 각도에서 칠 수 있는지는 알려준다"이므로, 그 확인을
+  // 버튼 한 번으로 대신한다. **어느 공을 어느 살로 칠지는 여전히 플레이어 몫**이다.
+  // 거친 적분(dt 1/40)으로 훑고, 찾은 각도는 다음 프레임에 정식 예측이 확정한다.
+  // 한 번 누를 때마다 "다음 선택지"로 간다 — 지금 물고 있는 구간을 먼저 빠져나온
+  // 다음에 찾는다. 같은 구간 안에서의 미세 조정은 방향키(±0.5~2°)가 맡는다.
+  scanContact(dir = 1) {
+    if (!this.canAim) return false
+    const step = dir * Math.PI / 180
+    const ok = (h) => h && h !== 'earth' && h !== 'debris'
+    let i = 1
+    if (ok(this.coarseContact(this.aim))) {          // 이미 맞고 있으면 그 구간을 통과
+      while (i <= 360 && ok(this.coarseContact(this.aim + step * i))) i++
+    }
+    for (; i <= 360; i++) {
+      const ang = this.aim + step * i
+      if (!ok(this.coarseContact(ang))) continue
+      this.aim = Math.atan2(Math.sin(ang), Math.cos(ang))
+      this._predKey = null; this._predAt = 0
+      return true
+    }
+    this.setToast('이 발사 속도로는 닿는 각도가 없다 — 속도를 바꿔라')
+    return false
+  }
+
+  // 거친 접촉 판정 — 무엇에 닿는지만 본다(폭심·임펄스는 계산하지 않는다)
+  coarseContact(ang) {
+    const sim = cloneBodies(this.bodies)
+    const dt = 1 / 40
+    const p = { x: this.earth.pos.x + Math.cos(ang) * CFG.LAUNCH_OFFSET, y: this.earth.pos.y + Math.sin(ang) * CFG.LAUNCH_OFFSET }
+    const m = { pos: { ...p }, vel: fromAngle(ang, this.power), age: 0, pathN: 0, path: [], minSunDist: Infinity, prev: { ...p } }
+    const steps = Math.round(CFG.MISSILE_TTL / dt)
+    for (let i = 0; i < steps; i++) {
+      stepBodies(sim, dt)
+      stepMissile(m, sim, dt)
+      for (const o of sim) {
+        if (!o.alive) continue
+        if (!segHitsCircle(m.prev.x, m.prev.y, m.pos.x, m.pos.y, o.pos.x, o.pos.y, hitRadiusOf(o))) continue
+        if (o.type === 'debris') return 'debris'
+        if (o.isEarth) return 'earth'
+        return 'body'
+      }
+      const r = Math.hypot(m.pos.x, m.pos.y)
+      if (r < CFG.R_STAR + 8 || r > 2.8 * this.aMax) return null
+    }
+    return null
   }
 
   // 충돌 한 건의 "큐 정보" — 폭심, 임펄스 방향, 타격 직후 공의 진로
