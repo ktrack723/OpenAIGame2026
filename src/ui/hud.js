@@ -97,7 +97,8 @@ export function makeHud(game, view) {
     <button id="zfull" class="ghost" title="성계 전체 ( 9 )">전체</button>
     <button id="new" class="ghost">새 런</button>
   </div>
-  <div class="hint">← → 각도 · ↑ ↓ 속도 · [ ] 작약 · F 접촉각 · SHIFT = 미세</div>
+  <div class="hint">← → 각도 · ↑ ↓ 속도 · [ ] 작약 · F 접촉각 · SHIFT = 미세<br>
+  행성에 마우스를 올리거나(터치는 짚으면) 제원이 뜬다 · 바깥 고리는 카이퍼 벨트 = 쿠션</div>
 </section>
 
 <section class="mod">
@@ -206,12 +207,15 @@ function predLine(game, p) {
     case 'neutral': {
       const tag = p.outcome === 'target' ? 'TARGET' : 'CUE'
       const sub = [
-        h.counter ? '반격탄이 때린 쪽으로 튀어나온다' : '',
+        `체력 ${h.hp}/${h.hpMax}`,
+        // 반격탄 속도가 그 요새의 탈출속도를 넘는지 — 안 넘으면 되떨어진다
+        h.counter ? `반격탄 ${h.counterSpeed.toFixed(0)}>탈출 ${h.counterEsc.toFixed(0)} — 때린 쪽으로 나온다` : '',
         h.role === 'armor' ? '장갑 — 거의 안 밀린다' : '',
         h.earthInBlast ? '⚠ 폭풍이 지구를 훑는다' : '',
-        h.willEject ? `⚠ 탈출속도 초과 ${h.vAfter.toFixed(0)}>${h.vEsc.toFixed(0)}` : '',
+        // 성계 이탈은 이제 없다 — 벨트가 튕겨 되돌려 보낸다
+        h.willEject ? `↩ 벨트까지 날아간다 (${h.vAfter.toFixed(0)}>${h.vEsc.toFixed(0)})` : '',
       ].filter(Boolean).join(' · ')
-      return [(h.earthInBlast || h.willEject) ? 'warn' : 'hit', tag,
+      return [h.earthInBlast ? 'warn' : 'hit', tag,
         `${h.name}${badge} — ${dirOf(h.dx, h.dy)}° Δv ${h.dv.toFixed(1)}`, sub]
     }
     default: return ['warn', '—', '—', '']
@@ -221,7 +225,7 @@ function predLine(game, p) {
 const FAIL_WHY = {
   EARTH_LOST: '지구를 잃었다. 조르그보다 먼저 인류가 끝났다.',
   TIME_UP: '작전 시한이 끝났다. 조르그가 회랑을 재정비했다.',
-  EARTH_LASER: '조르그 레이저가 지구를 관통했다. 조준선을 끊었어야 했다.',
+  EARTH_LASER: `조르그 레이저가 지구를 관통했다. ${CFG.LASER_CHARGE}초의 조준 시간 안에 선을 끊었어야 했다.`,
 }
 
 const CTRL_IDS = ['#fire', '#findPrev', '#findNext', '#findIc']
@@ -319,11 +323,13 @@ export function updateHud(el, game) {
     fireBtn.querySelector('.ftext').textContent = 'FIRE'
   }
 
+  const hpBar = (b) => bar(b.hp ?? 0, b.hpMax ?? CFG.PLANET_HP, '◆', '◇')
   el.querySelector('#stats').textContent =
     `ANTE ${game.ante}   STAGE ${game.stageIdx + 1}
 ROCKET ${bar(game.rockets, CFG.ROCKETS, '▮', '▯')}   SCORE ${game.score} (${game.runScore + game.score})
-EARTH  ${e.alive ? 'NOMINAL' : 'LOST'}   FORTRESS ${game.aliveFortresses}/${g.total}
-SYSTEM ${game.bodies.filter(b => b.alive && b.type !== 'debris').length} bodies  HOME ${game.homeworld ? game.homeworld.name : '—'}
+EARTH  ${e.alive ? hpBar(e) : 'LOST'}   TARGET ${t.alive ? hpBar(t) : '—'}
+FORTRESS ${game.aliveFortresses}/${g.total}   HOME ${game.homeworld ? game.homeworld.name : '—'}
+SYSTEM ${game.bodies.filter(b => b.alive && b.type !== 'debris').length} bodies   BELT R=${game.beltR.toFixed(0)}
 > ${game.message}`
 
   const toast = el._toast

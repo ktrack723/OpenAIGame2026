@@ -1,4 +1,5 @@
 import { CFG, blastRadius, contactDist, radiusOf } from './config.js'
+import { cloneBody, makeBody } from './body.js'
 import { effDv } from './roles.js'
 import { clone, len, sub, vec } from '../core/vector.js'
 
@@ -15,18 +16,35 @@ function accelOn(i, bodies, out) {
 }
 
 // ─── T1-2: KDK 리프프로그 (§4.4). 트레일은 최근 20초 잔상(§14.2) ───
+// 가속도 버퍼는 재사용한다 — 예측선 한 번이 수천 스텝을 도는데 스텝마다
+// 천체 수만큼 객체를 새로 만들면 그게 곧 프레임 드랍이다(행성이 20개로 늘면서
+// 이 비용이 세 배가 됐다). 재귀 호출이 없으므로 모듈 스코프 버퍼로 충분하다.
 let _frame = 0
+const _acc = []
 export function stepBodies(bodies, dt) {
-  const acc = bodies.map(() => vec()), h = dt / 2
-  bodies.forEach((b, i) => { if (!b.alive) return; accelOn(i, bodies, acc[i]); b.vel.x += acc[i].x * h; b.vel.y += acc[i].y * h })
+  const n = bodies.length, h = dt / 2
+  while (_acc.length < n) _acc.push(vec())
+  for (let i = 0; i < n; i++) {
+    const b = bodies[i]
+    if (!b.alive) continue
+    accelOn(i, bodies, _acc[i])
+    b.vel.x += _acc[i].x * h; b.vel.y += _acc[i].y * h
+  }
   _frame++
-  bodies.forEach(b => {
-    if (!b.alive) return
+  for (let i = 0; i < n; i++) {
+    const b = bodies[i]
+    if (!b.alive) continue
     b.pos.x += b.vel.x * dt; b.pos.y += b.vel.y * dt
     b.hitFlash = Math.max(0, b.hitFlash - dt); b.trailFlash = Math.max(0, (b.trailFlash || 0) - dt)
+    b.bumpFlash = Math.max(0, (b.bumpFlash || 0) - dt)
     if (b.trail && _frame % 8 === 0 && b.trail.push(clone(b.pos)) > 300) b.trail.shift()
-  })
-  bodies.forEach((b, i) => { if (!b.alive) return; accelOn(i, bodies, acc[i]); b.vel.x += acc[i].x * h; b.vel.y += acc[i].y * h })
+  }
+  for (let i = 0; i < n; i++) {
+    const b = bodies[i]
+    if (!b.alive) continue
+    accelOn(i, bodies, _acc[i])
+    b.vel.x += _acc[i].x * h; b.vel.y += _acc[i].y * h
+  }
 }
 
 // ─── T1-3: 미사일 중력장 — 행성은 κ, 태양은 κ★ 배율 (§4.3). 예측선과 공용 ───
@@ -166,18 +184,71 @@ export function shatter(b, bodies, rnd) {
   if (muF < 8) return   // 너무 작은 부스러기는 증발 처리
   for (let k = 0; k < n; k++) {
     const ang = (k / n) * 2 * Math.PI + (rnd() - 0.5), sp = 25 + 40 * rnd()
-    bodies.push({
+    bodies.push(makeBody({
       id: `${b.id}f${bodies.length}`, name: '파편', mu: muF, radius: Math.max(2.5, radiusOf(muF)),
       pos: { x: b.pos.x + Math.cos(ang) * b.radius * 1.3, y: b.pos.y + Math.sin(ang) * b.radius * 1.3 },
       vel: { x: b.vel.x + Math.cos(ang) * sp, y: b.vel.y + Math.sin(ang) * sp },
-      type: 'debris', isEarth: false, alive: true, trail: [], hitFlash: 0, trailFlash: 0, scorch: 0,
-    })
+      type: 'debris', hp: 1,
+    }))
   }
 }
 
-// ─── T1-7 개정: 행성끼리의 접촉 = 무조건 폭파 ───────────────────
-// 핵으로는 못 부순다. 부수는 건 오직 여기다. 규칙을 하나로 못 박아야
-// "어느 각도로 밀어야 저 둘이 만나는가"가 게임의 전부가 된다.
+// ─── 당구 충돌 — 운동량 보존 탄성 반사 ──────────────────────────
+// 두 공은 서로를 부수지 않는다. 접촉면 법선 방향의 성분만 교환하고 튕긴다
+// (반발계수 1 = 속력·운동량·에너지 전부 보존). 부수는 건 체력이 다 닳았을
+// 때뿐이다 — 즉 같은 공을 세 번 몰아붙여야 한다.
+// 반환값은 충돌 상대속도(데미지 판정용).
+export function elasticBounce(a, b) {
+  let nx = b.pos.x - a.pos.x, ny = b.pos.y - a.pos.y
+  let d = Math.hypot(nx, ny)
+  if (d < 1e-6) { nx = 1; ny = 0; d = 1 }
+  nx /= d; ny /= d
+  const rvx = b.vel.x - a.vel.x, rvy = b.vel.y - a.vel.y
+  const vRel = Math.hypot(rvx, rvy)
+  const vn = rvx * nx + rvy * ny
+  if (vn < 0) {   // 서로 다가오는 중일 때만 튕긴다(멀어지는 쌍을 또 치면 붙어버린다)
+    const j = -(1 + CFG.BOUNCE_RESTITUTION) * vn / (1 / a.mu + 1 / b.mu)
+    a.vel.x -= j * nx / a.mu; a.vel.y -= j * ny / a.mu
+    b.vel.x += j * nx / b.mu; b.vel.y += j * ny / b.mu
+  }
+  // 겹침 해소 — 안 떼어 놓으면 다음 스텝에 다시 접촉으로 잡혀 서로 물고 늘어진다
+  const want = contactDist(a, b) * 1.02
+  if (d < want) {
+    const push = want - d, sa = b.mu / (a.mu + b.mu), sb = a.mu / (a.mu + b.mu)
+    a.pos.x -= nx * push * sa; a.pos.y -= ny * push * sa
+    b.pos.x += nx * push * sb; b.pos.y += ny * push * sb
+  }
+  return vRel
+}
+
+// ─── 카이퍼 벨트 = 당구대 쿠션 ──────────────────────────────────
+// 추방은 없다. 벨트에 박으면 반경 방향 성분만 뒤집혀 되돌아온다.
+// 속력은 그대로 두므로 "운동량만 유지한 채 방향이 바뀐다"가 정확히 성립한다.
+// 반환값 = 충돌 지점(연출용) 또는 null.
+export function beltBounce(o, beltR, restitution = CFG.BELT_RESTITUTION) {
+  const r = Math.hypot(o.pos.x, o.pos.y)
+  if (r < beltR) return null
+  const nx = o.pos.x / (r || 1), ny = o.pos.y / (r || 1)
+  const speed = Math.hypot(o.vel.x, o.vel.y)
+  const vn = o.vel.x * nx + o.vel.y * ny
+  if (vn > 0) {   // 바깥으로 향하는 성분만 반사 (안으로 들어오는 중이면 건드리지 않는다)
+    o.vel.x -= (1 + restitution) * vn * nx
+    o.vel.y -= (1 + restitution) * vn * ny
+  }
+  // 속력 재정규화 — 반발계수가 1이면 수학적으로 이미 같지만, 부동소수 누적으로
+  // 벨트를 여러 번 때린 공이 조용히 빨라지거나 느려지는 걸 원천 차단한다.
+  const s2 = Math.hypot(o.vel.x, o.vel.y)
+  if (s2 > 1e-9 && speed > 1e-9) { o.vel.x *= speed / s2; o.vel.y *= speed / s2 }
+  // 벨트 안쪽으로 살짝 밀어 넣는다 — 밖에 남아 있으면 매 스텝 재판정된다.
+  // 눈에 띄는 순간이동이 되지 않게 최소한만 (벨트 반경의 0.2%).
+  const back = beltR - Math.max(1.5, beltR * 0.002)
+  o.pos.x = nx * back; o.pos.y = ny * back
+  return { x: nx * beltR, y: ny * beltR, nx, ny, speed }
+}
+
+// ─── T1-7 개정: 행성끼리의 접촉 = 당구 충돌 (+체력 1 소모) ───────
+// 접촉이 곧 사망이던 규칙을 없앴다. 접촉은 이제 "쳤다"이고, 세 번 쳐야 죽는다.
+// 그래서 한 판에 공이 스무 개 굴러다녀도 판이 저절로 정리되지 않는다.
 export function resolveBodyPairs(bodies, game) {
   const n = bodies.length
   for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
@@ -190,9 +261,11 @@ export function resolveBodyPairs(bodies, game) {
       (aD ? a : b).alive = false
       continue
     }
-    game.onPlanetCollision(a, b)
-    return   // 한 스텝에 한 번의 대형 충돌만 정산 (파편 생성으로 배열이 변한다)
+    // 파괴가 일어나면 파편 생성으로 배열이 변한다 — 그 스텝은 거기서 끝낸다
+    if (game.onPlanetCollision(a, b) === 'destroyed') return
   }
 }
 
-export function cloneBodies(bodies) { return bodies.map(b => ({ ...b, pos: clone(b.pos), vel: clone(b.vel), trail: null })) }
+// 복제본도 정본 형태로 만든다 — 예측선이 이 배열 위에서 수천 스텝을 도는데,
+// 형태가 흐트러지면 그 자리에서 프레임이 무너진다(body.js 주석 참고).
+export function cloneBodies(bodies) { return bodies.map(cloneBody) }

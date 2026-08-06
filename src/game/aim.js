@@ -1,7 +1,7 @@
 import { fromAngle } from '../core/vector.js'
 import { wrapPi } from '../core/angle.js'
-import { CFG, blastRadius, hitRadiusOf } from './config.js'
-import { cloneBodies, segCircleEntry, segHitsCircle, stepBodies, stepMissile } from './physics.js'
+import { CFG, beltRadius, blastRadius, counterSpeed, escapeSpeed, hitRadiusOf } from './config.js'
+import { beltBounce, cloneBodies, segCircleEntry, segHitsCircle, stepBodies, stepMissile } from './physics.js'
 import { effDv, hasRole, volatileRadius } from './roles.js'
 
 // ─── 조준 보조 — game.js에서 떼어낸 순수 계산부 ───────────────────
@@ -10,6 +10,18 @@ import { effDv, hasRole, volatileRadius } from './roles.js'
 
 const EMPTY_PRED = { pts: [], outcome: null, hit: null }
 
+// ─── 예측 전용 시간 진행 ────────────────────────────────────────
+// 미사일은 촘촘하게, 천체는 성기게 굴린다. 행성이 스무 개로 늘면서
+// stepBodies(O(n²))가 예측 비용의 8할을 차지하게 됐는데, 정작 행성은
+// 초당 20 GU 남짓으로 움직인다 — 1/24초 간격이면 위치 오차가 1 GU 미만이고
+// 명중 반경이 10 GU 이상이라 판정이 뒤집히지 않는다. 비용만 5배 아낀다.
+// (미사일 자신은 여전히 실제와 같은 dt로 적분하므로 궤적은 거짓말하지 않는다.)
+const BODY_EVERY = 5          // 정밀 예측: 미사일 5스텝마다 천체 1스텝
+const COARSE_BODY_EVERY = 4   // 거친 탐색: 그보다 더 성기게
+
+// i번째 미사일 스텝에서 천체를 굴려야 하는가. 구간 중앙에서 굴려 편향을 없앤다.
+const bodyTurn = (i, every) => i % every === (every >> 1)
+
 // ─── 조준 보조 (§14.3 개정) ─────────────────────────────────
 // "공을 쳐서 뭔 일이 날지"는 알려주지 않는다. 알려주는 건 딱 두 가지:
 //   ① 핵이 어디에 닿는가 (= 어느 살을 치는가)
@@ -17,7 +29,10 @@ const EMPTY_PRED = { pts: [], outcome: null, hit: null }
 // 그 뒤 판이 어떻게 굴러갈지는 플레이어가 읽어야 한다.
 export function predictPath(game) {
   if (!game.canAim) return EMPTY_PRED
-  const key = `${game.aim.toFixed(5)}|${game.power}|${game.yieldMt}|${game.stageIdx}|${game.time.toFixed(3)}|${game.rockets}|${game.bodies.length}`
+  // 시간은 0.25초 단위로 뭉갠다 — 관측 중(시계가 흐를 때) 매 프레임 다시 푸는 걸
+  // 막는 장치다. 조준 중에는 시계가 멈춰 있으므로 예측은 항상 정확하고,
+  // 시계가 흐르는 동안엔 초당 4번만 갱신된다(예측 1회가 15ms대라 그게 곧 프레임이다).
+  const key = `${game.aim.toFixed(5)}|${game.power}|${game.yieldMt}|${game.stageIdx}|${Math.floor(game.time * 4)}|${game.rockets}|${game.bodies.length}`
   if (game._predKey === key) return game._pred
   const now = performance.now()
   if (game._pred && now - (game._predAt || 0) < 45) return game._pred
@@ -33,14 +48,16 @@ export function predictPath(game) {
   }))
   const pts = [{ ...p }]
   let outcome = 'timeout', hit = null
+  const beltR = beltRadius(game.aMax)
   const steps = Math.round(CFG.MISSILE_TTL / CFG.DT)
   for (let i = 0; i < steps; i++) {
-    stepBodies(sim, CFG.DT)
+    if (bodyTurn(i, BODY_EVERY)) stepBodies(sim, CFG.DT * BODY_EVERY)
     stepMissile(m, sim, CFG.DT)
-    if (i % 6 === 0) pts.push({ x: m.pos.x, y: m.pos.y })
+    if (i % 8 === 0) pts.push({ x: m.pos.x, y: m.pos.y })
     for (const f of foes) {   // 반격탄도 같은 dt로 굴린다
       if (f.dead) continue
       stepMissile(f, sim, CFG.DT)
+      if (Math.hypot(f.pos.x, f.pos.y) >= beltR) beltBounce(f, beltR)
       for (const o of sim) {  // 반격탄이 먼저 어딘가에 박히면 요격은 없다
         if (!o.alive) continue
         if (segHitsCircle(f.prev.x, f.prev.y, f.pos.x, f.pos.y, o.pos.x, o.pos.y, hitRadiusOf(o))) { f.dead = true; break }
@@ -73,7 +90,12 @@ export function predictPath(game) {
     }
     const r = Math.hypot(m.pos.x, m.pos.y)
     if (r < CFG.R_STAR + 8) { outcome = 'sun'; pts.push({ x: m.pos.x, y: m.pos.y }); break }
-    if (r > 2.8 * game.aMax) { outcome = 'lost'; pts.push({ x: m.pos.x, y: m.pos.y }); break }
+    // 카이퍼 벨트 반사 — 실제 판정(game.missileBounds)과 같은 함수를 쓴다.
+    // 예측선이 벨트를 무시하면 "쐈더니 딴 데로 튀는" 거짓말이 된다.
+    if (r >= beltR) {
+      const bp = beltBounce(m, beltR)
+      if (bp) { pts.push({ x: bp.x, y: bp.y }); pts.push({ x: m.pos.x, y: m.pos.y }) }
+    }
   }
   game._predKey = key
   game._pred = { pts, outcome, hit }
@@ -88,15 +110,19 @@ export function predictPath(game) {
 // 거친 적분(dt 1/40)으로 훑고, 찾은 각도는 다음 프레임에 정식 예측이 확정한다.
 // 한 번 누를 때마다 "다음 선택지"로 간다 — 지금 물고 있는 구간을 먼저 빠져나온
 // 다음에 찾는다. 같은 구간 안에서의 미세 조정은 방향키(±0.5~2°)가 맡는다.
+// 탐색 해상도 — 1°씩 360번 훑던 걸 1.5°씩 240번으로 내렸다. 행성이 스무 개면
+// 닿는 각도 자체가 훨씬 흔해져서 굵게 훑어도 놓치지 않고, 비용은 3분의 1이다.
+// (미세 조정은 어차피 방향키 ±0.5°가 맡는다.)
+const SCAN_DEG = 1.5, SCAN_N = 240
 export function scanContact(game, dir = 1) {
   if (!game.canAim) return false
-  const step = dir * Math.PI / 180
+  const step = dir * SCAN_DEG * Math.PI / 180
   const ok = (h) => h && h !== 'earth' && h !== 'debris'
   let i = 1
   if (ok(coarseContact(game, game.aim))) {          // 이미 맞고 있으면 그 구간을 통과
-    while (i <= 360 && ok(coarseContact(game, game.aim + step * i))) i++
+    while (i <= SCAN_N && ok(coarseContact(game, game.aim + step * i))) i++
   }
-  for (; i <= 360; i++) {
+  for (; i <= SCAN_N; i++) {
     const ang = game.aim + step * i
     if (!ok(coarseContact(game, ang))) continue
     game.aim = wrapPi(ang)
@@ -153,17 +179,19 @@ export function interceptMiss(game, ang, pw = game.power) {
   const m = { pos: { ...p }, vel: fromAngle(ang, pw), age: 0, pathN: 0, path: [], minSunDist: Infinity, prev: { ...p } }
   const f = { pos: { ...foeSrc.pos }, vel: { ...foeSrc.vel }, age: foeSrc.age, pathN: 0, path: [], minSunDist: Infinity, prev: { ...foeSrc.pos } }
   let min = Infinity
+  const beltR = beltRadius(game.aMax)
   const steps = Math.round(CFG.MISSILE_TTL / dt)
+  let tick = 0
   const dies = (q) => {
     for (const o of sim) {
       if (!o.alive) continue
       if (segHitsCircle(q.prev.x, q.prev.y, q.pos.x, q.pos.y, o.pos.x, o.pos.y, hitRadiusOf(o))) return true
     }
-    const r = Math.hypot(q.pos.x, q.pos.y)
-    return r < CFG.R_STAR + 8 || r > 2.8 * game.aMax
+    if (Math.hypot(q.pos.x, q.pos.y) >= beltR) beltBounce(q, beltR)   // 벨트는 죽이지 않는다 — 튕긴다
+    return Math.hypot(q.pos.x, q.pos.y) < CFG.R_STAR + 8
   }
   for (let i = 0; i < steps; i++) {
-    stepBodies(sim, dt)
+    if (bodyTurn(tick++, COARSE_BODY_EVERY)) stepBodies(sim, dt * COARSE_BODY_EVERY)
     stepMissile(m, sim, dt); stepMissile(f, sim, dt)
     min = Math.min(min, Math.hypot(m.pos.x - f.pos.x, m.pos.y - f.pos.y))
     if (dies(m) || dies(f)) break
@@ -182,9 +210,10 @@ export function coarseContact(game, ang) {
   const foes = game.missiles.filter(f => f.alive).map(f => ({
     pos: { ...f.pos }, vel: { ...f.vel }, age: f.age, pathN: 0, path: [], minSunDist: Infinity, prev: { ...f.pos },
   }))
+  const beltR = beltRadius(game.aMax)
   const steps = Math.round(CFG.MISSILE_TTL / dt)
   for (let i = 0; i < steps; i++) {
-    stepBodies(sim, dt)
+    if (bodyTurn(i, COARSE_BODY_EVERY)) stepBodies(sim, dt * COARSE_BODY_EVERY)
     stepMissile(m, sim, dt)
     for (const f of foes) {
       if (f.dead) continue
@@ -203,7 +232,8 @@ export function coarseContact(game, ang) {
     }
     if (foes.some(f => !f.dead && Math.hypot(f.pos.x - m.pos.x, f.pos.y - m.pos.y) <= 2 * CFG.MISSILE_HIT_R)) return 'intercept'
     const r = Math.hypot(m.pos.x, m.pos.y)
-    if (r < CFG.R_STAR + 8 || r > 2.8 * game.aMax) return null
+    if (r < CFG.R_STAR + 8) return null
+    if (r >= beltR) beltBounce(m, beltR)   // 벨트에 튕겨 되돌아온 뒤에도 계속 훑는다
   }
   return null
 }
@@ -217,6 +247,8 @@ export function interceptInfo(game, x, y, yld) {
     dx: 0, dy: 0, dv: 0, vx: 0, vy: 0,
     blast: blastRadius(yld), yld, earthInBlast: false,
     vAfter: 0, vEsc: 0, willEject: false, counter: false, volatileR: 0,
+    counterSpeed: 0, counterEsc: 0, counterEscapes: false,
+    hp: 0, hpMax: 0,
   }
 }
 
@@ -244,6 +276,11 @@ export function impactInfo(game, o, point, simEarth) {
   // 큐의 세기에 대한 정보지 판의 결말이 아니다. 작약량을 고르는 유일한 근거.
   const vAfter = Math.hypot(o.vel.x + dx * dv, o.vel.y + dy * dv)
   const vEsc = Math.sqrt(2 * CFG.MU_STAR / Math.max(1, Math.hypot(o.pos.x, o.pos.y)))
+  // 반격탄 제원 — 요새를 벗어날 수 있는 속도인지 함께 계산한다.
+  // (탈출속도 미만이면 반격탄이 제 요새 주위를 맴돌다 되떨어진다. counterSpeed가
+  //  하한을 그 위로 올려 주므로 esc는 항상 통과하지만, 그 근거를 화면에 보여준다.)
+  const cOff = hitRadiusOf(o) * 1.15
+  const cSpeed = counterSpeed(o, cOff), cEsc = escapeSpeed(o.mu, cOff)
   return {
     name: o.name, isEarth: o.isEarth, isTarget: isT, type: o.type, id: o.id,
     outcome, x: o.pos.x, y: o.pos.y, r: hitRadiusOf(o),
@@ -255,6 +292,9 @@ export function impactInfo(game, o, point, simEarth) {
     // 요새를 치면 임펄스의 정반대로 반격탄이 나온다 — 그것까지가 "이 한 방"의 정보다.
     // 단 방어막에 삼켜지는 샷은 기폭 자체가 없으므로 반격도 없다(detonate가 먼저 리턴).
     counter: o.role === 'battery' && (o.ammo ?? 0) > 0 && !shielded && !o.isEarth && o.type !== 'debris',
+    counterSpeed: cSpeed, counterEsc: cEsc, counterEscapes: cSpeed > cEsc,
     volatileR: o.role === 'volatile' ? volatileRadius(o) : 0,
+    // 체력 — 이 한 방으로는 안 부서진다. 몇 번 더 처박아야 하는지가 정보다.
+    hp: o.hp ?? CFG.PLANET_HP, hpMax: o.hpMax ?? CFG.PLANET_HP,
   }
 }

@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { CFG } from '../game/config.js'
+import { CFG, beltRadius } from '../game/config.js'
 
 // ─── 공전궤도 ───────────────────────────────────────────────────
 // 매 프레임 적분해서 그리면 N체 × 수천 스텝이라 감당이 안 된다. 대신
@@ -80,7 +80,9 @@ export class Orbits {
 
   // colorOf: (body) → 16진 색. 목표/지구는 호출부가 따로 강조한다.
   sync(bodies, aMax, colorOf) {
-    const rMax = 2.8 * aMax
+    // 궤도선은 카이퍼 벨트에서 끊는다 — 벨트가 판의 벽이므로 그 밖으로 뻗은
+    // 선은 거짓말이다(어차피 거기 도달하기 전에 튕긴다).
+    const rMax = beltRadius(aMax)
     for (const b of bodies) {
       if (b.type === 'debris') continue            // 파편까지 그리면 판이 실오라기로 덮인다
       let o = this.map.get(b.id)

@@ -1,5 +1,6 @@
 import { Rng } from '../core/random.js'
-import { CFG, aMaxOf, contactDist, hitRadiusOf, radiusOf } from './config.js'
+import { CFG, aMaxOf, beltRadius, hitRadiusOf, radiusOf } from './config.js'
+import { makeBody } from './body.js'
 import { cloneBodies, segHitsCircle, stepBodies, stepMissile } from './physics.js'
 import { rolePool } from './roles.js'
 import { buildBodies, elementsToState, pickBiome, stablePresim } from './stage.js'
@@ -17,7 +18,7 @@ const nextId = () => `z${(uid++).toString(36)}`
 export function createSystem(seed) {
   const rng = new Rng(seed)
   for (let attempt = 0; attempt < 40; attempt++) {
-    const built = buildBodies(rng, 1, 4)
+    const built = buildBodies(rng, 1, CFG.PLANET_BASE)
     if (!built) continue
     if (!stablePresim(built.bodies, built.aMax)) continue
     return { bodies: built.bodies, earth: built.earth, rng }
@@ -35,11 +36,13 @@ function freeOrbit(rng, bodies, aMax, mu) {
   const radii = live.map(b => Math.hypot(b.pos.x, b.pos.y))
   const rNew = radiusOf(mu)
   for (let tries = 0; tries < 240; tries++) {
-    // 안쪽 절반은 태양에 너무 가깝고 바깥은 추방 경계라 [1.15 A_MIN, 0.95 aMax]
+    // 안쪽 절반은 태양에 너무 가깝고 바깥은 벨트라 [1.15 A_MIN, 0.95 aMax]
     const a = CFG.A_MIN * 1.15 + rng.next() * (aMax * 0.95 - CFG.A_MIN * 1.15)
-    // 궤도 반경이 기존 공들과 최소 이만큼은 벌어져야 서로 안 스친다
+    // 궤도 반경이 기존 공들과 최소 이만큼은 벌어져야 서로 안 스친다.
+    // 공이 스무 개까지 늘어난 지금 예전의 고정 90 GU로는 빈 궤도가 아예 없다 —
+    // 새로 오는 공의 크기에 비례한 값으로 바꿔 촘촘한 성계에도 끼워 넣는다.
     let ok = true
-    for (const r of radii) if (Math.abs(a - r) < 90 + rNew * 3) { ok = false; break }
+    for (const r of radii) if (Math.abs(a - r) < 26 + rNew * 2.5) { ok = false; break }
     if (!ok) continue
     const e = 0.01 + rng.next() * 0.06
     const w = rng.range(0, Math.PI * 2)
@@ -50,7 +53,7 @@ function freeOrbit(rng, bodies, aMax, mu) {
       for (const b of live) {
         const d = Math.hypot(st.pos.x - b.pos.x, st.pos.y - b.pos.y)
         // 지구 근처에 떨어뜨리면 첫 수도 두기 전에 지구가 날아간다
-        const need = (b.isEarth ? 6 : 4) * (hitRadiusOf(b) + rNew * CFG.HIT_R)
+        const need = (b.isEarth ? 5 : 2.6) * (hitRadiusOf(b) + rNew * CFG.HIT_R)
         if (d < need) { clear = false; break }
       }
       if (clear) return { a, e, w, nu, ...st }
@@ -66,12 +69,12 @@ function freeOrbit(rng, bodies, aMax, mu) {
 // 40초 지평·dt 1/40으로 돌렸다가 판 전환이 평균 3.6초(최대 9.1초) 걸렸다.
 // 프로브를 줄이고 지평·해상도를 낮춰 24샷/30초/dt 1/25로 내렸다.
 // "한 발이라도 닿는가"만 보면 되므로 이 해상도로 충분하다.
-const PROBE_ANGLES = 12, PROBE_POWERS = [24, 38]
+const PROBE_ANGLES = 12, PROBE_POWERS = [32, 44, 56]
 function reachable(bodies, earth, target) {
-  const dt = 1 / 25, steps = Math.round(30 / dt)
+  const dt = 1 / 25, steps = Math.round(40 / dt)
   const tIdx = bodies.indexOf(target)
   if (tIdx < 0) return false
-  const rMax = 2.8 * aMaxOf(8)
+  const rMax = beltRadius(aMaxOf(8))
   for (const pw of PROBE_POWERS) {
     for (let ai = 0; ai < PROBE_ANGLES; ai++) {
       const ang = ai / PROBE_ANGLES * Math.PI * 2
@@ -103,15 +106,15 @@ function warpBody(rng, bodies, aMax, spec) {
   const mu = spec.mu
   const orb = freeOrbit(rng, bodies, aMax, mu)
   if (!orb) return null
-  const b = {
+  const b = makeBody({
     id: nextId(),
     name: spec.name,
     mu, radius: radiusOf(mu),
     pos: orb.pos, vel: orb.vel,
     type: spec.type ?? pickBiome(rng, orb.a / aMax),
-    isEarth: false, alive: true, trail: [], hitFlash: 0, trailFlash: 0, scorch: 0,
+    hp: CFG.PLANET_HP,
     zorg: true, warp: 1,            // warp: 1 → 0 으로 렌더러가 실시간 감쇠시킨다
-  }
+  })
   if (spec.role) applyRole(b, spec.role)
   if (spec.role === 'battery') b.isTarget = true   // 위협 = 반드시 없애야 할 표적
   return b

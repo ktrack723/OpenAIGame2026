@@ -1,9 +1,9 @@
 import { fromAngle, len } from '../core/vector.js'
 import { Rng } from '../core/random.js'
-import { CFG, aMaxOf, hitRadiusOf, radiusOf } from './config.js'
+import { CFG, aMaxOf, beltRadius, counterSpeed, escapeSpeed, hitRadiusOf, radiusOf } from './config.js'
 import {
-  applyNuke, blastWave, resolveBodyPairs, segCircleEntry, segHitsCircle,
-  shatter, stepBodies, stepMissile, updateEncounters,
+  applyNuke, beltBounce, blastWave, elasticBounce, resolveBodyPairs, segCircleEntry,
+  segHitsCircle, shatter, stepBodies, stepMissile, updateEncounters,
 } from './physics.js'
 import { hasRole, roleOf, volatileRadius } from './roles.js'
 import { CAUSE_KO, makeGoal } from './objectives.js'
@@ -12,12 +12,11 @@ import { createSystem, pickHomeworld, reinforce } from './system.js'
 import { chargeLeft, makeLaser, stepLaser, LASER_CHARGE } from './laser.js'
 import * as Aim from './aim.js'
 
-// 파괴 사유별 점수 (목표 / 중립)
+// 파괴 사유별 점수 (목표 / 중립). 추방은 없앴다 — 벨트가 되돌려 보낸다.
 const KILL_SCORE = {
   collision: [120, 40],
   absorb: [110, 35],
   sun: [100, 30],
-  exile: [90, 25],
   blast: [80, 25],
 }
 export class Game {
@@ -31,8 +30,13 @@ export class Game {
     const sys = createSystem(this.seed)
     this.bodies = sys.bodies; this.earth = sys.earth
     this.laser = makeLaser(this.rng)
+    // 같은 쌍이 한 번의 접촉에서 여러 스텝 붙어 있어도 피해는 한 번만 센다
+    this.pairCool = new Map()
     this.loadStage()
   }
+
+  // 카이퍼 벨트 반경 — 성계의 쿠션. aMax가 안테마다 커지므로 파생값으로 둔다.
+  get beltR() { return beltRadius(this.aMax) }
 
   get ante() { return Math.min(8, 1 + Math.floor(this.stageIdx / 3)) }
 
@@ -57,6 +61,7 @@ export class Game {
     // 레이저는 판이 바뀌어도 이어진다. 다만 새 판 시작 직후 바로 쏘진 않는다.
     this.laser.state = 'idle'; this.laser.t = 0; this.laser.nextAt = CFG.LASER_FIRST
 
+    this.pairCool.clear()
     this.missiles = []; this.rockets = CFG.ROCKETS; this.score = 0; this.chainLast = 0
     this.won = false; this.lost = false; this.failReason = null
     const t = this.target
@@ -110,15 +115,23 @@ export class Game {
     return { x: this.earth.pos.x + Math.cos(this.aim) * d, y: this.earth.pos.y + Math.sin(this.aim) * d }
   }
 
+  // 지구 발사점에서의 κ증폭 탈출속도. 이 아래로 쏘면 탄이 지구 중력에
+  // 붙잡혀 되떨어진다 = 자기 지구에 핵을 박는다. 반격탄과 같은 검사다.
+  get launchEscape() { return escapeSpeed(CFG.EARTH_MU, CFG.LAUNCH_OFFSET) }
+
   fire() {
     if (this.won || this.lost || this.rockets <= 0 || !this.earth.alive) return
+    if (this.power <= this.launchEscape) {
+      this.setToast(`발사 속도 부족 — 지구 탈출속도 ${this.launchEscape.toFixed(1)} 초과 필요`)
+      return
+    }
     // 연속 발사 허용 — 두 탄을 원하는 지점에서 만나게 하는 게 정식 전술이다.
     // (미사일이 날고 있는 동안에도 시계는 1×로 흐르므로 공짜는 아니다.)
     const p = this.launchPos(), v = fromAngle(this.aim, this.power)
     this.missiles.push({
       pos: { ...p }, vel: v, yld: this.yieldMt, alive: true, chain: 0, nearMiss: 0, age: 0,
       path: [{ ...p }], pathN: 0, enc: new Map(), bestDeflection: 0,
-      encountered: false, minSunDist: Infinity, hit: null, out: null,
+      encountered: false, minSunDist: Infinity, hit: null, out: null, lastBelt: -99,
     })
     this.rockets--
     this.addFx({ kind: 'launch', x: p.x, y: p.y, a: this.aim })
@@ -351,14 +364,15 @@ export class Game {
     const dx = -push.dx, dy = -push.dy
     const off = hitRadiusOf(b) * 1.15
     const p = { x: b.pos.x + dx * off, y: b.pos.y + dy * off }
+    const sp = counterSpeed(b, off)
     this.missiles.push({
-      pos: p, vel: { x: dx * CFG.BATTERY_SPEED + b.vel.x, y: dy * CFG.BATTERY_SPEED + b.vel.y },
+      pos: p, vel: { x: dx * sp + b.vel.x, y: dy * sp + b.vel.y },
       yld: CFG.BATTERY_YIELD, alive: true, hostile: true, chain: 0, nearMiss: 0, age: 0,
       path: [{ ...p }], pathN: 0, enc: new Map(), bestDeflection: 0,
-      encountered: false, minSunDist: Infinity, hit: null, out: null,
+      encountered: false, minSunDist: Infinity, hit: null, out: null, lastBelt: -99,
     })
     this.addFx({ kind: 'launch', x: p.x, y: p.y, a: Math.atan2(dy, dx), hostile: true })
-    this.setToast(`${b.name} 반격! — 되날아오는 탄도 행성을 민다`)
+    this.setToast(`${b.name} 반격! — 되날아오는 탄도 행성을 민다 (${sp.toFixed(0)} GU/s)`)
   }
 
   // ─── 휘발성 유폭 ─────────────────────────────────────────────
@@ -394,35 +408,75 @@ export class Game {
     this.killBody(prey, 'absorb', { fx: false, shatterIt: false })
   }
 
-  // ─── 행성끼리의 충돌 = 폭파 (유일한 파괴 수단) ────────────────
+  // ─── 행성끼리의 충돌 = 당구 + 체력 ────────────────────────────
+  // 규칙: 부딪히면 **당구공처럼 튕긴다**(운동량 보존). 그리고 체력이 1 닳는다.
+  // 세 번 박아야 박살난다 — 그래서 "한 번 맞히기"가 아니라 "같은 공을 계속
+  // 몰아붙이기"가 게임이 된다. 자연스러운 공전 중의 느린 스침(상대속도 < COLLIDE_DMG_V)은
+  // 데미지가 없다: 판이 저 혼자 정리되면 플레이어가 할 일이 사라진다.
+  // 반환값 'destroyed' 는 배열이 변했다는 신호(파편 생성) — physics가 그 스텝을 끝낸다.
   onPlanetCollision(a, b) {
-    if (a.isEarth || b.isEarth) {
-      const e = a.isEarth ? a : b, o = a.isEarth ? b : a
-      this.addFx({ kind: 'destroy', x: e.pos.x, y: e.pos.y, r: e.radius * 2, earth: true })
-      e.alive = false; o.alive = false
-      this.fail('EARTH_LOST', `${o.name}이(가) 지구에 처박혔다. 작전 종료.`)
-      return
-    }
     // 특이점 — 상대만 삼킨다. 특이점끼리 만나면 큰 쪽이 작은 쪽을 먹는다.
     if (a.role === 'void' || b.role === 'void') {
       const hole = a.role === 'void' && (b.role !== 'void' || a.mu >= b.mu) ? a : b
       this.absorb(hole, hole === a ? b : a)
-      return
+      return 'destroyed'
     }
-    // 휘발성 — 부딪혀도 유폭한다. 연쇄를 노릴 수 있는 자리.
+    // 휘발성 — 부딪히면 튕기지 않고 그 자리에서 유폭한다. 연쇄를 노릴 자리.
     if (a.role === 'volatile' || b.role === 'volatile') {
       const vol = a.role === 'volatile' ? a : b, other = vol === a ? b : a
       this.message = `${vol.name} ✕ ${other.name} — 충돌 유폭!`
-      this.killBody(other, 'collision', { fx: true })
+      this.damage(other, 3, 'collision')
       this.volatileBlast(vol)
-      return
+      return 'destroyed'
     }
-    const vRel = Math.hypot(a.vel.x - b.vel.x, a.vel.y - b.vel.y)
+
     const cx = (a.pos.x + b.pos.x) / 2, cy = (a.pos.y + b.pos.y) / 2
-    this.addFx({ kind: 'destroy', x: cx, y: cy, r: (a.radius + b.radius) * 1.1, big: true })
-    this.message = `${a.name} ✕ ${b.name} — 정면 충돌, 상대속도 ${vRel.toFixed(0)}`
-    this.killBody(a, 'collision', { fx: false })
-    this.killBody(b, 'collision', { fx: false })
+    const vRel = elasticBounce(a, b)   // ← 여기서 실제로 튕긴다
+    const key = a.id < b.id ? `${a.id}|${b.id}` : `${b.id}|${a.id}`
+    const last = this.pairCool.get(key) ?? -99
+    a.bumpFlash = 0.5; b.bumpFlash = 0.5
+    // 접촉 판정은 한 번의 충돌에서 여러 스텝 이어질 수 있다 — 쿨다운으로 한 번만 센다
+    if (this.time - last < CFG.HIT_COOLDOWN) {
+      this.addFx({ kind: 'bump', x: cx, y: cy, r: (hitRadiusOf(a) + hitRadiusOf(b)) * 0.5, v: vRel, soft: true })
+      return null
+    }
+    this.pairCool.set(key, this.time)
+
+    const dmg = vRel < CFG.COLLIDE_DMG_V ? 0 : vRel >= 160 ? 3 : vRel >= 90 ? 2 : 1
+    this.addFx({ kind: 'bump', x: cx, y: cy, r: (hitRadiusOf(a) + hitRadiusOf(b)) * 0.5, v: vRel, soft: dmg === 0 })
+    if (dmg === 0) {
+      this.message = `${a.name} ↔ ${b.name} — 가벼운 접촉(상대속도 ${vRel.toFixed(0)}), 튕겨 나갔다`
+      return null
+    }
+    this.message = `${a.name} ✕ ${b.name} — 충돌! 상대속도 ${vRel.toFixed(0)} · 피해 ${dmg}`
+    // 둘 다 같은 피해를 받는다. 하나라도 박살나면 그 스텝은 거기서 끝낸다.
+    const ka = this.damage(a, dmg, 'collision')
+    const kb = this.damage(b, dmg, 'collision')
+    return (ka || kb) ? 'destroyed' : null
+  }
+
+  // ─── 체력 처리 ───────────────────────────────────────────────
+  // 지구도 예외가 아니다. 세 번 처박히면 지구도 끝난다 — 다만 그 전까지는
+  // 튕겨 나갈 뿐이라 "스치기만 해도 즉사"하던 예전 규칙보다 훨씬 관대하다.
+  damage(b, n, cause) {
+    if (!b.alive || b.type === 'debris') return false
+    b.hp = (b.hp ?? CFG.PLANET_HP) - n
+    b.hitFlash = Math.max(b.hitFlash, 0.6)
+    b.trailFlash = 2.0
+    b.scorch = Math.min(3, (b.scorch || 0) + 1)
+    if (b.hp > 0) {
+      this.setToast(`${b.name} 체력 ${b.hp}/${b.hpMax ?? CFG.PLANET_HP} — ${b.hp}번 더`)
+      return false
+    }
+    if (b.isEarth) {
+      this.addFx({ kind: 'destroy', x: b.pos.x, y: b.pos.y, r: b.radius * 2, earth: true })
+      b.alive = false
+      this.fail('EARTH_LOST', '지구가 세 번 처박혔다. 인류 종료 — 작전도 종료.')
+      return true
+    }
+    this.addFx({ kind: 'destroy', x: b.pos.x, y: b.pos.y, r: b.radius * 1.6, big: true })
+    this.killBody(b, cause, { fx: false })
+    return true
   }
 
   killBody(b, cause, { fx = true, shatterIt = cause === 'collision' } = {}) {
@@ -469,11 +523,21 @@ export class Game {
   missileBounds(m) {   // §7.8
     const r = len(m.pos)
     if (r < CFG.R_STAR + 8) { m.alive = false; m.out = 'sun' }
-    else if (r > 2.8 * this.aMax) { m.alive = false; m.out = 'lost' }
     else if (m.age > CFG.MISSILE_TTL) { m.alive = false; m.out = 'timeout' }
+    else if (r >= this.beltR) {   // 미사일도 쿠션에 튕긴다 — 유실은 이제 없다
+      const hit = beltBounce(m, this.beltR)
+      if (hit && this.time - (m.lastBelt ?? -99) > CFG.BELT_COOLDOWN) {
+        m.lastBelt = this.time
+        this.addFx({ kind: 'belt', x: hit.x, y: hit.y, nx: hit.nx, ny: hit.ny, v: hit.speed, missile: true })
+      }
+    }
   }
 
-  bodyBounds() {   // §7.8 항성 처분 / 행성 추방 — 정식 파괴 수단 2·3번
+  // ─── 성계 경계 ───────────────────────────────────────────────
+  // 태양 낙하는 그대로 파괴다(안쪽 벽은 없다 — 태양이 곧 포켓이다).
+  // 바깥쪽은 추방 대신 **카이퍼 벨트 쿠션**이다: 박으면 폭발하고, 속력을
+  // 그대로 유지한 채 반사각으로 판 안으로 되돌아온다. 잃는 공은 없다.
+  bodyBounds() {
     for (const b of this.bodies) {
       if (!b.alive) continue
       const r = len(b.pos)
@@ -485,14 +549,15 @@ export class Game {
           return
         }
         this.killBody(b, 'sun', { shatterIt: false })
-      } else if (r > 2.6 * this.aMax) {
-        if (b.isEarth) {
-          b.alive = false
-          this.fail('EARTH_LOST', '지구가 성계를 이탈했다. 작전 종료.')
-          return
-        }
-        this.addFx({ kind: 'exile', x: b.pos.x, y: b.pos.y, r: b.radius })
-        this.killBody(b, 'exile', { fx: false, shatterIt: false })
+      } else if (r >= this.beltR) {
+        const hit = beltBounce(b, this.beltR)
+        if (!hit) continue
+        if (this.time - (b.lastBelt ?? -99) < CFG.BELT_COOLDOWN) continue
+        b.lastBelt = this.time
+        b.trailFlash = 2.0; b.bumpFlash = 0.6
+        this.addFx({ kind: 'belt', x: hit.x, y: hit.y, nx: hit.nx, ny: hit.ny, v: hit.speed, r: hitRadiusOf(b) })
+        this.message = `${b.name}이(가) 카이퍼 벨트를 들이받았다 — 속력 ${hit.speed.toFixed(0)} 유지, 반사각으로 복귀`
+        this.setToast(`벨트 반사 — ${b.name} (운동량 그대로)`)
       }
     }
   }
@@ -502,8 +567,8 @@ export class Game {
     if (m.hit) return
     if (m.hostile) { this.setToast('반격탄 소멸'); return }   // 내 탓이 아니다
     let tag
-    if (m.out === 'lost') tag = '유실 — 성계 이탈 (파워 과다)'
-    else if (m.out === 'sun') tag = '태양 소멸 — 근일점이 너무 낮다'
+    // '유실'은 이제 없다 — 벨트가 튕겨 되돌려 보낸다. 남은 실패는 태양/시간뿐이다.
+    if (m.out === 'sun') tag = '태양 소멸 — 근일점이 너무 낮다'
     else if (m.encountered && m.bestDeflection < 10) tag = `속도 초과 — 통과만 함 (δ ${m.bestDeflection.toFixed(0)}°)`
     else if (m.bestDeflection < CFG.SWING_DEG) tag = `굴절 부족 — ${m.bestDeflection.toFixed(0)}° / ${CFG.SWING_DEG}° 필요`
     else tag = '타이밍 — 공이 지나갔다'
