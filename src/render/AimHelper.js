@@ -3,7 +3,7 @@ import { makeArrow, setArrow } from './Arrow.js'
 
 // 경로·락온 색 = 무엇에 닿는가 (결과가 아니라 접촉 대상)
 export const PRED_TONE = {
-  target: 0x4ade80, neutral: 0xe2e8f0, shield: 0xa78bfa, earth: 0xf87171,
+  target: 0x4ade80, neutral: 0xe2e8f0, earth: 0xf87171,
   debris: 0x94a3b8, sun: 0xfb923c, lost: 0x94a3b8, timeout: 0x67e8f9,
   volatile: 0xfb923c, void: 0xa855f7, intercept: 0xf472b6,
 }

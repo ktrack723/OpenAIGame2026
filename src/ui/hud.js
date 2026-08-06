@@ -50,7 +50,7 @@ export function makeHud(game, view) {
 </section>
 
 <section class="mod" id="rolesMod" hidden>
-  <div class="modhead"><span class="tick"></span><span>SPECIAL BODIES</span></div>
+  <div class="modhead"><span class="tick"></span><span>PLANET TAGS</span><span class="clockv" id="tagNote">태그 없음 = 일반 행성</span></div>
   <div class="roles" id="roles"></div>
 </section>
 
@@ -74,7 +74,6 @@ export function makeHud(game, view) {
     <span class="asslabel">탐색</span>
     <button id="findPrev" class="ghost" title="닿는 각도를 반시계로">◀ 접촉각</button>
     <button id="findNext" class="ghost" title="닿는 각도를 시계로">접촉각 ▶</button>
-    <button id="findIc" class="ghost intercept" hidden title="비행 중인 탄과 만나는 각도">✚ 요격각</button>
   </div>
   <div class="lcd" id="lcd">
     <div class="lcdscan"></div>
@@ -83,7 +82,8 @@ export function makeHud(game, view) {
   </div>
   <button id="fire" class="firebtn"><span class="fkey">SPACE</span><span class="ftext">FIRE</span><i class="fglow"></i></button>
   <div class="btnrow">
-    <button id="wait" class="ghost wide">관측 ▶▶ (SHIFT)</button>
+    <button id="wait" class="ghost wide" title="누르고 있는 동안만 시간이 흐른다">시간 진행 ▶▶ (SHIFT)</button>
+    <button id="toObs" class="ghost wide obs" title="관측 모드 — UI가 사라지고 판이 흐른다">관측 모드 ▶ (TAB)</button>
     <button id="next" class="go" hidden>다음 스테이지 ▶</button>
   </div>
 </section>
@@ -97,8 +97,8 @@ export function makeHud(game, view) {
     <button id="zfull" class="ghost" title="성계 전체 ( 9 )">전체</button>
     <button id="new" class="ghost">새 런</button>
   </div>
-  <div class="hint">← → 각도 · ↑ ↓ 속도 · [ ] 작약 · F 접촉각 · SHIFT = 미세<br>
-  행성에 마우스를 올리거나(터치는 짚으면) 제원이 뜬다 · 바깥 고리는 카이퍼 벨트 = 쿠션</div>
+  <div class="hint">TAB 조준/관측 전환 · SHIFT 시간 진행 · ← → 각도 · ↑ ↓ 속도 · [ ] 작약 · F 접촉각<br>
+  조준 모드에서는 미사일이 날아가는 중에도 판이 멈춘다 · 행성에 마우스를 올리면(터치는 짚으면) 제원이 뜬다</div>
 </section>
 
 <section class="mod">
@@ -120,6 +120,18 @@ export function makeHud(game, view) {
   toast.className = 'toast'; toast.hidden = true
   document.body.appendChild(toast)
   el._toast = toast
+
+  // ── 관측 모드의 유일한 UI ──────────────────────────────────
+  // 관측 중에는 패널이 통째로 사라진다. 남는 건 이 버튼 하나뿐이고,
+  // 꼭 필요한 정보(남은 시한 · 레이저 경보)는 버튼 안에 접어 넣는다 —
+  // 화면을 비우려고 죽는 이유까지 숨길 수는 없다.
+  const obsBtn = document.createElement('button')
+  obsBtn.className = 'aimbtn'; obsBtn.hidden = true
+  obsBtn.innerHTML = `<span class="aimtitle">◎ 조준 모드</span>
+<span class="aimsub" id="obsSub">시간 정지 · TAB / 클릭</span>`
+  document.body.appendChild(obsBtn)
+  obsBtn.onclick = () => game.setMode('aim')
+  el._obsBtn = obsBtn
 
   const qs = (id) => el.querySelector(id)
 
@@ -143,7 +155,7 @@ export function makeHud(game, view) {
   qs('#fire').onclick = () => game.fire()
   qs('#findNext').onclick = () => { game.scanContact(1); el._sync() }
   qs('#findPrev').onclick = () => { game.scanContact(-1); el._sync() }
-  qs('#findIc').onclick = () => { game.findIntercept(); el._sync() }
+  qs('#toObs').onclick = () => game.setMode('observe')
   qs('#next').onclick = () => game.nextStage()
   qs('#new').onclick = () => { location.href = location.pathname + '?seed=' + ((Math.random() * 1e9) | 0) }
   qs('#fold').onclick = () => {
@@ -160,17 +172,26 @@ export function makeHud(game, view) {
   rig.snapToAuto()
   el._rig = rig
 
+  // 시간 진행 홀드 — 조준 모드에서도 시간을 흘릴 수 있게 해 주는 장치.
+  // 조준선을 고정한 채 판을 조금씩 굴려 보는 게 이 게임의 핵심 조작이다.
   const wait = qs('#wait')
-  const startWait = () => { game.observing = true; wait.classList.add('on') }
-  const stopWait = () => { game.observing = false; wait.classList.remove('on') }
+  const startWait = () => { game.advancing = true; wait.classList.add('on') }
+  const stopWait = () => { game.advancing = false; wait.classList.remove('on') }
   wait.onmousedown = startWait; wait.onmouseup = stopWait; wait.onmouseleave = stopWait
   wait.ontouchstart = (e) => { e.preventDefault(); startWait() }
   wait.ontouchend = stopWait; wait.ontouchcancel = stopWait
 
   addEventListener('keydown', (e) => {
     if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return
-    if (e.code === 'Space') { e.preventDefault(); game.fire() }
+    // TAB — 두 모드를 오간다. 관측 중에도 유일하게 살아 있는 키다.
+    if (e.code === 'Tab') { e.preventDefault(); game.toggleMode(); el._sync(); return }
     if (e.key === 'Shift') startWait()
+    if (game.mode !== 'aim') {
+      // 관측 모드에서는 조작이 전부 잠긴다 — 아무 키나 누르면 조준으로 돌아온다
+      if (e.code === 'Space' || e.code === 'Escape') { e.preventDefault(); game.setMode('aim') }
+      return
+    }
+    if (e.code === 'Space') { e.preventDefault(); game.fire() }
     if (!game.canAim) return
     const step = (k, n) => { CTL[k].set(CTL[k].get() + n); el._sync() }
     const fine = e.shiftKey
@@ -195,7 +216,6 @@ function predLine(game, p) {
   const badge = role ? ` [${role.icon}${role.label}]` : ''
   switch (p.outcome) {
     case 'earth': return ['bad', 'ABORT', '지구 직격 — 즉시 게임 오버', '각도를 바꿔라']
-    case 'shield': return ['warn', 'BLOCK', `${h.name} 방어막`, '직격 무효 — 중립 행성을 큐볼로']
     case 'void': return ['warn', 'VOID', `${h.name}${badge}`, role.aim]
     case 'volatile': return ['hit', 'CHAIN', `${h.name}${badge}`, `${role.aim} · 반경 ${h.volatileR.toFixed(0)} GU`]
     case 'intercept': return ['hit', 'INTCP', `공중 요격 — ${h.yld}Mt 동시 기폭`, `폭풍 반경 ${h.blast.toFixed(0)} GU`]
@@ -228,15 +248,31 @@ const FAIL_WHY = {
   EARTH_LASER: `조르그 레이저가 지구를 관통했다. ${CFG.LASER_CHARGE}초의 조준 시간 안에 선을 끊었어야 했다.`,
 }
 
-const CTRL_IDS = ['#fire', '#findPrev', '#findNext', '#findIc']
+const CTRL_IDS = ['#fire', '#findPrev', '#findNext']
 
 export function updateHud(el, game) {
   if (el._stageIdx !== game.stageIdx) { el._stageIdx = game.stageIdx; el._sync() }
   el.querySelector('#next').hidden = !(game.won && !game.runOver)
 
-  // 요격각 버튼은 비행 중인 탄이 있을 때만
-  const foeUp = game.missiles.some(m => m.alive)
-  if (el._foeUp !== foeUp) { el._foeUp = foeUp; el.querySelector('#findIc').hidden = !foeUp }
+  // ── 모드 전환 — 관측 중에는 패널을 통째로 감추고 버튼 하나만 남긴다 ──
+  const observing = game.mode === 'observe' && !game.runOver
+  if (el._observing !== observing) {
+    el._observing = observing
+    el.hidden = observing
+    el._obsBtn.hidden = !observing
+  }
+  if (observing) {
+    // 버튼 하나에 접어 넣는 최소 정보: 배속 · 남은 시한 · 레이저 경보
+    const left = game.timeLeft
+    const clock = `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`
+    const sub = game.laserCharging
+      ? `⚠ 조르그 레이저 T-${game.laserLeft.toFixed(0)}s — 지금 조준하라`
+      : `${game.effTimeScale()}× 진행 중 · 잔여 ${clock}`
+    const btn = el._obsBtn
+    if (btn._sub !== sub) { btn._sub = sub; btn.querySelector('#obsSub').textContent = sub }
+    btn.classList.toggle('alarm', !!game.laserCharging)
+    return   // 패널이 숨겨져 있으므로 나머지 갱신은 통째로 건너뛴다
+  }
 
   const aimable = game.canAim
   if (el._aimable !== aimable) {
@@ -294,12 +330,12 @@ export function updateHud(el, game) {
   el.querySelector('#clockFill').style.width = `${Math.max(0, frac * 100).toFixed(1)}%`
   clock.className = 'mod' + (frac <= 0.15 ? ' crit' : frac <= 0.4 ? ' warn' : '')
   const scale = game.effTimeScale()
+  const flying = game.missiles.some(m => m.alive)
   el.querySelector('#clockNote').textContent = game.won
     ? `정지 — 시간 보너스 +${game.timeBonus} 확정`
-    : scale === 0 ? `정지 (조준 중) · 클리어 시 +${game.timeBonus}`
-      : game.rockets <= 0 && !game.missiles.some(m => m.alive)
-        ? `전탄 소진 — 판이 굴러가는 중 (${scale}×)`
-        : `${scale}× 진행 중 ▼ · 시간 보너스 +${game.timeBonus}`
+    : scale === 0
+      ? `■ 정지 (조준 모드${flying ? ' — 미사일도 멈춰 있다' : ''}) · 클리어 시 +${game.timeBonus}`
+      : `▶ ${scale}× 진행 중 · 시간 보너스 +${game.timeBonus}`
 
   // ── LCD — 발사 버튼 바로 위, 눌리는 자리에서 결과를 읽는다 ──
   const lcd = el.querySelector('#lcd')

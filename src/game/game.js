@@ -67,7 +67,7 @@ export class Game {
     const t = this.target
     this.aim = Math.atan2(t.pos.y - this.earth.pos.y, t.pos.x - this.earth.pos.x)
     this.power = 30; this.yieldMt = CFG.YIELD_DEFAULT
-    this.observing = false; this.time = 0
+    this.mode = 'aim'; this.advancing = false; this.time = 0
     this.toast = null; this.toastT = 0
     this.winBanked = false; this.timeWarn = 0
     this.stage = { roles: this.presentRoles(), added: added.length }
@@ -81,7 +81,6 @@ export class Game {
     for (const b of this.bodies) {
       if (!b.alive) continue
       if (b.role) set.add(b.role)
-      if (b.role2) set.add(b.role2)
     }
     return [...set]
   }
@@ -136,20 +135,39 @@ export class Game {
     this.rockets--
     this.addFx({ kind: 'launch', x: p.x, y: p.y, a: this.aim })
     this.message = `MISSILE AWAY — ${this.yieldMt}Mt 탄두. 어느 살을 치느냐가 전부다`
+    // 쏘면 자동으로 관측 모드로 넘어간다 — 쏜 뒤엔 보는 게 할 일이다.
+    // 언제든 조준 모드를 다시 켜면 미사일이 날아가는 도중에도 판이 멈춘다.
+    this.setMode('observe')
   }
 
   addFx(e) { if (this.fx.length < 96) this.fx.push(e) }
 
-  // 관제실 모드(§5.1): 조준 중 시간 정지, 관측 홀드 4×, 미사일 비행 중 1×.
-  // 전탄 소진 후엔 자동 진행 — 당구는 큐를 놓은 뒤가 본편이라 멈춰 있으면 안 된다.
-  // ※ 배속은 "실제로 기다리는 시간"만 줄인다. 작전 시한은 인게임 초 단위라
-  //    몇 배속으로 보든 소모량이 같다 — 전탄 소진 후 4분을 멍하니 보는 걸
-  //    막으려고 배속만 올렸지, 난이도는 건드리지 않았다.
+  // ─── 두 가지 모드 ───────────────────────────────────────────
+  // **조준 모드** — 판이 멈춘다. 미사일이 날아가는 중이라도 멈춘다.
+  //   당구에서 큐를 잡고 서 있는 시간에 해당한다. 재고, 각도를 재고,
+  //   다음 수를 생각하는 동안 세계가 흐르면 그건 반사신경 게임이 된다.
+  //   다만 **조준 모드에서도 시간을 흘릴 수 있다**(advance) — 조준선을 고정한 채
+  //   판이 어떻게 굴러가는지 조금씩 보내 보는 게 이 게임의 핵심 조작이다.
+  // **관측 모드** — 판이 흐른다. UI는 전부 사라지고 화면만 남는다.
+  //   미사일이 날 때는 1×(제대로 보라고), 아니면 3×로 빨리 감는다.
+  setMode(m) {
+    if (m !== 'aim' && m !== 'observe') return
+    if (this.mode === m) return
+    this.mode = m
+    this.advancing = false
+    if (m === 'aim') this._predKey = null   // 멈춘 순간의 판으로 예측을 다시 푼다
+  }
+  toggleMode() { this.setMode(this.mode === 'aim' ? 'observe' : 'aim') }
+
   effTimeScale() {
     if (this.lost || this.won) return 0   // 클리어 후에는 시계를 세운다
-    if (this.missiles.some(m => m.alive)) return this.observing ? 4 : 1
-    if (this.rockets <= 0) return this.observing ? 8 : 2
-    return this.observing ? 4 : 0
+    if (this.mode === 'aim') {
+      // 기본은 정지. 진행 버튼(SHIFT)을 누르고 있는 동안만 흐른다.
+      if (!this.advancing) return 0
+      return this.missiles.some(m => m.alive) ? 1 : 2
+    }
+    if (this.missiles.some(m => m.alive)) return this.advancing ? 4 : 1
+    return this.advancing ? 8 : 3
   }
 
   tick(dtFrame) {
@@ -327,14 +345,6 @@ export class Game {
       return
     }
 
-    if (hasRole(b, 'shield')) {   // 방어막 — 임펄스도 폭풍도 없이 통째로 삼킨다
-      this.addFx({ kind: 'nuke', x: point.x, y: point.y, yld, r: b.radius, shield: true })
-      b.hitFlash = 0.6
-      this.message = `${b.name} 방어막이 핵을 삼켰다 — 직격은 무효다`
-      this.setToast('방어막 — 중립 행성을 큐볼로 써라')
-      return
-    }
-
     // 임펄스: 입사각·속도 무시. 폭심의 상대 위치만 본다.
     const push = applyNuke(b, point.x, point.y, yld)
     const wave = blastWave(this.bodies, point.x, point.y, yld, b)
@@ -421,10 +431,17 @@ export class Game {
       this.absorb(hole, hole === a ? b : a)
       return 'destroyed'
     }
-    // 휘발성 — 부딪히면 튕기지 않고 그 자리에서 유폭한다. 연쇄를 노릴 자리.
-    if (a.role === 'volatile' || b.role === 'volatile') {
+    // 가스 행성 — **세게** 처박히면 그 자리에서 유폭한다. 연쇄를 노릴 자리.
+    //
+    // 접촉만 하면 무조건 터지게 뒀더니 태양계가 저 혼자 정리돼 버렸다(계측:
+    // 플레이어가 손도 대기 전에 목성이 100~360초에 자폭, 4개 중 2개가 900초
+    // 안에 소멸). 압축된 판에서는 이웃 궤도끼리 스치는 일이 늘 있는데,
+    // 그 정도 접촉으로 목성이 사라지면 판의 지형이 통째로 없어진다.
+    // 그래서 문턱을 둔다: 스치는 건 튕기고, 진짜로 처박아야 터진다.
+    const vRel0 = Math.hypot(a.vel.x - b.vel.x, a.vel.y - b.vel.y)
+    if ((a.role === 'volatile' || b.role === 'volatile') && vRel0 >= CFG.VOLATILE_TRIGGER_V) {
       const vol = a.role === 'volatile' ? a : b, other = vol === a ? b : a
-      this.message = `${vol.name} ✕ ${other.name} — 충돌 유폭!`
+      this.message = `${vol.name} ✕ ${other.name} — 상대속도 ${vRel0.toFixed(0)}, 충돌 유폭!`
       this.damage(other, 3, 'collision')
       this.volatileBlast(vol)
       return 'destroyed'
@@ -598,13 +615,13 @@ export class Game {
 
   setToast(text) { this.toast = text; this.toastT = 1.6 }
 
+  // 조준 가능 = 조준 모드일 것. 관측 모드에서는 조준선도 발사대도 사라진다.
   get canAim() {
-    return !this.won && !this.lost && this.rockets > 0 && this.earth.alive
+    return this.mode === 'aim' && !this.won && !this.lost && this.rockets > 0 && this.earth.alive
   }
 
   // ─── 조준 보조 (aim.js) ─────────────────────────────────────
   // 계산은 전부 aim.js에 있다. 호출부(HUD·렌더러)가 바뀌지 않게 얇게 감싼다.
   predictPath() { return Aim.predictPath(this) }
   scanContact(dir = 1) { return Aim.scanContact(this, dir) }
-  findIntercept() { return Aim.findIntercept(this) }
 }

@@ -9,19 +9,19 @@ import { VIS } from '../game/config.js'
 // 적대 표식(해골)은 별도다: 내가 반드시 부숴야 하는 공(조르그 요새)에만 붙고,
 // 붉은 배지 + 맥동으로 나머지와 확실히 갈린다.
 export const CATEGORY = {
-  rock: { icon: '⛰', label: '암석', color: '#cbd5e1', desc: '평범한 바위 덩어리. 큐볼로 쓰기 좋다.' },
-  lava: { icon: '🌋', label: '용암', color: '#ff9c6b', desc: '녹아 있는 표면. 항성 가까이에 많다.' },
-  ice: { icon: '❄', label: '빙결', color: '#a5f3fc', desc: '외곽의 얼음 천체. 가볍고 잘 밀린다.' },
-  ocean: { icon: '🌊', label: '해양', color: '#7dd3fc', desc: '액체 표층. 중간 궤도의 흔한 손님.' },
-  gas: { icon: '🪐', label: '가스', color: '#fcd34d', desc: '가스 거인. 무거워서 잘 안 밀린다.' },
-  toxic: { icon: '☣', label: '독성', color: '#bef264', desc: '유독 대기. 부딪히면 잘 흩어진다.' },
-  life: { icon: '🌿', label: '생명', color: '#6ee7b7', desc: '생물권이 있는 천체.' },
-  iron: { icon: '⚙', label: '금속', color: '#e2e8f0', desc: '철 핵. 장갑 천체가 여기 속한다.' },
-  void: { icon: '🕳', label: '특이점', color: '#c084fc', desc: '닿는 것을 전부 삼킨다.' },
+  rock: { icon: '⛰', label: '암석 행성', color: '#cbd5e1', desc: '태그 없음 — 일반 행성. 마음 놓고 큐볼로 써라.' },
+  lava: { icon: '🌋', label: '용암 행성', color: '#ff9c6b', desc: '태그 없음 — 일반 행성. 항성 가까이에 많다.' },
+  ice: { icon: '❄', label: '얼음 행성', color: '#a5f3fc', desc: '태그 없음 — 일반 행성. 가볍고 잘 밀린다.' },
+  ocean: { icon: '🌊', label: '해양 행성', color: '#7dd3fc', desc: '태그 없음 — 일반 행성.' },
+  toxic: { icon: '☣', label: '독성 행성', color: '#bef264', desc: '태그 없음 — 일반 행성. 유독 대기뿐이다.' },
+  life: { icon: '🌿', label: '생명 행성', color: '#6ee7b7', desc: '태그 없음 — 일반 행성. 생물권이 있다.' },
+  gas: { icon: '🪐', label: '가스 행성', color: '#fcd34d', desc: '태그 [가스] — 핵을 맞으면 그 자리에서 유폭한다.' },
+  iron: { icon: '⚙', label: '금속 행성', color: '#e2e8f0', desc: '태그 [금속] — 무거워서 핵으로 거의 안 밀린다.' },
+  void: { icon: '🕳', label: '특이점', color: '#c084fc', desc: '태그 [특이점] — 닿는 것을 전부 삼킨다. 부술 수 없다.' },
   earth: { icon: '🌍', label: '지구', color: '#93c5fd', desc: '우리 집이자 발사대. 잃으면 끝이다.' },
   debris: { icon: '·', label: '파편', color: '#94a3b8', desc: '충돌 잔해. 미사일을 조기 격발시킨다.' },
 }
-export const HOSTILE = { icon: '☠', label: '적대', color: '#ff5c6a' }
+export const HOSTILE = { icon: '☠', label: '조르그 요새', color: '#ff5c6a' }
 
 export const categoryOf = (type) => CATEGORY[type] ?? CATEGORY.rock
 

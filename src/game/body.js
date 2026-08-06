@@ -1,4 +1,5 @@
 import { CFG, radiusOf } from './config.js'
+import { TAG_BY_TYPE } from './roles.js'
 
 // ─── 천체의 정본(正本) 형태 ─────────────────────────────────────
 // 성계에 놓이는 모든 것은 **반드시 여기를 통해** 만들어진다.
@@ -14,10 +15,15 @@ import { CFG, radiusOf } from './config.js'
 export function makeBody(spec = {}) {
   const mu = spec.mu ?? 100
   const hp = spec.hp ?? CFG.PLANET_HP
+  const type = spec.type ?? 'rock'
+  // 태그는 종류가 정한다 — 금속처럼 생긴 게 금속이고 가스처럼 생긴 게 터진다.
+  // (조르그 요새만 예외: 종류와 무관하게 spec.role로 명시된다.)
+  // 파편은 태그를 안 받는다 — 잔해에 규칙을 붙이면 판이 읽히지 않는다.
+  const role = spec.role ?? (type === 'debris' ? null : TAG_BY_TYPE[type] ?? null)
   return {
     id: spec.id ?? '?',
     name: spec.name ?? '?',
-    type: spec.type ?? 'rock',
+    type,
     mu,
     radius: spec.radius ?? radiusOf(mu),
     pos: { x: spec.pos ? spec.pos.x : 0, y: spec.pos ? spec.pos.y : 0 },
@@ -27,8 +33,7 @@ export function makeBody(spec = {}) {
     isTarget: !!spec.isTarget,
     zorg: !!spec.zorg,
     homeworld: !!spec.homeworld,
-    role: spec.role ?? null,
-    role2: spec.role2 ?? null,
+    role,
     mods: spec.mods ?? null,
     ammo: spec.ammo ?? 0,
     hp, hpMax: spec.hpMax ?? hp,

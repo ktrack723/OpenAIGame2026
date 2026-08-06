@@ -33,7 +33,6 @@ const ROLE_RING = {
   battery: { n: 3, gap: 0.55, r0: 1.34, r1: 1.74, spin: -0.7 },
   void: { n: 40, gap: 0.06, r0: 1.20, r1: 1.34, spin: 1.5 },
   volatile: { n: 5, gap: 0.42, r0: 1.30, r1: 1.66, spin: 0.5 },
-  shield: { n: 6, gap: 0.14, r0: 1.16, r1: 1.30, spin: -0.35 },
 }
 const colorOf = (t) => (MATS[t] ?? MATS.rock).c
 
@@ -496,7 +495,7 @@ export class SceneView {
       // 캐롬 스테이지의 목표는 보라색 — "직격이 안 통하는 공"이라는 뜻이다.
       if (b.isEarth) { fx.ring.material.color.setHex(0x60a5fa); fx.ring.material.opacity = 0.9 }
       else if (b.isTarget) {
-        fx.ring.material.color.setHex(hasRole(b, 'shield') ? 0xa78bfa : 0x22d3ee)
+        fx.ring.material.color.setHex(0xf43f5e)
         fx.ring.material.opacity = 0.7 + 0.25 * Math.abs(Math.sin(performance.now() / 320))
       } else { fx.ring.material.color.setHex(0xe2e8f0); fx.ring.material.opacity = 0.34 }
       if (aimHit && aimHit.id === b.id) {   // 이번 샷이 건드릴 공 — 예측선 색으로 물어 준다
