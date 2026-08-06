@@ -109,8 +109,9 @@ export class Markers {
     const t = game.target, e = game.earth
     const nAlive = game.aliveTargets
     const suffix = game.targets.length > 1 ? ` (남은 요새 ${nAlive})` : ''
-    this.setLabel('target', `◎ 목표  ${t.name}${suffix}`, '#a5f3fc', 'rgba(8,47,73,.92)')
-    this.setLabel('earth', '◉ 지구 · 발사대 (핵 직격 = 즉사)', '#bfdbfe', 'rgba(23,37,84,.92)')
+    const thp = t.hp ?? 3, tmax = t.hpMax ?? 3
+    this.setLabel('target', `☠ 표적  ${t.name} · 체력 ${thp}/${tmax}${suffix}`, '#ffc9cf', 'rgba(58,10,17,.92)')
+    this.setLabel('earth', `◉ 지구 · 발사대 (체력 ${game.earth.hp ?? 3}/${game.earth.hpMax ?? 3})`, '#bfdbfe', 'rgba(23,37,84,.92)')
 
     const tr = radiusOfRender(t), er = radiusOfRender(e)
     this.place(this.targetLabel, this.targetArrow, t, rig, tr)

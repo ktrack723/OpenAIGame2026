@@ -8,6 +8,8 @@ import { Explosions } from './Explosions.js'
 import { AimHelper, PRED_TONE } from './AimHelper.js'
 import { Orbits } from './Orbits.js'
 import { LaserView } from './LaserView.js'
+import { Belt } from './Belt.js'
+import { Icons } from './Icons.js'
 
 // 바이옴별 재질 — 색은 이전과 동일, 거칠기/발광만 3D용으로 추가
 const MATS = {
@@ -138,6 +140,8 @@ export class SceneView {
     this.boom = new Explosions(this.parts, this.rig, (v, c) => this.flash(v, c))
     this.orbits = new Orbits(this.scene)
     this.laserView = new LaserView(this.scene, this.rig)
+    this.belt = new Belt(this.scene)          // 성계 쿠션 — 여기서 튕긴다
+    this.icons = new Icons(this.scene)        // 카테고리 배지 + 적대(해골) 표식
 
     // 발사대 마커 — 미사일이 지구가 아니라 여기서 나간다는 걸 못 박는다
     this.pad = new THREE.Mesh(new THREE.RingGeometry(0.62, 1, 24), new THREE.MeshBasicMaterial({
@@ -238,6 +242,8 @@ export class SceneView {
     this.rig.update(dt)
     this.boom.drain(this.game)
     this.syncBodies(dt)
+    this.belt.update(this.game.beltR, dt, this.rig.worldPerPx)
+    this.icons.update(this.game, this.rig, dt, (b) => this.renderRadius(b))
     this.laserView.update(this.game, dt)
     this.orbits.sync(this.game.bodies, this.game.aMax,
       (b) => b.isEarth ? 0x60a5fa : b.isTarget ? 0x22d3ee : colorOf(b.type))
@@ -283,6 +289,7 @@ export class SceneView {
     for (const o of [fx.mesh, fx.halo, fx.ring, fx.trueRing]) {
       this.scene.remove(o); o.material.dispose()
     }
+    if (fx.hpArc) { this.scene.remove(fx.hpArc); fx.hpArc.geometry.dispose(); fx.hpArc.material.dispose() }
     if (fx.mod) {
       for (const m of fx.mod.grp.children) { m.geometry.dispose(); m.material.dispose() }
       this.scene.remove(fx.mod.grp)
@@ -324,8 +331,17 @@ export class SceneView {
       color: 0xffffff, transparent: true, opacity: 0.32, depthWrite: false, depthTest: false, side: THREE.DoubleSide,
     }))
     trueRing.renderOrder = 13
-    this.scene.add(mesh, halo, ring, trueRing)
-    const fx = { mesh, halo, ring, trueRing, type: b.type, spin: 0.15 + Math.random() * 0.5, role: null }
+    // ── 체력 게이지 ──
+    // 공은 이제 세 번 박아야 부서진다. "몇 번 남았나"가 판을 읽는 1순위 정보라
+    // 공 둘레에 남은 체력만큼 호(arc)를 그린다. 3/3이면 아예 안 그린다 —
+    // 스무 개가 전부 완전한 링을 두르면 그게 곧 노이즈이므로, 다친 공만 표시한다.
+    const hpArc = new THREE.Mesh(new THREE.RingGeometry(1.30, 1.46, 40, 1, Math.PI / 2, Math.PI * 2), new THREE.MeshBasicMaterial({
+      color: 0x4ade80, transparent: true, opacity: 0.95, depthWrite: false, depthTest: false, side: THREE.DoubleSide,
+    }))
+    hpArc.renderOrder = 15
+    hpArc.visible = false
+    this.scene.add(mesh, halo, ring, trueRing, hpArc)
+    const fx = { mesh, halo, ring, trueRing, hpArc, hpKey: -1, type: b.type, spin: 0.15 + Math.random() * 0.5, role: null }
     this.bodyFx.set(b.id, fx)
     if (b.role) this.attachRoleFx(fx, b)
     if (b.mods && b.mods.length) this.attachModFx(fx, b, b.mods[0])
@@ -493,6 +509,24 @@ export class SceneView {
         fx.trueRing.position.set(b.pos.x, b.pos.y, 0.2)
         fx.trueRing.scale.setScalar(hitRadiusOf(b))
       }
+
+      // ── 체력 호 — 다친 공만. 남은 칸이 줄면 호가 짧아지고 색이 식는다 ──
+      const hpMax = b.hpMax ?? CFG.PLANET_HP, hp = b.hp ?? hpMax
+      const hurt = solid && hp < hpMax
+      fx.hpArc.visible = hurt
+      if (hurt) {
+        if (fx.hpKey !== hp) {   // 호 길이는 정점을 다시 굽는다(체력이 바뀔 때만)
+          fx.hpKey = hp
+          fx.hpArc.geometry.dispose()
+          const frac = Math.max(0, hp) / hpMax
+          fx.hpArc.geometry = new THREE.RingGeometry(1.30, 1.46, 40, 1, Math.PI / 2, Math.PI * 2 * frac)
+          fx.hpArc.material.color.setHex(hp <= 1 ? 0xff5c6a : 0xfbbf24)
+        }
+        fx.hpArc.position.set(b.pos.x, b.pos.y, 5)
+        fx.hpArc.scale.setScalar(r)
+        // 방금 부딪힌 공은 잠깐 밝게 — 어느 공이 맞았는지 눈이 따라간다
+        fx.hpArc.material.opacity = b.bumpFlash > 0 ? 1 : 0.8
+      }
     }
   }
 
@@ -522,7 +556,10 @@ export class SceneView {
         this.missileFx.set(m, fx)
       }
       if (!m.alive) { fx.mesh.visible = false; fx.glow.visible = false; continue }
-      const r = Math.max(4, 11 * this.rig.worldPerPx)   // 화면상 크기 고정 — 줌아웃해도 형상이 읽히게
+      // 화면상 크기 고정 — 줌아웃해도 형상이 읽히게. 다만 예전(11px 기준)에는
+      // 미사일이 행성만 하게 그려져서 판을 가렸다. **그림만** 줄인다:
+      // 명중 반경(hitRadiusOf)도 근접 신관(MISSILE_HIT_R)도 그대로다.
+      const r = Math.max(2.4, 6.5 * this.rig.worldPerPx)
       const v = Math.hypot(m.vel.x, m.vel.y) || 1
       fx.mesh.visible = true; fx.glow.visible = true
       fx.mesh.position.set(m.pos.x, m.pos.y, r)
@@ -531,7 +568,7 @@ export class SceneView {
       // 배기 불꽃은 꼬리에 — 노즈가 아니라 엔진에서 나와야 방향이 읽힌다
       const tx = m.pos.x - m.vel.x / v * r * 1.1, ty = m.pos.y - m.vel.y / v * r * 1.1
       fx.glow.position.set(tx, ty, r)
-      fx.glow.scale.setScalar(r * 3.2)
+      fx.glow.scale.setScalar(r * 2.8)
       const travelled = Math.hypot(m.pos.x - fx.lx, m.pos.y - fx.ly)
       this.parts.thrust(fx.lx, fx.ly, tx, ty, -m.vel.x / v, -m.vel.y / v,
         Math.min(10, 2 + travelled / Math.max(1, 5 * this.rig.worldPerPx)))

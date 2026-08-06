@@ -159,6 +159,29 @@ button:disabled{opacity:.32;cursor:not-allowed;box-shadow:none}
 .zoomv{color:var(--cy);font-size:10.5px;font-weight:700;font-variant-numeric:tabular-nums;font-family:var(--mono)}
 pre{white-space:pre-wrap;line-height:1.55;color:#9fd0c4;margin:0;font-size:11px;font-family:var(--mono)}
 
+/* ── 천체 정보창 (호버/터치) ── */
+.inspect{position:fixed;z-index:5;pointer-events:none;width:min(266px,calc(100vw - 24px));
+  padding:9px 11px 8px;background:rgba(4,10,18,.94);backdrop-filter:blur(10px);
+  border:1px solid var(--line);box-shadow:0 14px 40px #000b,inset 0 0 40px #0a1c2a55;
+  clip-path:polygon(0 9px,9px 0,100% 0,100% calc(100% - 9px),calc(100% - 9px) 100%,0 100%)}
+.inspect.pinned{border-color:var(--cy);box-shadow:0 14px 40px #000b,0 0 22px #4fd6f744}
+.ihead{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px}
+.ihead b{color:#eaf7ff;font-size:13px;font-weight:800;font-family:var(--mono)}
+.iicon{font-size:15px;line-height:1}
+.ibadge{padding:1px 5px;font-size:9px;font-weight:800;letter-spacing:.08em;
+  background:#12303f;color:#a5f3fc;border:1px solid #1e5a72}
+.ibadge.foe{background:#3a0a11;color:#ffb3bb;border-color:#8c1f28}
+.ibadge.earth{background:#0d2148;color:#bfdbfe;border-color:#274b8c}
+.isub{margin-bottom:6px;font-size:10.5px;line-height:1.45}
+.irow{display:flex;justify-content:space-between;gap:10px;font-size:11px;line-height:1.7;
+  font-family:var(--mono);border-top:1px solid #0d1c28}
+.irow span{color:var(--dim)}
+.irow b{color:#dbeafe;font-weight:700;font-variant-numeric:tabular-nums}
+.irow b.crit{color:var(--rd)}
+.irole{margin-top:5px;font-size:10px;line-height:1.45;font-weight:700}
+.ifoot{margin-top:6px;padding-top:5px;border-top:1px solid var(--line2);
+  color:var(--am);font-size:10px;line-height:1.45}
+
 /* ── 핵 섬광 ── */
 .nukeflash{position:fixed;inset:0;background:#fff8e6;opacity:0;pointer-events:none;z-index:2;
   mix-blend-mode:screen;will-change:opacity}

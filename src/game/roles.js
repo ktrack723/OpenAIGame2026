@@ -13,9 +13,9 @@ export const ROLES = {
     aim: '장갑 — 밀리는 양이 15%다',
   },
   battery: {
-    label: '요새', icon: '✦', color: 0xf43f5e,
+    label: '요새', icon: '☠', color: 0xf43f5e,
     dvScale: 1,
-    brief: '★ 이게 표적이다. 맞으면 반격 미사일을 되쏜다 — 전부 없애야 판이 끝난다.',
+    brief: '☠ 이게 표적이다(해골 표식). 체력 3 — 세 번 처박아야 부서진다. 맞으면 반격 미사일을 되쏜다.',
     aim: '요새 — 때린 쪽으로 반격 미사일이 튀어나온다 (붉은 화살표)',
   },
   void: {

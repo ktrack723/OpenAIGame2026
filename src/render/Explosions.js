@@ -32,12 +32,9 @@ export class Explosions {
       else if (e.kind === 'swing') {
         this.parts.shock(e.x, e.y, Math.max(24, (e.r ?? 10) * CFG.SWING_ZONE * 0.5), 0x67e8f9, 0.6)
         this.parts.burst(e.x, e.y, { n: 26, color: 0x67e8f9, speed: 110, size: 8, ttl: 0.7 })
-      } else if (e.kind === 'exile') {
-        this.parts.puff(e.x, e.y, { r0: 6, r1: 90, ttl: 1.2, color: 0x94a3b8, alpha: 0.8 })
-        this.parts.shock(e.x, e.y, 70, 0xcbd5e1, 0.9, { thin: true, to: 2.2 })
-        this.parts.burst(e.x, e.y, { n: 70, color: 0xcbd5e1, speed: 180, size: 12, ttl: 1.2 })
-        this.rig.hit(8)
-      } else if (e.kind === 'sun') {
+      } else if (e.kind === 'bump') this.bump(e)
+      else if (e.kind === 'belt') this.belt(e)
+      else if (e.kind === 'sun') {
         this.parts.burst(e.x, e.y, { n: 160, color: 0xffa53b, speed: 260, size: 16, ttl: 1.4 })
         this.parts.puff(e.x, e.y, { r0: 8, r1: 130, ttl: 1.0, color: 0xffb247 })
         this.parts.shock(e.x, e.y, 90, 0xfdba74, 0.9)
@@ -45,6 +42,48 @@ export class Explosions {
       }
     }
     q.length = 0
+  }
+
+  // ─── 당구 충돌 — 부서지지 않고 튕겼다 ────────────────────────
+  // 파괴(destroy)와 확실히 구분되어야 한다: 불꽃은 짧고 희며, 화면을
+  // 흔들긴 해도 태우지는 않는다. "쳤다, 아직 살아 있다"가 읽혀야 한다.
+  bump(e) {
+    const P = this.parts
+    const R = Math.max(26, (e.r ?? 20) * 1.5)
+    const k = Math.min(1, (e.v ?? 20) / 120)          // 상대속도 = 충돌 세기
+    if (e.soft) {   // 스치듯 만난 접촉 — 먼지만 인다
+      P.shock(e.x, e.y, R * 0.8, 0xcbd5e1, 0.35, { thin: true, from: 0.2, to: 1.4, alpha: 0.5 })
+      P.burst(e.x, e.y, { n: 16, color: 0xcbd5e1, speed: 90, size: 7, ttl: 0.4 })
+      return
+    }
+    P.puff(e.x, e.y, { r0: R * 0.2, r1: R * 0.9, ttl: 0.22, color: 0xffffff, alpha: 0.9 })
+    P.shock(e.x, e.y, R, 0xffffff, 0.45, { thin: true, from: 0.1, to: 2.6, alpha: 0.9 })
+    P.shock(e.x, e.y, R, 0xfde68a, 0.8 + 0.5 * k, { from: 0.15, to: 2.0, delay: 0.05 })
+    P.spikes(e.x, e.y, { n: 10 + Math.round(14 * k), color: 0xfff3cd, speed: 500 + 900 * k, size: 6, ttl: 0.35 })
+    P.burst(e.x, e.y, { n: 70 + Math.round(160 * k), color: 0xffd8a8, speed: 240 + 420 * k, size: 11, ttl: 0.9 + 0.6 * k })
+    P.burst(e.x, e.y, { n: 40, color: 0xffffff, speed: 420 + 500 * k, size: 7, ttl: 0.45 })
+    this.rig.hit(8 + 22 * k)
+    this.flash(0.10 + 0.20 * k, '#fff6df')
+  }
+
+  // ─── 카이퍼 벨트 충돌 — 당구대 쿠션 ──────────────────────────
+  // 얼음 벽에 박아 파편이 튀고, 공은 속력 그대로 반사각으로 되돌아간다.
+  // 반사 방향이 보이도록 법선 반대쪽으로 파편을 뿜는다.
+  belt(e) {
+    const P = this.parts
+    const k = Math.min(1, (e.v ?? 40) / 160)
+    const R = Math.max(e.missile ? 30 : 60, (e.r ?? 20) * 2.2)
+    const inward = Math.atan2(-(e.ny ?? 0), -(e.nx ?? 1))    // 성계 안쪽
+    P.puff(e.x, e.y, { r0: R * 0.15, r1: R * 0.8, ttl: 0.3, color: 0xe0f2fe, alpha: 0.95 })
+    P.shock(e.x, e.y, R, 0xffffff, 0.5, { thin: true, from: 0.08, to: 2.8, alpha: 1 })
+    P.shock(e.x, e.y, R, 0x7dd3fc, 0.9 + 0.5 * k, { from: 0.12, to: 2.2, delay: 0.06 })
+    // 얼음 파편은 벽에서 안쪽으로 — 되돌아오는 방향이 그대로 보인다
+    P.burst(e.x, e.y, { n: 90 + Math.round(220 * k), color: 0xbae6fd, speed: 300 + 520 * k, size: 12, ttl: 1.2, spread: 1.5, dir: inward })
+    P.burst(e.x, e.y, { n: 50, color: 0xffffff, speed: 700, size: 8, ttl: 0.5 })
+    P.spikes(e.x, e.y, { n: 12, color: 0xe0f2fe, speed: 900 + 700 * k, size: 8, ttl: 0.5 })
+    this.rig.hit(e.missile ? 6 : 14 + 20 * k)
+    this.flash(e.missile ? 0.08 : 0.18 + 0.25 * k, '#e8f7ff')
+    if (!e.missile) this.rig.focus(e.x, e.y, R * 3, 1.6)
   }
 
   // ─── 워프인 — 조르그 행성계에서 텔레포트 ─────────────────────
