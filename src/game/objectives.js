@@ -5,7 +5,7 @@
 // 안테마다 "어떤 방법으로 없앨 것인가"를 지정해서, 같은 판이 매번 다른 문제가 되게 한다.
 
 // cause: 'collision' | 'absorb' | 'sun' | 'exile' | 'blast'
-const CAUSE_KO = {
+export const CAUSE_KO = {
   collision: '충돌', absorb: '특이점 흡수', sun: '항성 처분',
   exile: '성계 추방', blast: '유폭',
 }

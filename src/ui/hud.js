@@ -1,12 +1,12 @@
 import { CFG, VIS } from '../game/config.js'
 import { ROLES } from '../game/roles.js'
+import { bearing, toDeg180 } from '../core/angle.js'
 
 const hex = (n) => '#' + n.toString(16).padStart(6, '0')
 
 const clamp0 = (n) => Math.max(0, n)
 const bar = (full, total, on, off) => on.repeat(clamp0(Math.min(full, total))) + off.repeat(clamp0(total - clamp0(Math.min(full, total))))
-const degOf = (rad) => ((rad * 180 / Math.PI + 180) % 360 + 360) % 360 - 180
-const dirOf = (x, y) => (((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360).toFixed(0)
+const dirOf = (x, y) => bearing(x, y).toFixed(0)
 
 export function makeHud(game, view) {
   const el = document.createElement('div')
@@ -34,6 +34,7 @@ export function makeHud(game, view) {
   <span class="vlabel">접촉각</span>
   <button id="findPrev" class="ghost" title="닿는 각도를 반시계로 탐색">◀ 이전</button>
   <button id="findNext" class="ghost" title="닿는 각도를 시계로 탐색">다음 ▶</button>
+  <button id="findIc" class="ghost intercept" hidden title="반격탄과 만나는 각도를 찾는다">✚ 요격각</button>
   <span class="findnote">지구·파편은 건너뛴다</span>
 </div>
 <div class="grid">
@@ -75,7 +76,7 @@ export function makeHud(game, view) {
     yieldV.textContent = `${yieldIn.value} Mt`
   }
   el._setSliders = () => {
-    angle.value = degOf(game.aim).toFixed(1); power.value = game.power; yieldIn.value = game.yieldMt
+    angle.value = toDeg180(game.aim).toFixed(1); power.value = game.power; yieldIn.value = game.yieldMt
     syncLabels()
   }
   el._setSliders()
@@ -87,6 +88,7 @@ export function makeHud(game, view) {
   qs('#fire').onclick = () => game.fire()
   qs('#findNext').onclick = () => { game.scanContact(1); el._setSliders() }
   qs('#findPrev').onclick = () => { game.scanContact(-1); el._setSliders() }
+  qs('#findIc').onclick = () => { game.findIntercept(); el._setSliders() }
   qs('#next').onclick = () => game.nextStage()
   qs('#new').onclick = () => { location.href = location.pathname + '?seed=' + ((Math.random() * 1e9) | 0) }
   qs('#fold').onclick = () => {
@@ -140,6 +142,7 @@ function predLine(game, p) {
     case 'shield': return ['warn', `${h.name} 방어막 — 직격 무효. 중립 행성을 큐볼로 써라`]
     case 'void': return ['warn', `${h.name}${badge} — ${role.aim}`]
     case 'volatile': return ['hit', `${h.name}${badge} — ${role.aim} (반경 ${h.volatileR.toFixed(0)} GU)`]
+    case 'intercept': return ['hit', `공중 요격 — ${h.yld}Mt 동시 기폭 (폭풍 반경 ${h.blast.toFixed(0)} GU)`]
     case 'debris': return ['warn', '파편에 조기 폭발']
     case 'sun': return ['warn', '태양 소멸 — 근일점이 너무 낮다']
     case 'lost': return ['warn', '유실 — 성계 이탈 (파워 과다)']
@@ -172,10 +175,12 @@ export function updateHud(el, game) {
   // 조준할 수 없는 동안엔 조준 UI를 잠근다.
   // (잠그지 않으면 비행 중 슬라이더를 만졌을 때 아무 반응이 없다가
   //  미사일이 끝나는 순간 조준각이 엉뚱한 곳으로 튀어 있다 — 계측으로 확인한 버그)
+  const foeUp = game.missiles.some(m => m.alive)
+  if (el._foeUp !== foeUp) { el._foeUp = foeUp; el.querySelector('#findIc').hidden = !foeUp }
   const aimable = game.canAim
   if (el._aimable !== aimable) {
     el._aimable = aimable
-    for (const id of ['#angle', '#power', '#yield', '#fire', '#findPrev', '#findNext'])
+    for (const id of ['#angle', '#power', '#yield', '#fire', '#findPrev', '#findNext', '#findIc'])
       el.querySelector(id).disabled = !aimable
     el.classList.toggle('locked', !aimable)
   }
@@ -198,7 +203,7 @@ export function updateHud(el, game) {
   const dist = Math.hypot(dx, dy)
   el.querySelector('#goalHead').textContent = `안테 ${game.ante} 작전 — ${g.title}`
   el.querySelector('#objName').textContent =
-    `${g.label()}   ▸ ◎ ${t.name} · 거리 ${dist.toFixed(0)} GU · 방위 ${(((Math.atan2(dy, dx) * 180 / Math.PI) + 360) % 360).toFixed(0)}°`
+    `${g.label()}   ▸ ◎ ${t.name} · 거리 ${dist.toFixed(0)} GU · 방위 ${dirOf(dx, dy)}°`
   el.querySelector('#goalFill').style.width = `${Math.min(100, g.done / g.need * 100).toFixed(0)}%`
   el.querySelector('#goalRule').textContent = g.rule
 

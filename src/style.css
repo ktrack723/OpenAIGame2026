@@ -70,6 +70,8 @@ button.ghost:hover,button.ghost:focus-visible{background:#334155;color:#f8fafc}
 .findrow{display:flex;align-items:center;gap:6px;margin:8px 0 0;flex-wrap:wrap}
 .findnote{color:#64748b;font-size:11px}
 .findrow button{padding:6px 10px;font-size:12px}
+.findrow button.intercept{border-color:#be185d;color:#fbcfe8;background:#4a044e}
+.findrow button.intercept:hover,.findrow button.intercept:focus-visible{background:#831843;color:#fff}
 
 /* 조준 불가 상태 — 잠겼다는 걸 눈으로 보여준다 */
 .hud.locked .grid,.hud.locked .findrow{opacity:.45}
