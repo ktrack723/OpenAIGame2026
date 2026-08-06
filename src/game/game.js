@@ -193,7 +193,7 @@ export class Game {
       return
     }
 
-    if (this.goal.shielded && this.isTarget(b)) {   // 캐롬 스테이지: 목표엔 직격이 안 통한다
+    if (b.role === 'shield') {   // 방어막 — 임펄스도 폭풍도 없이 통째로 삼킨다
       this.addFx({ kind: 'nuke', x: point.x, y: point.y, yld, r: b.radius, shield: true })
       b.hitFlash = 0.6
       this.message = `${b.name} 방어막이 핵을 삼켰다 — 직격은 무효다`
@@ -268,7 +268,8 @@ export class Game {
       hole.mu = Math.min(CFG.VOID_MU_MAX, hole.mu + prey.mu * CFG.VOID_GROW)
       hole.radius = radiusOf(hole.mu)
     }
-    this.message = `${prey.name}이(가) ${hole.name}에 삼켜졌다`
+    this.message = `${prey.name}이(가) ${hole.name}에 삼켜졌다 — 특이점 질량 ${hole.mu.toFixed(0)}`
+      + ` (반경 ${hitRadiusOf(hole).toFixed(0)}, 중력 ×${(hole.mu / 900).toFixed(2)})`
     this.killBody(prey, 'absorb', { fx: false, shatterIt: false })
   }
 
@@ -462,7 +463,7 @@ export class Game {
   // 충돌 한 건의 "큐 정보" — 폭심, 임펄스 방향, 타격 직후 공의 진로
   impactInfo(o, point, simEarth) {
     const isT = this.isTarget(o)
-    const shielded = this.goal.shielded && isT
+    const shielded = o.role === 'shield'
     let outcome = 'neutral'
     if (o.type === 'debris') outcome = 'debris'
     else if (o.isEarth) outcome = 'earth'

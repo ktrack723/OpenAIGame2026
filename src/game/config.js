@@ -1,6 +1,6 @@
 // 기획서 부록 A — 밸런스 상수표. 모든 숫자는 이 파일에서만 튜닝한다.
 export const CFG = {
-  DT: 1 / 120, EPS: 3, MU_STAR: 3e5, R_STAR: 72,
+  DT: 1 / 120, EPS: 3, MU_STAR: 3e5, R_STAR: 105,
   // κ = 미사일이 받는 행성 중력 배율(§4.3). κ★ = 태양 배율.
   // 기획서 원본은 κ=60 / 태양 1.0이었으나 계측 결과 인카운터 평균 최대굴절이
   // 2.2°(문턱 25°)에 그쳐 스윙바이가 사실상 발생하지 않았다(§18 R1).
@@ -19,14 +19,15 @@ export const CFG = {
   SWING_ZONE: 6, SWING_DEG: 25, NEAR_MISS: 2.8, CAPTURE_WRAP: 0.75,   // §5.2
   // 당구공 반경 배율. 이 게임에는 이제 **원이 하나뿐이다**:
   // 그리는 원 = 미사일이 맞는 원 = 행성끼리 부딪히는 원.
-  // 1.6이던 값을 3.0으로 올린 건 계측 결과다(§18 R2): 궤도 간격이 240 GU인데
-  // 공 반경이 11 GU면 밀어서 만나게 할 확률이 600초에 0%였다. 공을 키워
-  // 간격 대비 3:1까지 좁혀야 "밀어서 맞히는" 게임이 성립한다.
+  // 1.6이던 값을 올린 건 계측 결과다(§18 R2): 궤도 간격이 240 GU인데 공 반경이
+  // 11 GU면 밀어서 만나게 할 확률이 600초에 0%였다. 다만 3.0은 태양보다 공이
+  // 커 보여서 2.2로 내리고, 대신 태양 반경을 72→105로 키워 비율을 잡았다.
+  // (공 지름이 태양 지름의 절반 이하가 되게 — VIS.MIN_PLANET_PX도 같이 내렸다.)
   // 물리(중력·힐 반경·스윙바이 존)는 여전히 b.radius를 쓰므로 세계는 그대로다.
-  HIT_R: 3.0,
+  HIT_R: 2.2,
   A_MIN: 260,
   EARTH_MU: 300, EARTH_R: 11,
-  SUN_BONUS_R: 215,                   // 태양 가속 보너스(§9.1) — R★의 3배 유지
+  SUN_BONUS_R: 315,                   // 태양 가속 보너스(§9.1) — R★의 3배 유지
   ROCKETS: 4,
   // 작전 시한 — 인게임 시간 기준(조준 중엔 안 흐르고, 관측 4×/미사일 비행 중에만 흐른다).
   // 당구는 큐를 놓은 뒤가 본편이라, 전탄 소진 후에는 1×로 자동으로 흐른다.
@@ -57,7 +58,9 @@ export const hitRadiusOf = (b) => b.type === 'debris' ? b.radius : b.radius * CF
 // 행성끼리는 "보이는 공"이 닿는 순간 터진다 — 판정과 그림이 같은 원이라
 // "닿았는데 안 터졌다"가 원천적으로 없다.
 export const contactDist = (a, b) => hitRadiusOf(a) + hitRadiusOf(b)
-export const aMaxOf = (A) => 1150 + 90 * Math.min(A, 6)   // §7.2
+// 성계 반경 — 태양을 키우고 공을 줄인 만큼 판도 넓혔다. 궤도 사이가 벌어져
+// 화면이 덜 빽빽해지고, 연쇄 충돌 목표가 요구하는 공 수도 들어간다.
+export const aMaxOf = (A) => 1400 + 110 * Math.min(A, 6)   // §7.2
 // 핵 임펄스 — 작약량과 표적 질량만의 함수. 이 한 줄이 게임의 조준 규칙 전부다.
 export const nukeDv = (yld, mu) => CFG.NUKE_IMPULSE * yld / mu
 export const blastRadius = (yld) => CFG.BLAST_R * yld
@@ -68,13 +71,13 @@ export const blastRadius = (yld) => CFG.BLAST_R * yld
 // SOI 확대율 κ^(2/5)≈5.1× 가 근거) + 화면 최소 크기 바닥값 + 3D 구체 셰이딩.
 export const VIS = {
   FOV: 42,                    // 탑다운 원근 카메라 — 시점은 위에서, 입체감은 유지 (§14.1)
-  MIN_PLANET_PX: 30,          // 행성 최소 화면 지름(px). 판정 반경은 그대로, 보이기만 키운다
-  MIN_DEBRIS_PX: 9,
-  MAX_INFLATE: 2.2,           // 최소 크기 바닥값이 실제 반경을 넘길 수 있는 최대 배율
+  MIN_PLANET_PX: 20,          // 행성 최소 화면 지름(px). 판정 반경은 그대로, 보이기만 키운다
+  MIN_DEBRIS_PX: 8,
+  MAX_INFLATE: 1.6,           // 최소 크기 바닥값이 실제 반경을 넘길 수 있는 최대 배율
   TRUE_R_HINT: 1.05,          // 최소크기 바닥값으로 부풀었을 때만 진짜 공 반경을 얇은 링으로 병기
   ZOOM_MIN: 0.5, ZOOM_MAX: 10, ZOOM_STEP: 1.4,
   FIT_MARGIN: 1.25,           // 자동 프레이밍 여백
   FULL_FIT: 1.15,             // §14.1 성계 전체 뷰 = a_max × 1.15
   SHAKE_MAX: 46,              // 명중 스크린셰이크 최대 진폭(GU) — 핵은 과장한다
-  PARTICLES: 9000,
+  PARTICLES: 16000,
 }
