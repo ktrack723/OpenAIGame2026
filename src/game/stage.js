@@ -7,7 +7,7 @@ import { makeGoal, pickGoalSpec } from './objectives.js'
 const NAMES = ['Vesta', 'Bront', 'Mir', 'Kappa', 'Oort', 'Faro', 'Nix', 'Teph', 'Ruun', 'Golda']
 
 // §7.2 안테별 파라미터 테이블
-export function anteParams(A) {
+function anteParams(A) {
   return {
     N: Math.min(8, 3 + Math.floor((A + 1) / 2)),
     muHi: 250 + 60 * A,

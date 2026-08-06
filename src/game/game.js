@@ -1,12 +1,15 @@
 import { fromAngle, len } from '../core/vector.js'
 import { Rng } from '../core/random.js'
-import { CFG, blastRadius, hitRadiusOf, radiusOf } from './config.js'
+import { CFG, hitRadiusOf, radiusOf } from './config.js'
 import {
-  applyNuke, blastWave, cloneBodies, resolveBodyPairs, segCircleEntry, segHitsCircle,
+  applyNuke, blastWave, resolveBodyPairs, segCircleEntry, segHitsCircle,
   shatter, stepBodies, stepMissile, updateEncounters,
 } from './physics.js'
-import { effDv, roleOf, volatileRadius } from './roles.js'
+import { roleOf, volatileRadius } from './roles.js'
+import { CAUSE_KO } from './objectives.js'
+import { bearing } from '../core/angle.js'
 import { makeStage } from './stage.js'
+import * as Aim from './aim.js'
 
 // 파괴 사유별 점수 (목표 / 중립)
 const KILL_SCORE = {
@@ -16,11 +19,6 @@ const KILL_SCORE = {
   exile: [90, 25],
   blast: [80, 25],
 }
-const CAUSE_KO = {
-  collision: '충돌 파괴', absorb: '특이점 흡수', sun: '항성 처분',
-  exile: '성계 추방', blast: '유폭',
-}
-
 export class Game {
   constructor(seed) {
     this.seed = seed >>> 0
@@ -76,7 +74,7 @@ export class Game {
 
   fire() {
     if (this.won || this.lost || this.rockets <= 0 || !this.earth.alive) return
-    if (this.missiles.some(m => m.alive)) return
+    if (this.missiles.some(m => m.alive && !m.hostile)) return   // 반격탄이 날아오는 중엔 쏠 수 있다(요격)
     const p = this.launchPos(), v = fromAngle(this.aim, this.power)
     this.missiles.push({
       pos: { ...p }, vel: v, yld: this.yieldMt, alive: true, chain: 0, nearMiss: 0, age: 0,
@@ -124,11 +122,43 @@ export class Game {
       if (m.alive) this.missileBounds(m)
       if (!m.alive) this.finishShot(m)
     }
+    this.missilePairs()
     resolveBodyPairs(this.bodies, this)
     this.bodyBounds()
     this.time += dt
     this.warnTime()
     this.checkEnd()
+  }
+
+  // ─── 공중 요격 — 탄두끼리 만나면 그 자리에서 동시 기폭 ────────
+  // 속도가 30~50 GU/s이고 스텝이 1/120초라 한 스텝 이동이 0.5 GU 미만이다.
+  // 터널링이 불가능하므로 점 거리 판정으로 충분하다.
+  missilePairs() {
+    const live = this.missiles.filter(m => m.alive)
+    for (let i = 0; i < live.length; i++) {
+      for (let j = i + 1; j < live.length; j++) {
+        const a = live[i], b = live[j]
+        if (!a.alive || !b.alive) continue
+        if (Math.hypot(a.pos.x - b.pos.x, a.pos.y - b.pos.y) > 2 * CFG.MISSILE_HIT_R) continue
+        this.intercept(a, b)
+        return
+      }
+    }
+  }
+
+  intercept(a, b) {
+    a.alive = false; b.alive = false
+    a.hit = 'missile'; b.hit = 'missile'   // 빗나감 태그를 붙이지 않기 위한 표시
+    const x = (a.pos.x + b.pos.x) / 2, y = (a.pos.y + b.pos.y) / 2
+    const yld = a.yld + b.yld               // 작약량은 합쳐진다 — 폭풍이 그만큼 넓다
+    const wave = blastWave(this.bodies, x, y, yld, null)
+    this.addFx({ kind: 'nuke', x, y, yld, r: CFG.MISSILE_HIT_R * 2, wave: wave.radius, intercept: true })
+    const gained = (a.hostile !== b.hostile) ? CFG.INTERCEPT_SCORE : 0   // 반격탄을 잡았을 때만 가산
+    this.score += gained
+    this.message = `공중 요격 — ${a.yld}+${b.yld}Mt 동시 기폭 · 폭풍 반경 ${wave.radius.toFixed(0)} GU`
+      + (gained ? ` (+${gained})` : '')
+    this.setToast('공중 요격 — 두 탄두가 함께 터졌다')
+    if (wave.pushed.some(p => p.body.isEarth)) this.setToast('경고 — 요격 폭풍이 지구를 밀었다')
   }
 
   // 시한이 줄고 있다는 걸 토스트로 못 박는다 (남은 60/30/10초)
@@ -216,7 +246,7 @@ export class Game {
     const M = 1 + 0.75 * m.chain + 0.25 * m.nearMiss + (m.minSunDist < CFG.SUN_BONUS_R ? 0.5 : 0)
     const gained = m.hostile ? 0 : Math.round(8 * M)
     this.score += gained; this.chainLast = m.chain
-    this.message = `${b.name} 타격 — Δv ${push.dv.toFixed(1)} · 방위 ${degOf(push.dx, push.dy)}°`
+    this.message = `${b.name} 타격 — Δv ${push.dv.toFixed(1)} · 방위 ${bearing(push.dx, push.dy).toFixed(0)}°`
       + (b.role === 'armor' ? ' (장갑에 막혀 거의 안 밀렸다)' : gained ? ` (+${gained})` : '')
     // 폭풍이 지구를 정통으로 훑었다면 경고 — 지구가 밀려 태양에 빠지는 사고가 실제로 난다
     if (wave.pushed.some(p => p.body.isEarth)) this.setToast('경고 — 폭풍이 지구를 밀었다')
@@ -413,145 +443,13 @@ export class Game {
   setToast(text) { this.toast = text; this.toastT = 1.6 }
 
   get canAim() {
-    return !this.won && !this.lost && this.rockets > 0 && this.earth.alive && !this.missiles.some(m => m.alive)
+    return !this.won && !this.lost && this.rockets > 0 && this.earth.alive
+      && !this.missiles.some(m => m.alive && !m.hostile)
   }
 
-  // ─── 조준 보조 (§14.3 개정) ─────────────────────────────────
-  // "공을 쳐서 뭔 일이 날지"는 알려주지 않는다. 알려주는 건 딱 두 가지:
-  //   ① 핵이 어디에 닿는가 (= 어느 살을 치는가)
-  //   ② 그 결과 공이 어느 방향으로 얼마나 밀려나기 시작하는가
-  // 그 뒤 판이 어떻게 굴러갈지는 플레이어가 읽어야 한다.
-  predictPath() {
-    if (!this.canAim) return EMPTY_PRED
-    const key = `${this.aim.toFixed(5)}|${this.power}|${this.yieldMt}|${this.stageIdx}|${this.time.toFixed(3)}|${this.rockets}|${this.bodies.length}`
-    if (this._predKey === key) return this._pred
-    const now = performance.now()
-    if (this._pred && now - (this._predAt || 0) < 45) return this._pred
-    this._predAt = now
-
-    const sim = cloneBodies(this.bodies)
-    const p = this.launchPos()
-    const m = { pos: { ...p }, vel: fromAngle(this.aim, this.power), age: 0, pathN: 0, path: [], minSunDist: Infinity, prev: { ...p } }
-    const pts = [{ ...p }]
-    let outcome = 'timeout', hit = null
-    const steps = Math.round(CFG.MISSILE_TTL / CFG.DT)
-    for (let i = 0; i < steps; i++) {
-      stepBodies(sim, CFG.DT)
-      stepMissile(m, sim, CFG.DT)
-      if (i % 6 === 0) pts.push({ x: m.pos.x, y: m.pos.y })
-      let bodyHit = null, point = null, bestD = Infinity
-      for (const o of sim) {
-        if (!o.alive) continue
-        const r = hitRadiusOf(o)
-        if (!segHitsCircle(m.prev.x, m.prev.y, m.pos.x, m.pos.y, o.pos.x, o.pos.y, r)) continue
-        const q = segCircleEntry(m.prev.x, m.prev.y, m.pos.x, m.pos.y, o.pos.x, o.pos.y, r)
-        const d = Math.hypot(q.x - m.prev.x, q.y - m.prev.y)
-        if (d < bestD) { bestD = d; bodyHit = o; point = q }
-      }
-      if (bodyHit) {
-        pts.push({ x: point.x, y: point.y })
-        hit = this.impactInfo(bodyHit, point, sim.find(o => o.isEarth))
-        outcome = hit.outcome
-        break
-      }
-      const r = Math.hypot(m.pos.x, m.pos.y)
-      if (r < CFG.R_STAR + 8) { outcome = 'sun'; pts.push({ x: m.pos.x, y: m.pos.y }); break }
-      if (r > 2.8 * this.aMax) { outcome = 'lost'; pts.push({ x: m.pos.x, y: m.pos.y }); break }
-    }
-    this._predKey = key
-    this._pred = { pts, outcome, hit }
-    return this._pred
-  }
-
-  // ─── 접촉각 탐색 (§14.3) ────────────────────────────────────
-  // 계측 결과 360° 중 뭔가에 닿는 각도가 99칸뿐이고, 그중 67칸이 지구였다.
-  // 즉 슬라이더를 돌리는 시간의 대부분이 "여긴 아님"을 확인하는 데 쓰인다.
-  // 기획 의도가 "어느 각도에서 칠 수 있는지는 알려준다"이므로, 그 확인을
-  // 버튼 한 번으로 대신한다. **어느 공을 어느 살로 칠지는 여전히 플레이어 몫**이다.
-  // 거친 적분(dt 1/40)으로 훑고, 찾은 각도는 다음 프레임에 정식 예측이 확정한다.
-  // 한 번 누를 때마다 "다음 선택지"로 간다 — 지금 물고 있는 구간을 먼저 빠져나온
-  // 다음에 찾는다. 같은 구간 안에서의 미세 조정은 방향키(±0.5~2°)가 맡는다.
-  scanContact(dir = 1) {
-    if (!this.canAim) return false
-    const step = dir * Math.PI / 180
-    const ok = (h) => h && h !== 'earth' && h !== 'debris'
-    let i = 1
-    if (ok(this.coarseContact(this.aim))) {          // 이미 맞고 있으면 그 구간을 통과
-      while (i <= 360 && ok(this.coarseContact(this.aim + step * i))) i++
-    }
-    for (; i <= 360; i++) {
-      const ang = this.aim + step * i
-      if (!ok(this.coarseContact(ang))) continue
-      this.aim = Math.atan2(Math.sin(ang), Math.cos(ang))
-      this._predKey = null; this._predAt = 0
-      return true
-    }
-    this.setToast('이 발사 속도로는 닿는 각도가 없다 — 속도를 바꿔라')
-    return false
-  }
-
-  // 거친 접촉 판정 — 무엇에 닿는지만 본다(폭심·임펄스는 계산하지 않는다)
-  coarseContact(ang) {
-    const sim = cloneBodies(this.bodies)
-    const dt = 1 / 40
-    const p = { x: this.earth.pos.x + Math.cos(ang) * CFG.LAUNCH_OFFSET, y: this.earth.pos.y + Math.sin(ang) * CFG.LAUNCH_OFFSET }
-    const m = { pos: { ...p }, vel: fromAngle(ang, this.power), age: 0, pathN: 0, path: [], minSunDist: Infinity, prev: { ...p } }
-    const steps = Math.round(CFG.MISSILE_TTL / dt)
-    for (let i = 0; i < steps; i++) {
-      stepBodies(sim, dt)
-      stepMissile(m, sim, dt)
-      for (const o of sim) {
-        if (!o.alive) continue
-        if (!segHitsCircle(m.prev.x, m.prev.y, m.pos.x, m.pos.y, o.pos.x, o.pos.y, hitRadiusOf(o))) continue
-        if (o.type === 'debris') return 'debris'
-        if (o.isEarth) return 'earth'
-        return 'body'
-      }
-      const r = Math.hypot(m.pos.x, m.pos.y)
-      if (r < CFG.R_STAR + 8 || r > 2.8 * this.aMax) return null
-    }
-    return null
-  }
-
-  // 충돌 한 건의 "큐 정보" — 폭심, 임펄스 방향, 타격 직후 공의 진로
-  impactInfo(o, point, simEarth) {
-    const isT = this.isTarget(o)
-    const shielded = o.role === 'shield'
-    let outcome = 'neutral'
-    if (o.type === 'debris') outcome = 'debris'
-    else if (o.isEarth) outcome = 'earth'
-    else if (o.role === 'void') outcome = 'void'
-    else if (shielded) outcome = 'shield'
-    else if (o.role === 'volatile') outcome = 'volatile'
-    else if (isT) outcome = 'target'
-    let dx = o.pos.x - point.x, dy = o.pos.y - point.y
-    const d = Math.hypot(dx, dy) || 1
-    dx /= d; dy /= d
-    const dv = o.type === 'debris' || o.isEarth || shielded || o.role === 'volatile'
-      ? 0 : effDv(o, this.yieldMt)
-    const R = blastRadius(this.yieldMt)
-    // 큰 탄두는 폭풍이 지구까지 닿는다 — 쏘기 전에 그것만은 알려준다
-    const earthInBlast = !!simEarth && !o.isEarth &&
-      Math.hypot(simEarth.pos.x - point.x, simEarth.pos.y - point.y) < R
-    // 때린 직후의 속도가 그 자리의 탈출속도를 넘는지 — "세게 치면 날아간다"는
-    // 큐의 세기에 대한 정보지 판의 결말이 아니다. 작약량을 고르는 유일한 근거.
-    const vAfter = Math.hypot(o.vel.x + dx * dv, o.vel.y + dy * dv)
-    const vEsc = Math.sqrt(2 * CFG.MU_STAR / Math.max(1, Math.hypot(o.pos.x, o.pos.y)))
-    return {
-      name: o.name, isEarth: o.isEarth, isTarget: isT, type: o.type, id: o.id,
-      outcome, x: o.pos.x, y: o.pos.y, r: hitRadiusOf(o),
-      px: point.x, py: point.y,            // 폭심 (공의 어느 살인가)
-      dx, dy, dv,                          // 임펄스 방향/크기
-      vx: o.vel.x + dx * dv, vy: o.vel.y + dy * dv,   // 타격 직후 공의 속도
-      blast: R, earthInBlast, vAfter, vEsc, willEject: dv > 0 && vAfter > vEsc,
-      role: o.role ?? null,
-      // 요새를 치면 임펄스의 정반대로 반격탄이 나온다 — 그것까지가 "이 한 방"의 정보다.
-      // 단 방어막에 삼켜지는 샷은 기폭 자체가 없으므로 반격도 없다(detonate가 먼저 리턴).
-      counter: o.role === 'battery' && (o.ammo ?? 0) > 0 && !shielded && !o.isEarth && o.type !== 'debris',
-      volatileR: o.role === 'volatile' ? volatileRadius(o) : 0,
-    }
-  }
+  // ─── 조준 보조 (aim.js) ─────────────────────────────────────
+  // 계산은 전부 aim.js에 있다. 호출부(HUD·렌더러)가 바뀌지 않게 얇게 감싼다.
+  predictPath() { return Aim.predictPath(this) }
+  scanContact(dir = 1) { return Aim.scanContact(this, dir) }
+  findIntercept() { return Aim.findIntercept(this) }
 }
-
-const EMPTY_PRED = { pts: [], outcome: null, hit: null }
-const degOf = (x, y) => (((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360).toFixed(0)
