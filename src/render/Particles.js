@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { VIS } from '../game/config.js'
 
-// §14.5 타격감 — 미사일 분사 트레일 / 명중 폭발 / 파괴 산개 / 충격파 링.
+// §14.5 타격감 — 미사일 분사 트레일 / 핵 기폭 / 행성 폭파 / 충격파 링.
 // 파티클은 월드 단위 크기라 줌에 따라 같이 커진다(원근 포인트 스케일).
 const VERT = `
 attribute float aSize;
@@ -27,6 +27,23 @@ void main() {
   float a = vAlpha * smoothstep(0.25, 0.0, r2);
   gl_FragColor = vec4(vColor * a, a);
 }`
+
+// 부드러운 방사형 텍스처 — 화구/섬광 스프라이트용
+function puffTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 160
+  const g = c.getContext('2d')
+  const grd = g.createRadialGradient(80, 80, 0, 80, 80, 80)
+  grd.addColorStop(0.00, 'rgba(255,255,255,1)')
+  grd.addColorStop(0.22, 'rgba(255,255,255,.85)')
+  grd.addColorStop(0.48, 'rgba(255,255,255,.32)')
+  grd.addColorStop(1.00, 'rgba(255,255,255,0)')
+  g.fillStyle = grd; g.fillRect(0, 0, 160, 160)
+  const t = new THREE.CanvasTexture(c)
+  t.colorSpace = THREE.SRGBColorSpace
+  return t
+}
+
+const easeOut = (u) => 1 - Math.pow(1 - u, 2.6)
 
 export class Particles {
   constructor(scene, max = VIS.PARTICLES) {
@@ -60,15 +77,27 @@ export class Particles {
     scene.add(this.points)
     this.geo = geo
 
-    // 충격파 링 풀 (§14.5 명중/파괴 연출)
+    // 충격파 링 풀 — 핵 하나가 링을 3~4장 쓴다
     this.rings = []
-    this.ringGeo = new THREE.RingGeometry(0.82, 1, 64)
-    for (let i = 0; i < 12; i++) {
-      const m = new THREE.Mesh(this.ringGeo, new THREE.MeshBasicMaterial({
+    this.ringGeoThick = new THREE.RingGeometry(0.72, 1, 72)
+    this.ringGeoThin = new THREE.RingGeometry(0.955, 1, 72)
+    for (let i = 0; i < 32; i++) {
+      const m = new THREE.Mesh(this.ringGeoThick, new THREE.MeshBasicMaterial({
         transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
       }))
-      m.visible = false; m.renderOrder = 7; m.userData.t = 0
+      m.visible = false; m.renderOrder = 7
       scene.add(m); this.rings.push(m)
+    }
+
+    // 화구/섬광 스프라이트 풀
+    this.puffTex = puffTexture()
+    this.puffs = []
+    for (let i = 0; i < 40; i++) {
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: this.puffTex, transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending,
+      }))
+      s.visible = false; s.renderOrder = 8
+      scene.add(s); this.puffs.push(s)
     }
   }
 
@@ -97,7 +126,7 @@ export class Particles {
     }
   }
 
-  burst(x, y, { n = 60, color = 0xffd166, speed = 120, size = 5, ttl = 0.9, spread = Math.PI * 2, dir = 0 } = {}) {
+  burst(x, y, { n = 60, color = 0xffd166, speed = 120, size = 5, ttl = 0.9, spread = Math.PI * 2, dir = 0, drag = 1.0 } = {}) {
     const c = _c1
     for (let k = 0; k < n; k++) {
       const a = dir + (Math.random() - 0.5) * spread
@@ -105,15 +134,41 @@ export class Particles {
       c.set(color)
       c.offsetHSL(0, 0, (Math.random() - 0.4) * 0.25)
       this.spawn(x, y, Math.cos(a) * s, Math.sin(a) * s, c,
-        size * (0.5 + Math.random()), ttl * (0.6 + Math.random() * 0.8), 1.0)
+        size * (0.5 + Math.random()), ttl * (0.6 + Math.random() * 0.8), drag)
     }
   }
 
-  shock(x, y, r, color = 0x67e8f9, ttl = 0.55) {
+  // 가느다란 방사 창살 — 폭발의 "찌르는" 실루엣. 몇 가닥만 있어도 크기가 읽힌다
+  spikes(x, y, { n = 14, color = 0xfff1c1, speed = 620, size = 6, ttl = 0.5 } = {}) {
+    const c = _c1
+    for (let k = 0; k < n; k++) {
+      const a = (k / n) * Math.PI * 2 + Math.random() * 0.25
+      const s = speed * (0.7 + Math.random() * 0.6)
+      c.set(color)
+      this.spawn(x, y, Math.cos(a) * s, Math.sin(a) * s, c, size, ttl * (0.7 + Math.random() * 0.6), 0.35)
+    }
+  }
+
+  shock(x, y, r, color = 0x67e8f9, ttl = 0.55, { delay = 0, thin = false, from = 0.25, to = 2.65, alpha = 0.85 } = {}) {
     const m = this.rings.find(r0 => !r0.visible) || this.rings[0]
     m.visible = true; m.position.set(x, y, 3)
-    m.userData.t = 0; m.userData.ttl = ttl; m.userData.r = r
+    m.geometry = thin ? this.ringGeoThin : this.ringGeoThick
     m.material.color.set(color)
+    m.material.opacity = 0
+    m.scale.set(1e-3, 1e-3, 1)
+    m.userData = { t: 0, ttl, r, delay, from, to, alpha }
+  }
+
+  // 화구 — 부풀며 식는 빛덩어리. 핵의 부피감은 거의 전부 여기서 나온다
+  puff(x, y, { r0 = 4, r1 = 60, ttl = 0.8, color = 0xffd9a0, delay = 0, alpha = 1, drift = 0 } = {}) {
+    const s = this.puffs.find(p => !p.visible) || this.puffs[0]
+    s.visible = true
+    s.position.set(x, y, 3.5)
+    s.material.color.set(color)
+    s.material.opacity = 0
+    s.scale.setScalar(r0 * 2)
+    const a = Math.random() * Math.PI * 2
+    s.userData = { t: 0, ttl, r0, r1, delay, alpha, vx: Math.cos(a) * drift, vy: Math.sin(a) * drift }
   }
 
   update(dt, uScale) {
@@ -137,12 +192,27 @@ export class Particles {
 
     for (const m of this.rings) {
       if (!m.visible) continue
-      m.userData.t += dt
-      const u = m.userData.t / m.userData.ttl
+      const d = m.userData
+      d.t += dt
+      if (d.t < d.delay) { m.material.opacity = 0; continue }
+      const u = (d.t - d.delay) / d.ttl
       if (u >= 1) { m.visible = false; continue }
-      const s = m.userData.r * (0.25 + 2.4 * u)
+      const s = d.r * (d.from + (d.to - d.from) * easeOut(u))
       m.scale.set(s, s, 1)
-      m.material.opacity = (1 - u) * 0.85
+      m.material.opacity = (1 - u) * d.alpha
+    }
+
+    for (const s of this.puffs) {
+      if (!s.visible) continue
+      const d = s.userData
+      d.t += dt
+      if (d.t < d.delay) { s.material.opacity = 0; continue }
+      const u = (d.t - d.delay) / d.ttl
+      if (u >= 1) { s.visible = false; continue }
+      const r = d.r0 + (d.r1 - d.r0) * easeOut(u)
+      s.scale.setScalar(r * 2)
+      s.position.x += d.vx * dt; s.position.y += d.vy * dt
+      s.material.opacity = d.alpha * Math.pow(1 - u, 1.7)
     }
   }
 }

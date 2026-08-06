@@ -1,6 +1,8 @@
 import { Rng } from '../core/random.js'
-import { CFG, aMaxOf, hitRadiusOf, hpOf, radiusOf } from './config.js'
+import { CFG, aMaxOf, contactDist, hitRadiusOf, radiusOf } from './config.js'
+import { rolePool } from './roles.js'
 import { cloneBodies, stepBodies } from './physics.js'
+import { makeGoal, pickGoalSpec } from './objectives.js'
 
 const NAMES = ['Vesta', 'Bront', 'Mir', 'Kappa', 'Oort', 'Faro', 'Nix', 'Teph', 'Ruun', 'Golda']
 
@@ -38,9 +40,11 @@ function placeOrbits(rng, mus, K, aMax) {
     }
   }
   build()
-  for (let g = 0; g < 2 && axes[n - 1] > aMax; g++) {
+  // 오버플로 해소 — 연쇄 충돌 목표는 공을 많이 깔아야 해서 6회까지 조인다.
+  // 간격 하한도 3.0 힐 반경까지 내렸다: 궤도가 붙을수록 밀어서 만나게 하기 쉽다.
+  for (let g = 0; g < 6 && axes[n - 1] > aMax; g++) {
     const kMean = K.reduce((s, k) => s + k, 0) / K.length
-    if (kMean > Math.min(...K) + 0.3) for (let i = 0; i < K.length; i++) K[i] = Math.max(3.6, K[i] * 0.9)
+    if (kMean > Math.min(...K) + 0.3) for (let i = 0; i < K.length; i++) K[i] = Math.max(3.0, K[i] * 0.9)
     else for (let i = 0; i < n; i++) mus[i] *= 0.85
     build()
   }
@@ -57,9 +61,9 @@ function elementsToState(a, e, w, nu) {
 }
 
 // STEP 1~5 — 성계 하나 조립. 실패(오버플로) 시 null
-function buildBodies(rng, A) {
+function buildBodies(rng, A, minPlanets) {
   const P = anteParams(A)
-  const n = Math.min(8, P.N + (rng.next() < 0.35 ? 1 : 0))
+  const n = Math.max(minPlanets, Math.min(8, P.N + (rng.next() < 0.35 ? 1 : 0)))
   const mus = []
   for (let i = 0; i < n; i++) mus.push(80 * Math.pow(P.muHi / 80, rng.next()))   // 로그 균등
   if (rng.next() < 0.10) { const j = rng.int(0, n - 1); mus[j] = Math.min(2500, mus[j] * 3) }   // 목성형
@@ -88,9 +92,8 @@ function buildBodies(rng, A) {
     return {
       id: `p${i}`, name: isE ? 'Earth' : `${NAMES[i % NAMES.length]}-${i + 1}`, mu,
       radius: isE ? CFG.EARTH_R : radiusOf(mu), pos: s.pos, vel: s.vel,
-      hp: isE ? CFG.EARTH_HP : hpOf(mu), hpMax: isE ? CFG.EARTH_HP : hpOf(mu),
       type: isE ? 'earth' : pickW(rng, zoneTable(el.a / P.aMax)),
-      isEarth: isE, alive: true, trail: [], hitFlash: 0, trailFlash: 0, textureState: 0,
+      isEarth: isE, alive: true, trail: [], hitFlash: 0, trailFlash: 0, scorch: 0,
     }
   })
   return { bodies, earth: bodies[earthSlot], aMax: P.aMax }
@@ -106,7 +109,7 @@ function stablePresim(bodies, aMax) {
       const r = Math.hypot(sim[i].pos.x, sim[i].pos.y)
       if (r > 2.6 * aMax || r < CFG.R_STAR + 15) return false
       for (let j = i + 1; j < sim.length; j++)
-        if (Math.hypot(sim[i].pos.x - sim[j].pos.x, sim[i].pos.y - sim[j].pos.y) < 0.8 * (sim[i].radius + sim[j].radius)) return false
+        if (Math.hypot(sim[i].pos.x - sim[j].pos.x, sim[i].pos.y - sim[j].pos.y) < 1.15 * contactDist(sim[i], sim[j])) return false
     }
   }
   return true
@@ -140,13 +143,14 @@ function occlusion(eph, bodies, earthIdx, tIdx) {
   return sum / samples
 }
 
-// §7.6 솔버 검증(경량 스크리닝) — 스윙바이 ≥1 + 목표 직격 + 무파울 해가 하나라도 있는가.
+// §7.6 솔버 검증(경량 스크리닝) — 개정: 이제 "부술 수 있는가"가 아니라
+// **"큐를 댈 수 있는가"** 를 본다. 목표 행성에 핵을 꽂을 수 있는 발사각이
+// 하나라도 있으면 통과. (부수는 건 그 뒤 플레이어의 당구 실력 문제다.)
 // 발사 오프셋·파워대역·κ★는 반드시 실제 게임과 같은 값을 써야 한다.
-// 아니면 "플레이어가 낼 수 없는 샷"을 기준으로 판을 통과시키게 된다.
 const PROBE_PW = [CFG.LAUNCH_MIN, (CFG.LAUNCH_MIN + CFG.LAUNCH_MAX) / 2, CFG.LAUNCH_MAX]
 function solvable(eph, bodies, earthIdx, tIdx, aMax) {
-  for (const t0 of [0, 5, 10]) for (const pw of PROBE_PW) for (let ai = 0; ai < 12; ai++) {
-    if (trySim(eph, bodies, earthIdx, tIdx, aMax, t0, ai / 12 * Math.PI * 2, pw)) return true
+  for (const t0 of [0, 5, 10]) for (const pw of PROBE_PW) for (let ai = 0; ai < 16; ai++) {
+    if (trySim(eph, bodies, earthIdx, tIdx, aMax, t0, ai / 16 * Math.PI * 2, pw)) return true
   }
   return false
 }
@@ -154,8 +158,6 @@ function trySim(eph, bodies, earthIdx, tIdx, aMax, t0, ang, pw) {
   const dt = 1 / 30, from = eph.at(earthIdx, t0), off = CFG.LAUNCH_OFFSET
   let x = from.x + Math.cos(ang) * off, y = from.y + Math.sin(ang) * off
   let vx = Math.cos(ang) * pw, vy = Math.sin(ang) * pw
-  const enc = new Array(bodies.length).fill(null)
-  let swings = 0
   for (let t = t0; t < t0 + CFG.MISSILE_TTL; t += dt) {
     let d2 = x * x + y * y + CFG.EPS * CFG.EPS, inv = CFG.KAPPA_STAR * CFG.MU_STAR / (d2 * Math.sqrt(d2))
     let ax = -x * inv, ay = -y * inv
@@ -168,58 +170,131 @@ function trySim(eph, bodies, earthIdx, tIdx, aMax, t0, ang, pw) {
     const rs = Math.hypot(x, y)
     if (rs < CFG.R_STAR + 8 || rs > 2.8 * aMax) return false
     for (let i = 0; i < bodies.length; i++) {
-      const p = eph.at(i, t), d = Math.hypot(x - p.x, y - p.y)
-      if (d < hitRadiusOf(bodies[i])) return i === tIdx && swings >= 1   // 직격 외 명중 = 파울/지구 피해 → 실패
-      if (i === tIdx || i === earthIdx) continue
-      if (d < CFG.SWING_ZONE * bodies[i].radius) { if (!enc[i]) enc[i] = { vx, vy } }
-      else if (enc[i]) {
-        const dot = enc[i].vx * vx + enc[i].vy * vy
-        const den = (Math.hypot(enc[i].vx, enc[i].vy) * Math.hypot(vx, vy)) || 1
-        if (Math.acos(Math.max(-1, Math.min(1, dot / den))) * 180 / Math.PI >= CFG.SWING_DEG) swings++
-        enc[i] = null
-      }
+      const p = eph.at(i, t)
+      if (Math.hypot(x - p.x, y - p.y) < hitRadiusOf(bodies[i])) return i === tIdx   // 지구 오폭 = 실패
     }
   }
   return false
 }
 
-function finalize(bodies, earth, tIdx, B, aMax, seed, ante) {
-  const target = bodies[tIdx]
-  target.name = `Zork ${target.name}`
-  return { bodies, earth, target, aMax, B, seed, ante }
+// ─── 특수 천체 배정 ─────────────────────────────────────────────
+// 판을 풍성하게 만드는 건 규칙의 수가 아니라 규칙끼리의 상호작용이다.
+// 목표 위에 얹을 수 있는 건 장갑·요새뿐: 특이점은 부술 수 없고,
+// 휘발성은 유폭해 버려서 "충돌로 부숴라" 같은 조건과 충돌한다.
+// 목표 위에 얹어도 되는 역할은 요새뿐. 장갑은 "밀어서 처리"를 막아 버리고,
+// 특이점은 부술 수 없고, 휘발성은 유폭해서 목표 조건과 충돌한다.
+// 단 충돌 파괴 계열 목표에서는 장갑 표적이 정확히 그 주제라 예외로 붙인다.
+const TARGET_OK = new Set(['battery'])
+function assignRoles(rng, bodies, earth, targets, goal, stageIdx, ante) {
+  const pool = rolePool(stageIdx)
+  const cand = bodies.filter(b => b !== earth && b.type !== 'debris')
+  const isT = (b) => targets.includes(b)
+
+  // "밀어선 안 되고 던져야 한다" — 충돌 파괴 목표의 주제 그 자체
+  if ((goal.kind === 'SMASH' || goal.kind === 'PILEUP') && pool.includes('armor')) setRole(targets[0], 'armor')
+
+  const want = Math.min(cand.length - 1, 1 + Math.floor(ante * CFG.ROLE_PER_ANTE))
+  const shuffle = (arr) => {   // 피셔–예이츠
+    for (let i = arr.length - 1; i > 0; i--) { const j = rng.int(0, i); const t = arr[i]; arr[i] = arr[j]; arr[j] = t }
+    return arr
+  }
+  const free = shuffle(cand.filter(b => !b.role))
+  // 같은 역할이 판을 뒤덮지 않게 풀을 한 바퀴 다 돌린 뒤에야 중복을 허용한다.
+  // 위에서 강제 배정한 역할도 이미 쓴 것으로 친다.
+  const used = new Set(cand.filter(b => b.role).map(b => b.role))
+  let deck = shuffle(pool.filter(r => !used.has(r)))
+  if (!deck.length) deck = shuffle([...pool])
+  let placed = cand.length - free.length
+  for (const b of free) {
+    if (placed >= want) break
+    const usable = isT(b) ? deck.filter(r => TARGET_OK.has(r)) : deck
+    if (!usable.length) continue
+    const role = usable[rng.int(0, usable.length - 1)]
+    setRole(b, role)
+    deck = deck.filter(r => r !== role)
+    if (!deck.length) deck = shuffle([...pool])
+    placed++
+  }
+}
+function setRole(b, role) {
+  if (!b || b.role) return
+  b.role = role
+  if (role === 'battery') b.ammo = CFG.BATTERY_AMMO
+  if (role === 'void') { b.type = 'void'; b.mu = Math.max(b.mu, 900); b.radius = radiusOf(b.mu) }
+  if (role === 'volatile') b.type = 'gas'
+  if (role === 'armor') b.type = 'iron'
+}
+
+function finalize(bodies, earth, tIdx, B, aMax, seed, ante, goal, extraTargets, rng, stageIdx) {
+  const targets = [bodies[tIdx], ...extraTargets]
+  targets.forEach((t, i) => { t.name = `Zork ${t.name}`; t.isTarget = true; t.targetNo = i + 1 })
+  assignRoles(rng, bodies, earth, targets, goal, stageIdx, ante)
+  const roles = [...new Set(bodies.filter(b => b.role).map(b => b.role))]
+  return { bodies, earth, target: targets[0], targets, aMax, B, seed, ante, goal, roles }
+}
+
+// 목표 후보 정렬 — 개정: "부딪힐 짝이 가까이 있는가"가 1순위다.
+// 규칙이 밀어 치기로 바뀐 뒤로는, 궤도가 이웃과 붙어 있는 행성이라야
+// 밀어서 만나게 할 수 있다. 차폐도는 양념으로만 섞는다.
+function rankTargets(rng, eph, bodies, earthIdx) {
+  const R = bodies.map(b => Math.hypot(b.pos.x, b.pos.y))
+  const out = []
+  for (let i = 0; i < bodies.length; i++) {
+    if (i === earthIdx) continue
+    let gap = Infinity
+    for (let j = 0; j < bodies.length; j++) {
+      if (j === i || j === earthIdx) continue
+      gap = Math.min(gap, Math.abs(R[i] - R[j]) / Math.max(1, R[i]))
+    }
+    if (!isFinite(gap)) gap = 1
+    const B = occlusion(eph, bodies, earthIdx, i)
+    out.push({ i, B, gap, cost: gap + 0.15 * Math.abs(B - 1.2) })
+  }
+  out.sort((a, b) => a.cost - b.cost)
+  // 상위 3후보 중에서 뽑아 매 판 같은 행성이 지목되지 않게 한다
+  const k = Math.min(3, out.length)
+  const pickIdx = k > 1 ? rng.int(0, k - 1) : 0
+  if (pickIdx > 0) out.unshift(out.splice(pickIdx, 1)[0])
+  return out
 }
 
 // §7.9 전체 파이프라인 — 생성 → 안정성(싼 필터) → 차폐도(싼 필터) → 솔버(비싼 필터)
-export function makeStage(seed = Date.now(), ante = 1) {
+export function makeStage(seed = Date.now(), ante = 1, stageIdx = 0) {
   const rng = new Rng(seed)
+  const goal = makeGoal(pickGoalSpec(rng, stageIdx, ante))
+  const minPlanets = goal.minBodies   // 목표 + 큐볼 + 지구 (objectives.js에서 산정)
   let fallback = null
   for (let attempt = 0; attempt < 25; attempt++) {
-    const built = buildBodies(rng, ante)
+    const built = buildBodies(rng, ante, minPlanets)
     if (!built) continue
     const { bodies, earth, aMax } = built
+    if (bodies.length < minPlanets) continue
     if (!stablePresim(bodies, aMax)) continue
     const eph = ephemeris(bodies, 12 + CFG.MISSILE_TTL, 1 / 30)   // 솔버가 보는 구간을 전부 덮어야 한다
     const earthIdx = bodies.indexOf(earth)
-    let tIdx = -1, tB = Infinity
-    for (let i = 0; i < bodies.length; i++) {
-      if (i === earthIdx) continue
-      const B = occlusion(eph, bodies, earthIdx, i)
-      if (B >= 0.6 && B <= 2.5 && Math.abs(B - 1.5) < Math.abs(tB - 1.5)) { tIdx = i; tB = B }
-      if (!fallback || Math.abs(B - 1.5) < Math.abs(fallback.B - 1.5)) fallback = { bodies, earth, tIdx: i, B, aMax }
-    }
-    if (tIdx < 0) continue
-    if (attempt < 20 && !solvable(eph, bodies, earthIdx, tIdx, aMax)) continue
-    return finalize(bodies, earth, tIdx, tB, aMax, seed, ante)
+    const ranked = rankTargets(rng, eph, bodies, earthIdx)
+    if (ranked.length < goal.targetCount) continue
+    const pick = ranked.slice(0, goal.targetCount)
+    const primary = pick[0]
+    if (!fallback) fallback = { bodies, earth, pick, aMax }
+    // 차폐도 상한만 남긴다 — 규칙이 "밀어 치기"로 바뀐 뒤로는 회랑이 뚫려 있는 게
+    // 오히려 정상이고, 판을 거르는 진짜 조건은 "큐를 댈 수 있는가"(solvable)다.
+    if (primary.B > 2.8) continue
+    if (attempt < 20 && !solvable(eph, bodies, earthIdx, primary.i, aMax)) continue
+    return finalize(bodies, earth, primary.i, primary.B, aMax, seed, ante, goal,
+      pick.slice(1).map(p => bodies[p.i]), rng, stageIdx)
   }
-  if (fallback) return finalize(fallback.bodies, fallback.earth, fallback.tIdx, fallback.B, fallback.aMax, seed, ante)
-  // 최후 안전망: 검증 없이 생성해 가장 바깥 행성을 목표로
+  if (fallback) {
+    return finalize(fallback.bodies, fallback.earth, fallback.pick[0].i, fallback.pick[0].B,
+      fallback.aMax, seed, ante, goal, fallback.pick.slice(1).map(p => fallback.bodies[p.i]), rng, stageIdx)
+  }
+  // 최후 안전망: 검증 없이 생성해 바깥쪽 행성들을 목표로
   for (let i = 0; i < 20; i++) {
-    const built = buildBodies(rng, ante)
+    const built = buildBodies(rng, ante, minPlanets)
     if (!built) continue
     const { bodies, earth, aMax } = built
-    let tIdx = bodies.length - 1
-    if (bodies[tIdx] === earth) tIdx--
-    return finalize(bodies, earth, tIdx, 0, aMax, seed, ante)
+    const idx = bodies.map((b, k) => k).filter(k => bodies[k] !== earth).reverse().slice(0, goal.targetCount)
+    return finalize(bodies, earth, idx[0], 0, aMax, seed, ante, goal, idx.slice(1).map(k => bodies[k]), rng, stageIdx)
   }
   throw new Error('스테이지 생성 실패')
 }
