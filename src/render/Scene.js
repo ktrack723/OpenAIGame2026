@@ -720,6 +720,7 @@ export class SceneView {
     // 궤도 트레일 — 플레이어 임펄스 직후 강조 (P4, §14.2). 공 뒤로 지나간다.
     for (const b of g.bodies) {
       if (!b.trail || b.trail.length < 2) continue
+      if (b.type === 'debris') continue   // 충돌 한 번에 8~10개가 생긴다 — 궤적까지 그리면 판이 안 보인다
       const hot = b.trailFlash > 0
       this.ribbon(b.trail, hot ? 9 : 5.5, hot ? 0xffffff : colorOf(b.type), { opacity: hot ? 1 : 0.75, z: -2, depth: true })
     }
