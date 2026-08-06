@@ -1,5 +1,5 @@
 import { Rng } from '../core/random.js'
-import { CFG, aMaxOf, beltRadius, hitRadiusOf, radiusOf } from './config.js'
+import { CFG, aMaxOf, beltRadius, hitRadiusOf, nukeDv, radiusOf } from './config.js'
 import { makeBody } from './body.js'
 import { cloneBodies, segHitsCircle, stepBodies, stepMissile } from './physics.js'
 import { buildSolarSystem, elementsToState, pickBiome, stablePresim } from './stage.js'
@@ -33,19 +33,47 @@ export function createSystem(seed) {
 // ── 궤도 자리 찾기 ──────────────────────────────────────────────
 // 이미 깔린 공들과 궤도가 겹치지 않고, 지금 위치도 충분히 떨어진 자리를 고른다.
 // 겹치면 워프하자마자 충돌해서 플레이어가 아무것도 못 한 채 판이 끝난다.
-function freeOrbit(rng, bodies, aMax, mu) {
+// nearBand: 이 값이 주어지면 "가장 가까운 이웃 궤도가 그 안에 있어야" 통과한다.
+//
+// 왜 필요한가 — 플레이테스트에서 1스테이지를 810수까지 탐색했는데 **요새에
+// 피해를 주는 한 수가 0개**였다. 원인은 요새가 아무도 없는 빈 궤도에 떨어졌기
+// 때문이다. 실제 태양계는 목성~토성 사이가 395 GU씩 벌어져 있어서, 그 틈에
+// 워프한 요새는 어떤 공으로도 밀어 보낼 수가 없었다(가장 무거운 이웃의
+// 최대 Δv가 6~8이고, 궤도 하나를 건너오려면 반 바퀴 이상이 걸린다).
+//
+// 그래서 요새는 **반드시 어떤 공의 옆자리**에 워프시킨다. 겹치지도 않고
+// 외따로 떨어지지도 않은 자리 — 그게 "이 요새는 저 공으로 친다"가 성립하는
+// 유일한 배치다. 중립 천체는 이 제약 없이 아무 데나 놓는다.
+function freeOrbit(rng, bodies, aMax, mu, nearBand = 0, band = null) {
   const live = bodies.filter(b => b.alive && b.type !== 'debris')
   const radii = live.map(b => Math.hypot(b.pos.x, b.pos.y))
+  // 이웃 후보 = **실제로 밀 수 있는 공**. 두 가지를 뺀다:
+  //   · 지구 — 치면 게임 오버라 큐볼이 아니다
+  //   · 너무 무거운 공 — 목성(μ950)·토성(μ746)은 최대 작약으로도 Δv가 7~8이라
+  //     "옆에 있다"가 곧 "칠 수 있다"가 되지 못한다(계측: 토성만 옆에 둔 판은
+  //     240수 중 1수만 요새에 닿았고, 가벼운 공이 옆에 있는 판은 6수였다).
+  const cueRadii = live
+    .filter(b => !b.isEarth && nukeDv(CFG.YIELD_MAX, b.mu) >= CFG.FORT_CUE_MIN_DV)
+    .map(b => Math.hypot(b.pos.x, b.pos.y))
   const rNew = radiusOf(mu)
+  // band = [lo, hi] 가 주어지면 그 반경대 안에서만 자리를 찾는다
+  const aLo = band ? band[0] : CFG.A_MIN * 1.15
+  const aHi = band ? band[1] : aMax * 0.95
   for (let tries = 0; tries < 240; tries++) {
     // 안쪽 절반은 태양에 너무 가깝고 바깥은 벨트라 [1.15 A_MIN, 0.95 aMax]
-    const a = CFG.A_MIN * 1.15 + rng.next() * (aMax * 0.95 - CFG.A_MIN * 1.15)
+    const a = aLo + rng.next() * Math.max(1, aHi - aLo)
     // 궤도 반경이 기존 공들과 최소 이만큼은 벌어져야 서로 안 스친다.
     // 공이 스무 개까지 늘어난 지금 예전의 고정 90 GU로는 빈 궤도가 아예 없다 —
     // 새로 오는 공의 크기에 비례한 값으로 바꿔 촘촘한 성계에도 끼워 넣는다.
     let ok = true
     for (const r of radii) if (Math.abs(a - r) < 26 + rNew * 2.5) { ok = false; break }
     if (!ok) continue
+    // 옆자리 요구 — 밀어서 닿을 수 있는 공이 하나라도 있어야 한다
+    if (nearBand > 0) {
+      let near = Infinity
+      for (const r of cueRadii) near = Math.min(near, Math.abs(a - r))
+      if (near > nearBand) continue
+    }
     const e = 0.01 + rng.next() * 0.06
     const w = rng.range(0, Math.PI * 2)
     for (let k = 0; k < 24; k++) {
@@ -104,9 +132,27 @@ function reachable(bodies, earth, target) {
 }
 
 // ── 워프인 한 기 ────────────────────────────────────────────────
+// 요새를 놓을 반경대 — **지구 궤도 언저리**로 못 박는다.
+//
+// 왜: 미사일 사거리는 유한하고(속도 26~56 × TTL 52초), 그 사이에 행성이
+// 열댓 개나 껴 있어서 먼 표적은 사실상 못 맞힌다. 플레이테스트에서 요새에
+// 닿는 각도가 720개 중 0~8개였다 — 표적을 못 맞히면 게임이 시작되지도 않는다.
+// 지구 궤도의 0.55~1.6배 대역에 두면 왕복이 짧고, 그 대역의 이웃(수성·금성·
+// 화성·소행성대)은 전부 가벼워서 밀어 처박기도 쉽다.
+const fortBand = (earth) => {
+  const rE = Math.hypot(earth.pos.x, earth.pos.y)
+  return [Math.max(CFG.A_MIN * 1.2, rE * CFG.FORT_BAND_LO), rE * CFG.FORT_BAND_HI]
+}
+
 function warpBody(rng, bodies, aMax, spec) {
   const mu = spec.mu
-  const orb = freeOrbit(rng, bodies, aMax, mu)
+  // 요새는 ① 지구 궤도 대역 안에서 ② 밀 수 있는 공 옆자리에 놓는다.
+  // 못 찾으면 제약을 하나씩 풀어 재시도 — 요새를 아예 안 보내는 것보다는 낫다.
+  const orb = (spec.role === 'battery'
+    ? freeOrbit(rng, bodies, aMax, mu, CFG.FORT_NEAR_BAND, spec.band)
+      ?? freeOrbit(rng, bodies, aMax, mu, 0, spec.band)
+    : null)
+    ?? freeOrbit(rng, bodies, aMax, mu)
   if (!orb) return null
   const b = makeBody({
     id: nextId(),
@@ -145,7 +191,14 @@ export function reinforce(rng, bodies, earth, ante, stageIdx) {
   if (room <= fort) neutral = 0
 
   const added = []
+  const band = fortBand(earth)   // 요새는 지구 궤도 언저리에만 온다(사거리 문제)
   const muFor = () => 120 + rng.next() * (220 + 60 * ante)
+  // 요새 질량은 따로 잡는다 — **밀리는 공이어야 한다.**
+  // 예전엔 중립과 같은 대역(138~460)을 썼는데, μ=422 요새는 3Mt에 Δv가 0.6이라
+  // 밀어도 제자리였고, 어쩌다 이웃에 닿아도 상대속도가 데미지 문턱(6) 아래라
+  // 그냥 튕기기만 했다(계측: 금성에 1.00×판정거리까지 닿고도 체력 3/3 유지).
+  // 가볍게 잡으면 12Mt에서 Δv 28~57 — "한 대 치면 실제로 날아가는" 표적이 된다.
+  const fortMuFor = () => CFG.FORT_MU_MIN + rng.next() * (CFG.FORT_MU_SPAN + 14 * ante)
 
   for (let i = 0; i < fort; i++) {
     const name = `Zorg ${ZORG_NAMES[rng.int(0, ZORG_NAMES.length - 1)]}-${stageIdx + 1}${i ? String.fromCharCode(97 + i) : ''}`
@@ -155,7 +208,7 @@ export function reinforce(rng, bodies, earth, ante, stageIdx) {
     let b = null
     const pool2 = bodies.concat(added)
     for (let t = 0; t < 2 && !b; t++) {
-      b = warpBody(rng, pool2, aMax, { mu: muFor() * 1.15, name, type, role: 'battery' })
+      b = warpBody(rng, pool2, aMax, { mu: fortMuFor(), name, type, role: 'battery', band })
       // 마지막 시도는 검사를 건너뛴다 — 못 찾고 요새를 아예 안 보내는 것보다 낫다
       if (b && t === 0 && !reachable(pool2.concat([b]), earth, b)) b = null
     }

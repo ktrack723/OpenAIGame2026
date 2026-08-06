@@ -166,8 +166,11 @@ export class Game {
       if (!this.advancing) return 0
       return this.missiles.some(m => m.alive) ? 1 : 2
     }
-    if (this.missiles.some(m => m.alive)) return this.advancing ? 4 : 1
-    return this.advancing ? 8 : 3
+    // 관측 중 미사일 비행은 1×였는데, 판이 2000 GU로 넓어지면서 한 발이
+    // 실시간 13~15초, 빗나간 탄은 TTL 52초를 통째로 기다려야 했다(플레이테스트).
+    // 2×로 올리고 SHIFT를 누르면 8×까지 감을 수 있게 한다.
+    if (this.missiles.some(m => m.alive)) return this.advancing ? 8 : 2
+    return this.advancing ? 10 : 4
   }
 
   tick(dtFrame) {
