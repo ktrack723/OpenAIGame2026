@@ -28,6 +28,7 @@ const ROLE_RING = {
   battery: { n: 3, gap: 0.55, r0: 1.34, r1: 1.74, spin: -0.7 },
   void: { n: 40, gap: 0.06, r0: 1.20, r1: 1.34, spin: 1.5 },
   volatile: { n: 5, gap: 0.42, r0: 1.30, r1: 1.66, spin: 0.5 },
+  shield: { n: 6, gap: 0.14, r0: 1.16, r1: 1.30, spin: -0.35 },
 }
 const colorOf = (t) => (MATS[t] ?? MATS.rock).c
 
@@ -63,6 +64,24 @@ function surfaceTexture(type) {
   tex.colorSpace = THREE.SRGBColorSpace
   tex.wrapS = THREE.RepeatWrapping
   return tex
+}
+
+// ─── 미사일 형상 ────────────────────────────────────────────────
+// 점 하나로는 "무엇이 날아가는지"가 안 읽힌다. 원뿔 노즈 + 원통 동체 +
+// 후퇴익 두 장으로 조립해 진행 방향으로 눕힌다(기하는 +x를 향하도록 만든다).
+function missileParts() {
+  const body = new THREE.CylinderGeometry(0.28, 0.30, 1.5, 14)
+  body.rotateZ(-Math.PI / 2); body.translate(-0.15, 0, 0)
+  const nose = new THREE.ConeGeometry(0.28, 0.85, 14)
+  nose.rotateZ(-Math.PI / 2); nose.translate(1.02, 0, 0)
+  // 꼬리날개 — 탑다운에서 실루엣이 보이도록 판면을 화면과 나란히 둔다
+  const fin = new THREE.BufferGeometry()
+  fin.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
+    -0.90, 0.22, 0, -0.95, 0.78, 0, -0.28, 0.26, 0,
+    -0.90, -0.22, 0, -0.28, -0.26, 0, -0.95, -0.78, 0,
+  ]), 3))
+  fin.computeVertexNormals()
+  return { body, nose, fin }
 }
 
 function glowTexture() {
@@ -105,6 +124,7 @@ export class SceneView {
     this.ringGeo = new THREE.RingGeometry(0.9, 1, 64)
     this.thinRingGeo = new THREE.RingGeometry(0.965, 1, 48)
     this.glowTex = glowTexture()
+    this.missileGeo = missileParts()
     this.texCache = new Map()
 
     this.buildStars()
@@ -279,7 +299,8 @@ export class SceneView {
     this.bodyFx.clear()
     for (const fx of this.missileFx.values()) {
       this.scene.remove(fx.mesh, fx.glow)
-      fx.mesh.material.dispose(); fx.glow.material.dispose()
+      for (const o of fx.mesh.children) o.material.dispose()
+      fx.glow.material.dispose()
     }
     this.missileFx.clear()
     this.lastBodies = this.game.bodies
@@ -412,9 +433,13 @@ export class SceneView {
             fx.role.blast.material.opacity = 0.16 + 0.10 * Math.abs(Math.sin(this.lockT * 2))
           }
           if (fx.role.accretion) {
+            // 특이점은 삼킬수록 커진다. 구체 반경은 μ^(1/3)이라 완만하게만 자라니,
+            // 강착원반을 같이 부풀리고 밝혀서 "지금 얼마나 세졌는지"가 보이게 한다.
+            const grow = Math.min(1, Math.max(0, (b.mu - 900) / (CFG.VOID_MU_MAX - 900)))
             fx.role.accretion.position.set(b.pos.x, b.pos.y, 1)
-            fx.role.accretion.scale.setScalar(r)
-            fx.role.accretion.rotation.z -= 2.2 * dt
+            fx.role.accretion.scale.setScalar(r * (1 + 0.30 * grow))
+            fx.role.accretion.material.opacity = 0.55 + 0.45 * grow
+            fx.role.accretion.rotation.z -= (2.2 + 3.0 * grow) * dt
           }
         }
       }
@@ -438,8 +463,7 @@ export class SceneView {
       // 캐롬 스테이지의 목표는 보라색 — "직격이 안 통하는 공"이라는 뜻이다.
       if (b.isEarth) { fx.ring.material.color.setHex(0x60a5fa); fx.ring.material.opacity = 0.9 }
       else if (b.isTarget) {
-        const shielded = g.goal.shielded
-        fx.ring.material.color.setHex(shielded ? 0xa78bfa : 0x22d3ee)
+        fx.ring.material.color.setHex(b.role === 'shield' ? 0xa78bfa : 0x22d3ee)
         fx.ring.material.opacity = 0.7 + 0.25 * Math.abs(Math.sin(performance.now() / 320))
       } else { fx.ring.material.color.setHex(0xe2e8f0); fx.ring.material.opacity = 0.34 }
       if (aimHit && aimHit.id === b.id) {   // 이번 샷이 건드릴 공 — 예측선 색으로 물어 준다
@@ -461,9 +485,16 @@ export class SceneView {
       if (!fx) {
         // 미사일은 커서다 — 행성 뒤로 숨으면 안 되므로 깊이 테스트를 끄고 항상 위에 그린다.
         // (깊이를 쓰지 않으니 트레일을 가리지도 않는다.)
-        const mesh = new THREE.Mesh(this.sphereGeo, new THREE.MeshBasicMaterial({
-          color: m.hostile ? 0xffb4bd : 0xfff4d6, transparent: true, depthTest: false, depthWrite: false,
-        }))
+        const tone = m.hostile ? 0xff9aa6 : 0xf1f5f9
+        const mat = (c) => new THREE.MeshBasicMaterial({
+          color: c, transparent: true, depthTest: false, depthWrite: false, side: THREE.DoubleSide,
+        })
+        const mesh = new THREE.Group()
+        const body = new THREE.Mesh(this.missileGeo.body, mat(tone))
+        const nose = new THREE.Mesh(this.missileGeo.nose, mat(m.hostile ? 0xdc2626 : 0xf87171))
+        const fin = new THREE.Mesh(this.missileGeo.fin, mat(m.hostile ? 0xb91c1c : 0x94a3b8))
+        for (const o of [body, nose, fin]) o.renderOrder = 9
+        mesh.add(body, nose, fin)
         mesh.renderOrder = 9
         const glow = new THREE.Sprite(new THREE.SpriteMaterial({
           map: this.glowTex, transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending, opacity: 0.85,
@@ -474,16 +505,19 @@ export class SceneView {
         this.missileFx.set(m, fx)
       }
       if (!m.alive) { fx.mesh.visible = false; fx.glow.visible = false; continue }
-      const r = Math.max(2.5, 5 * this.rig.worldPerPx)
+      const r = Math.max(4, 11 * this.rig.worldPerPx)   // 화면상 크기 고정 — 줌아웃해도 형상이 읽히게
+      const v = Math.hypot(m.vel.x, m.vel.y) || 1
       fx.mesh.visible = true; fx.glow.visible = true
       fx.mesh.position.set(m.pos.x, m.pos.y, r)
       fx.mesh.scale.setScalar(r)
-      fx.glow.position.set(m.pos.x, m.pos.y, r)
-      fx.glow.scale.setScalar(r * 5)
-      const v = Math.hypot(m.vel.x, m.vel.y) || 1
+      fx.mesh.rotation.z = Math.atan2(m.vel.y, m.vel.x)   // 진행 방향으로 눕힌다
+      // 배기 불꽃은 꼬리에 — 노즈가 아니라 엔진에서 나와야 방향이 읽힌다
+      const tx = m.pos.x - m.vel.x / v * r * 1.1, ty = m.pos.y - m.vel.y / v * r * 1.1
+      fx.glow.position.set(tx, ty, r)
+      fx.glow.scale.setScalar(r * 3.2)
       const travelled = Math.hypot(m.pos.x - fx.lx, m.pos.y - fx.ly)
-      this.parts.thrust(fx.lx, fx.ly, m.pos.x, m.pos.y, -m.vel.x / v, -m.vel.y / v,
-        Math.min(16, 3 + travelled / Math.max(1, 3 * this.rig.worldPerPx)))
+      this.parts.thrust(fx.lx, fx.ly, tx, ty, -m.vel.x / v, -m.vel.y / v,
+        Math.min(10, 2 + travelled / Math.max(1, 5 * this.rig.worldPerPx)))
       fx.lx = m.pos.x; fx.ly = m.pos.y
     }
   }
@@ -526,8 +560,8 @@ export class SceneView {
   nukeFx(e) {
     const yld = e.yld ?? CFG.YIELD_DEFAULT
     const k = yld / CFG.YIELD_MAX                    // 0~1 정규화 작약량
-    const base = Math.max(26, (e.r ?? 20) * 1.4)     // 표적 크기에 비례한 최소 부피
-    const R = base * (0.75 + 1.9 * k)
+    const base = Math.max(44, (e.r ?? 20) * 2.4)     // 표적 크기에 비례한 최소 부피
+    const R = base * (0.85 + 2.4 * k)
     const P = this.parts
 
     if (e.shield) {   // 방어막에 삼켜짐 — 소리만 요란하고 아무 일도 안 난다
@@ -540,25 +574,27 @@ export class SceneView {
     }
 
     // ① 흰 섬광 — 프레임 하나를 통째로 태운다
-    P.puff(e.x, e.y, { r0: R * 0.25, r1: R * 0.9, ttl: 0.16, color: 0xffffff, alpha: 1 })
-    this.flash(e.earth ? 1 : 0.25 + 0.55 * k, e.earth ? '#fff5f5' : '#fff8e6')
+    P.puff(e.x, e.y, { r0: R * 0.25, r1: R * 1.15, ttl: 0.18, color: 0xffffff, alpha: 1 })
+    this.flash(e.earth ? 1 : 0.35 + 0.6 * k, e.earth ? '#fff5f5' : '#fff8e6')
+    this.rig.focus(e.x, e.y, R * 2.2, 1.6)
 
     // ② 방사 창살 — 폭발이 "찌르고" 나가는 실루엣
-    P.spikes(e.x, e.y, { n: 12 + Math.round(14 * k), color: 0xfff3cd, speed: 480 + 900 * k, size: 5 + 6 * k, ttl: 0.35 + 0.3 * k })
+    P.spikes(e.x, e.y, { n: 16 + Math.round(20 * k), color: 0xfff3cd, speed: 700 + 1300 * k, size: 7 + 8 * k, ttl: 0.45 + 0.4 * k })
 
     // ③ 화구 — 세 겹이 시차를 두고 부풀며 식는다 (흰 코어 → 주황 → 붉은 연기)
-    P.puff(e.x, e.y, { r0: R * 0.12, r1: R * 1.05, ttl: 0.55 + 0.5 * k, color: 0xfff1c4, alpha: 1 })
-    P.puff(e.x, e.y, { r0: R * 0.10, r1: R * 1.65, ttl: 0.9 + 0.8 * k, color: 0xff9a3c, alpha: 0.85, delay: 0.05 })
-    P.puff(e.x, e.y, { r0: R * 0.20, r1: R * 2.3, ttl: 1.5 + 1.0 * k, color: 0x8f3b1b, alpha: 0.5, delay: 0.14, drift: 12 })
+    P.puff(e.x, e.y, { r0: R * 0.12, r1: R * 1.35, ttl: 0.7 + 0.6 * k, color: 0xfff1c4, alpha: 1 })
+    P.puff(e.x, e.y, { r0: R * 0.10, r1: R * 2.1, ttl: 1.1 + 0.9 * k, color: 0xff9a3c, alpha: 0.9, delay: 0.05 })
+    P.puff(e.x, e.y, { r0: R * 0.20, r1: R * 3.1, ttl: 1.9 + 1.2 * k, color: 0x8f3b1b, alpha: 0.55, delay: 0.14, drift: 16 })
 
     // ④ 이중 충격파 — 얇은 링이 먼저 튀고, 두꺼운 링이 뒤따른다
-    P.shock(e.x, e.y, R, 0xffffff, 0.42, { thin: true, from: 0.1, to: 3.1, alpha: 1 })
-    P.shock(e.x, e.y, R, 0xffc879, 0.85 + 0.5 * k, { from: 0.15, to: 2.4, delay: 0.06 })
+    P.shock(e.x, e.y, R, 0xffffff, 0.5, { thin: true, from: 0.1, to: 4.0, alpha: 1 })
+    P.shock(e.x, e.y, R, 0xffc879, 1.0 + 0.6 * k, { from: 0.15, to: 3.1, delay: 0.06 })
+    P.shock(e.x, e.y, R, 0xfb923c, 1.5 + 0.7 * k, { thin: true, from: 0.2, to: 5.0, delay: 0.2, alpha: 0.45 })
 
     // ⑤ 파편·잔불 — 오래 남아 "여기서 뭔가 터졌다"를 유지한다
-    P.burst(e.x, e.y, { n: 90 + Math.round(160 * k), color: 0xffc14d, speed: 230 + 320 * k, size: 12 + 8 * k, ttl: 1.1 + 0.8 * k })
-    P.burst(e.x, e.y, { n: 50, color: 0xffffff, speed: 420 + 500 * k, size: 7, ttl: 0.5 })
-    P.burst(e.x, e.y, { n: 40, color: 0xff5a2b, speed: 90, size: 15 + 10 * k, ttl: 2.2 + 1.4 * k, drag: 0.5 })
+    P.burst(e.x, e.y, { n: 150 + Math.round(240 * k), color: 0xffc14d, speed: 320 + 460 * k, size: 16 + 12 * k, ttl: 1.5 + 1.1 * k })
+    P.burst(e.x, e.y, { n: 80, color: 0xffffff, speed: 580 + 700 * k, size: 9, ttl: 0.65 })
+    P.burst(e.x, e.y, { n: 70, color: 0xff5a2b, speed: 110, size: 20 + 14 * k, ttl: 3.0 + 1.8 * k, drag: 0.45 })
 
     // ⑥ 폭풍 링 — 실제로 주변 천체를 미는 반경 그대로. 보이는 것 = 미는 것
     if (e.wave) P.shock(e.x, e.y, e.wave, 0xfb923c, 0.85, { thin: true, from: 0.05, to: 1.0, alpha: 0.55, delay: 0.02 })
@@ -578,14 +614,14 @@ export class SceneView {
     P.puff(e.x, e.y, { r0: R * 0.08, r1: R * 0.5, ttl: 0.2, color: 0xffffff, alpha: 1 })
     P.puff(e.x, e.y, { r0: R * 0.06, r1: R * 0.95, ttl: 1.1, color: 0xfb923c, alpha: 0.9, delay: 0.03 })
     P.puff(e.x, e.y, { r0: R * 0.20, r1: R * 1.35, ttl: 2.4, color: 0x7c2d12, alpha: 0.5, delay: 0.18, drift: 20 })
-    P.spikes(e.x, e.y, { n: 30, color: 0xfff1c1, speed: 1500, size: 10, ttl: 0.7 })
+    P.spikes(e.x, e.y, { n: 44, color: 0xfff1c1, speed: 2100, size: 13, ttl: 0.9 })
     // 밀려나는 경계 = 실제 유폭 반경. 링이 딱 거기서 멈춘다.
     P.shock(e.x, e.y, R, 0xffffff, 0.55, { thin: true, from: 0.05, to: 1.0, alpha: 1 })
     P.shock(e.x, e.y, R, 0xfdba74, 1.2, { from: 0.05, to: 1.0, delay: 0.08, alpha: 0.8 })
     P.shock(e.x, e.y, R, 0xf97316, 1.9, { thin: true, from: 0.1, to: 1.0, delay: 0.24, alpha: 0.5 })
-    P.burst(e.x, e.y, { n: 380, color: 0xffb347, speed: 520, size: 18, ttl: 2.2 })
-    P.burst(e.x, e.y, { n: 120, color: 0xffffff, speed: 1000, size: 9, ttl: 0.8 })
-    P.burst(e.x, e.y, { n: 80, color: 0xff4d2b, speed: 130, size: 24, ttl: 3.2, drag: 0.4 })
+    P.burst(e.x, e.y, { n: 560, color: 0xffb347, speed: 640, size: 24, ttl: 2.8 })
+    P.burst(e.x, e.y, { n: 180, color: 0xffffff, speed: 1400, size: 11, ttl: 1.0 })
+    P.burst(e.x, e.y, { n: 120, color: 0xff4d2b, speed: 150, size: 30, ttl: 4.0, drag: 0.36 })
     this.rig.hit(VIS.SHAKE_MAX)
     this.rig.focus(e.x, e.y, R * 1.2)
   }
@@ -610,19 +646,19 @@ export class SceneView {
 
   // ─── 행성 폭파 — 핵으로는 절대 볼 수 없는 그림 ───────────────
   destroyFx(e) {
-    const R = Math.max(40, (e.r ?? 30) * 2.2)
+    const R = Math.max(70, (e.r ?? 30) * 3.6)
     const P = this.parts
     this.flash(e.earth ? 1 : 0.55, e.earth ? '#ffe4e6' : '#fff1d6')
     P.puff(e.x, e.y, { r0: R * 0.3, r1: R * 1.2, ttl: 0.22, color: 0xffffff, alpha: 1 })
     P.puff(e.x, e.y, { r0: R * 0.15, r1: R * 2.2, ttl: 1.3, color: e.earth ? 0x60a5fa : 0xffb347, alpha: 0.95, delay: 0.04 })
     P.puff(e.x, e.y, { r0: R * 0.30, r1: R * 3.4, ttl: 2.6, color: 0x7c2d12, alpha: 0.55, delay: 0.16, drift: 16 })
-    P.spikes(e.x, e.y, { n: 26, color: 0xffffff, speed: 1300, size: 9, ttl: 0.6 })
+    P.spikes(e.x, e.y, { n: 36, color: 0xffffff, speed: 1900, size: 12, ttl: 0.8 })
     P.shock(e.x, e.y, R, 0xffffff, 0.5, { thin: true, from: 0.08, to: 4.2, alpha: 1 })
     P.shock(e.x, e.y, R, 0xfde68a, 1.1, { from: 0.12, to: 3.0, delay: 0.08 })
     P.shock(e.x, e.y, R, 0xf97316, 1.6, { thin: true, from: 0.1, to: 5.5, delay: 0.2, alpha: 0.5 })
-    P.burst(e.x, e.y, { n: 340, color: e.earth ? 0x93c5fd : 0xffb347, speed: 460, size: 20, ttl: 2.4 })
-    P.burst(e.x, e.y, { n: 120, color: 0xffffff, speed: 900, size: 10, ttl: 0.8 })
-    P.burst(e.x, e.y, { n: 90, color: 0xff4d2b, speed: 120, size: 22, ttl: 3.4, drag: 0.45 })
+    P.burst(e.x, e.y, { n: 520, color: e.earth ? 0x93c5fd : 0xffb347, speed: 620, size: 26, ttl: 3.0 })
+    P.burst(e.x, e.y, { n: 180, color: 0xffffff, speed: 1250, size: 12, ttl: 1.0 })
+    P.burst(e.x, e.y, { n: 140, color: 0xff4d2b, speed: 140, size: 30, ttl: 4.2, drag: 0.4 })
     this.rig.hit(VIS.SHAKE_MAX)
     this.rig.focus(e.x, e.y, R * 2.5)   // 화면 밖에서 터져도 보이게 붙잡는다
   }
@@ -692,8 +728,8 @@ export class SceneView {
     for (const m of g.missiles) {
       if (m.path.length < 2) continue
       const live = m.hostile ? 0xff8fa3 : 0xffffff
-      this.ribbon(m.path, m.alive ? 7 : 4, m.alive ? live : (m.hostile ? 0x9f5f6b : 0x7c8798),
-        { opacity: m.alive ? 1 : 0.42, z: 1, depth: true })
+      this.ribbon(m.path, m.alive ? 3.6 : 2.2, m.alive ? live : (m.hostile ? 0x9f5f6b : 0x7c8798),
+        { opacity: m.alive ? 0.95 : 0.36, z: 1, depth: true })
     }
 
     // 조준선 + 큐 예측 (§14.3 개정)
@@ -702,13 +738,13 @@ export class SceneView {
       this.ribbon([g.earth.pos, p], 2, 0x3b82f6, { fade: false, opacity: 0.35, z: -3, tailWidth: 1, depth: true })
       const pred = g.predictPath()
       if (pred.pts.length > 1) {
-        this.ribbon(pred.pts, 4.5, PRED_TONE[pred.outcome] ?? 0x67e8f9, { fade: false, opacity: 0.85, z: 0, tailWidth: 1 })
+        this.ribbon(pred.pts, 2.6, PRED_TONE[pred.outcome] ?? 0x67e8f9, { fade: false, opacity: 0.9, z: 0, tailWidth: 1 })
         // 리드선 — "지금 저기 있는 저 공"과 "맞는 순간 여기 와 있을 자리"를 잇는다
         if (pred.hit) {
           const now = g.bodies.find(b => b.id === pred.hit.id)
           if (now && Math.hypot(now.pos.x - pred.hit.x, now.pos.y - pred.hit.y) > pred.hit.r * 0.4)
-            this.ribbon([now.pos, { x: pred.hit.x, y: pred.hit.y }], 2, PRED_TONE[pred.outcome] ?? 0x67e8f9,
-              { fade: false, opacity: 0.3, z: 0, tailWidth: 1 })
+            this.ribbon([now.pos, { x: pred.hit.x, y: pred.hit.y }], 1.4, PRED_TONE[pred.outcome] ?? 0x67e8f9,
+              { fade: false, opacity: 0.32, z: 0, tailWidth: 1 })
         }
         this.markPredEnd(pred)
       }

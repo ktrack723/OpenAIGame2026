@@ -30,6 +30,12 @@ export const ROLES = {
     brief: '핵을 맞으면 그 자리에서 유폭. 반경 안의 모든 천체를 통째로 밀어낸다.',
     aim: '휘발성 — 맞는 순간 유폭한다 (주황 원 안이 전부 밀린다)',
   },
+  shield: {
+    label: '방어막', icon: '⬡', color: 0xa78bfa,
+    dvScale: 0,
+    brief: '핵 직격을 통째로 삼킨다 — 임펄스도 폭풍도 없다. 다른 행성을 밀어 쳐라.',
+    aim: '방어막 — 직격 무효 (탄두만 소멸, 폭풍도 없다)',
+  },
 }
 
 export const roleOf = (b) => (b && b.role) ? ROLES[b.role] : null

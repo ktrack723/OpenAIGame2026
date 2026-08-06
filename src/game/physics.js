@@ -89,7 +89,9 @@ export function stepMissile(m, bodies, dt) {
   }
   m.age += dt
   m.minSunDist = Math.min(m.minSunDist, len(m.pos))   // 태양 가속 보너스 판정용 (§9.1)
-  if (++m.pathN % 3 === 0 && m.path.push(clone(m.pos)) > 1600) m.path.shift()
+  // 트레일은 최근 ~6초만 (매 4스텝 기록 × 180점). 40초치를 다 남기면
+  // 화면이 실오라기로 뒤덮여 정작 공이 안 보인다.
+  if (++m.pathN % 4 === 0 && m.path.push(clone(m.pos)) > 180) m.path.shift()
 }
 
 // ─── T1-4: 인카운터 트래커 (§5.2/5.4) — 진입/이탈 굴절각, 니어미스, 포획 ───

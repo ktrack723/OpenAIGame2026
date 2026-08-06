@@ -44,7 +44,7 @@ function placeOrbits(rng, mus, K, aMax) {
   // 간격 하한도 3.0 힐 반경까지 내렸다: 궤도가 붙을수록 밀어서 만나게 하기 쉽다.
   for (let g = 0; g < 6 && axes[n - 1] > aMax; g++) {
     const kMean = K.reduce((s, k) => s + k, 0) / K.length
-    if (kMean > Math.min(...K) + 0.3) for (let i = 0; i < K.length; i++) K[i] = Math.max(3.0, K[i] * 0.9)
+    if (kMean > Math.min(...K) + 0.3) for (let i = 0; i < K.length; i++) K[i] = Math.max(3.4, K[i] * 0.9)
     else for (let i = 0; i < n; i++) mus[i] *= 0.85
     build()
   }
@@ -190,6 +190,8 @@ function assignRoles(rng, bodies, earth, targets, goal, stageIdx, ante) {
   const cand = bodies.filter(b => b !== earth && b.type !== 'debris')
   const isT = (b) => targets.includes(b)
 
+  // 방어막은 캐롬 목표가 표적에 얹는 정식 역할이다 — 범례에도 그렇게 뜬다
+  if (goal.shielded) for (const t of targets) setRole(t, 'shield')
   // "밀어선 안 되고 던져야 한다" — 충돌 파괴 목표의 주제 그 자체
   if ((goal.kind === 'SMASH' || goal.kind === 'PILEUP') && pool.includes('armor')) setRole(targets[0], 'armor')
 
