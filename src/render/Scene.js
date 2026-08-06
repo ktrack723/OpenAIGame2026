@@ -6,6 +6,7 @@ import { Particles } from './Particles.js'
 import { Markers } from './Markers.js'
 import { Explosions } from './Explosions.js'
 import { AimHelper, PRED_TONE } from './AimHelper.js'
+import { Orbits } from './Orbits.js'
 
 // 바이옴별 재질 — 색은 이전과 동일, 거칠기/발광만 3D용으로 추가
 const MATS = {
@@ -134,6 +135,7 @@ export class SceneView {
     this.parts = new Particles(this.scene)
     this.markers = new Markers(this.scene)
     this.boom = new Explosions(this.parts, this.rig, (v, c) => this.flash(v, c))
+    this.orbits = new Orbits(this.scene)
 
     // 발사대 마커 — 미사일이 지구가 아니라 여기서 나간다는 걸 못 박는다
     this.pad = new THREE.Mesh(new THREE.RingGeometry(0.62, 1, 24), new THREE.MeshBasicMaterial({
@@ -234,6 +236,8 @@ export class SceneView {
     this.rig.update(dt)
     this.boom.drain(this.game)
     this.syncBodies(dt)
+    this.orbits.sync(this.game.bodies, this.game.aMax,
+      (b) => b.isEarth ? 0x60a5fa : b.isTarget ? 0x22d3ee : colorOf(b.type))
     this.syncMissiles()
     this.syncLines()
     this.markers.update(this.game, this.rig, dt, (b) => this.renderRadius(b))
@@ -259,6 +263,7 @@ export class SceneView {
   }
 
   resetStage() {
+    this.orbits.dispose()
     for (const fx of this.bodyFx.values()) this.disposeBodyFx(fx)
     this.bodyFx.clear()
     for (const fx of this.missileFx.values()) {
