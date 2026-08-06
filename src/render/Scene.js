@@ -109,6 +109,34 @@ export class SceneView {
     this.pad.renderOrder = 14
     this.scene.add(this.pad)
 
+    // ── 1차 충돌 하이라이트 ────────────────────────────────────
+    // "텍스트를 읽어야 어디 박는지 안다"를 없애는 게 목적. 맞는 순간 그 공이
+    // 있을 자리에 락온 브래킷 + 채운 디스크 + 맞는 쪽 반달을 겹쳐 찍는다.
+    // 2차·3차 충돌은 일부러 예측하지 않는다 — 그건 플레이어가 읽을 몫이다.
+    this.lockDisc = new THREE.Mesh(this.discGeo, new THREE.MeshBasicMaterial({
+      transparent: true, opacity: 0.2, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending,
+    }))
+    this.lockDisc.renderOrder = 12
+    this.lockRing = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.06, 72), new THREE.MeshBasicMaterial({
+      transparent: true, depthTest: false, depthWrite: false, side: THREE.DoubleSide,
+    }))
+    this.lockRing.renderOrder = 16
+    // 맞는 쪽 반달 — 공의 어느 살을 치는지가 곧 밀리는 방향이라 이게 핵심 정보다
+    this.lockHemi = new THREE.Mesh(new THREE.RingGeometry(0.98, 1.30, 48, 1, -0.62, 1.24), new THREE.MeshBasicMaterial({
+      transparent: true, depthTest: false, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
+    }))
+    this.lockHemi.renderOrder = 16
+    this.lockBrackets = new THREE.Group()   // 회전하는 락온 브래킷 4개
+    for (let i = 0; i < 4; i++) {
+      const m = new THREE.Mesh(
+        new THREE.RingGeometry(1.26, 1.54, 20, 1, i * Math.PI / 2 + 0.30, Math.PI / 2 - 0.60),
+        new THREE.MeshBasicMaterial({ transparent: true, depthTest: false, depthWrite: false, side: THREE.DoubleSide }))
+      m.renderOrder = 16
+      this.lockBrackets.add(m)
+    }
+    this.scene.add(this.lockDisc, this.lockRing, this.lockHemi, this.lockBrackets)
+    this.lockT = 0
+
     // 조준 보조 — 임펄스 방향(노랑) / 타격 직후 공의 진로(흰색) / 폭풍 반경(주황 링)
     this.pushArrow = makeArrow(0xfbbf24, 0.95)
     this.courseArrow = makeArrow(0xffffff, 0.9)
@@ -203,6 +231,7 @@ export class SceneView {
   render() {
     const now = performance.now()
     const dt = Math.min(0.05, (now - this.lastT) / 1000); this.lastT = now
+    this.lockT += dt
     if (this.lastBodies !== this.game.bodies) this.resetStage()
     this.rig.update(dt)
     this.drainFx()
@@ -284,6 +313,9 @@ export class SceneView {
 
   syncBodies(dt) {
     const g = this.game
+    // 조준 중이면 "지금 화면의 어느 공을 치는가"도 같이 켠다 —
+    // 락온은 미래 위치에 찍히므로, 현재 위치의 그 공도 물어 줘야 눈이 이어진다.
+    const aimHit = g.canAim ? g.predictPath().hit : null
     for (const b of g.bodies) {
       let fx = this.bodyFx.get(b.id)
       if (!fx) fx = this.makeBodyFx(b)
@@ -327,6 +359,11 @@ export class SceneView {
         fx.ring.material.color.setHex(shielded ? 0xa78bfa : 0x22d3ee)
         fx.ring.material.opacity = 0.7 + 0.25 * Math.abs(Math.sin(performance.now() / 320))
       } else { fx.ring.material.color.setHex(0xe2e8f0); fx.ring.material.opacity = 0.34 }
+      if (aimHit && aimHit.id === b.id) {   // 이번 샷이 건드릴 공 — 예측선 색으로 물어 준다
+        fx.ring.material.color.setHex(PRED_TONE[aimHit.outcome] ?? 0x67e8f9)
+        fx.ring.material.opacity = 1
+        fx.ring.scale.setScalar(r * (1.30 + 0.06 * Math.sin(this.lockT * 5)))
+      }
 
       if (fx.trueRing.visible) {   // 줌아웃으로 부풀었을 때만 실제 명중 반경을 얇게 병기
         fx.trueRing.position.set(b.pos.x, b.pos.y, 0.2)
@@ -339,7 +376,12 @@ export class SceneView {
     for (const m of this.game.missiles) {
       let fx = this.missileFx.get(m)
       if (!fx) {
-        const mesh = new THREE.Mesh(this.sphereGeo, new THREE.MeshBasicMaterial({ color: 0xfff4d6 }))
+        // 미사일은 커서다 — 행성 뒤로 숨으면 안 되므로 깊이 테스트를 끄고 항상 위에 그린다.
+        // (깊이를 쓰지 않으니 트레일을 가리지도 않는다.)
+        const mesh = new THREE.Mesh(this.sphereGeo, new THREE.MeshBasicMaterial({
+          color: 0xfff4d6, transparent: true, depthTest: false, depthWrite: false,
+        }))
+        mesh.renderOrder = 9
         const glow = new THREE.Sprite(new THREE.SpriteMaterial({
           map: this.glowTex, transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending, opacity: 0.85,
         }))
@@ -463,7 +505,10 @@ export class SceneView {
 
   // 리본 — THREE.Line의 굵기는 WebGL에서 1px로 고정이라 트레일이 실오라기가 된다.
   // 폭을 가진 삼각형 띠를 직접 만들어 화면상 두께를 확보한다(줌에 따라 같이 커짐).
-  ribbon(pts, widthPx, color, { fade = true, opacity = 1, z = -1, tailWidth = 0.25 } = {}) {
+  // depth:true 를 주면 깊이 테스트를 켜서 **행성 뒤로 지나간다**. 트레일이 공을
+  // 덮어 버리면 어느 공이 무슨 색인지 안 보여서, 궤적류는 전부 이쪽을 쓴다.
+  // (조준 보조선만 UI 레이어로 항상 위에 그린다.)
+  ribbon(pts, widthPx, color, { fade = true, opacity = 1, z = -1, tailWidth = 0.25, depth = false } = {}) {
     const n = pts.length
     if (n < 2) return
     const w = widthPx * this.rig.worldPerPx * 0.5
@@ -496,10 +541,10 @@ export class SceneView {
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3))
     geo.setIndex(new THREE.BufferAttribute(idx, 1))
     const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
-      vertexColors: true, transparent: true, depthTest: false, depthWrite: false,
+      vertexColors: true, transparent: true, depthTest: depth, depthWrite: false,
       blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
     }))
-    mesh.renderOrder = 3
+    mesh.renderOrder = depth ? 3 : 10
     this.lines.push(mesh); this.scene.add(mesh)
   }
 
@@ -508,30 +553,37 @@ export class SceneView {
     this.lines = []
     const g = this.game
 
-    // 발사 회랑 — §7.5 차폐도 B를 재는 그 선
+    // 발사 회랑 — 지구에서 목표까지의 직선
     if (g.earth.alive && g.target.alive)
-      this.ribbon([g.earth.pos, g.target.pos], 2, 0x22d3ee, { fade: false, opacity: 0.2, z: -5, tailWidth: 1 })
+      this.ribbon([g.earth.pos, g.target.pos], 2, 0x22d3ee, { fade: false, opacity: 0.2, z: -5, tailWidth: 1, depth: true })
 
-    // 궤도 트레일 — 플레이어 임펄스 직후 강조 (P4, §14.2)
+    // 궤도 트레일 — 플레이어 임펄스 직후 강조 (P4, §14.2). 공 뒤로 지나간다.
     for (const b of g.bodies) {
       if (!b.trail || b.trail.length < 2) continue
       const hot = b.trailFlash > 0
-      this.ribbon(b.trail, hot ? 9 : 5.5, hot ? 0xffffff : colorOf(b.type), { opacity: hot ? 1 : 0.75, z: -2 })
+      this.ribbon(b.trail, hot ? 9 : 5.5, hot ? 0xffffff : colorOf(b.type), { opacity: hot ? 1 : 0.75, z: -2, depth: true })
     }
 
     // 미사일 궤적 — 빗나간 샷은 흐리게 스테이지 끝까지 남긴다 (§14.4)
     for (const m of g.missiles) {
       if (m.path.length < 2) continue
-      this.ribbon(m.path, m.alive ? 7 : 4, m.alive ? 0xffffff : 0x7c8798, { opacity: m.alive ? 1 : 0.42, z: 1 })
+      this.ribbon(m.path, m.alive ? 7 : 4, m.alive ? 0xffffff : 0x7c8798, { opacity: m.alive ? 1 : 0.42, z: 1, depth: true })
     }
 
     // 조준선 + 큐 예측 (§14.3 개정)
     if (g.canAim) {
       const p = g.launchPos()
-      this.ribbon([g.earth.pos, p], 2, 0x3b82f6, { fade: false, opacity: 0.35, z: -3, tailWidth: 1 })
+      this.ribbon([g.earth.pos, p], 2, 0x3b82f6, { fade: false, opacity: 0.35, z: -3, tailWidth: 1, depth: true })
       const pred = g.predictPath()
       if (pred.pts.length > 1) {
         this.ribbon(pred.pts, 4.5, PRED_TONE[pred.outcome] ?? 0x67e8f9, { fade: false, opacity: 0.85, z: 0, tailWidth: 1 })
+        // 리드선 — "지금 저기 있는 저 공"과 "맞는 순간 여기 와 있을 자리"를 잇는다
+        if (pred.hit) {
+          const now = g.bodies.find(b => b.id === pred.hit.id)
+          if (now && Math.hypot(now.pos.x - pred.hit.x, now.pos.y - pred.hit.y) > pred.hit.r * 0.4)
+            this.ribbon([now.pos, { x: pred.hit.x, y: pred.hit.y }], 2, PRED_TONE[pred.outcome] ?? 0x67e8f9,
+              { fade: false, opacity: 0.3, z: 0, tailWidth: 1 })
+        }
         this.markPredEnd(pred)
       }
     } else this.hidePredEnd()
@@ -556,20 +608,37 @@ export class SceneView {
     this.predEnd.material.color.setHex(tone)
     this.predEnd.material.opacity = pred.outcome === 'timeout' ? 0.45 : 0.95
 
-    // 충돌 대상의 "그때 위치" 고스트 — 지금 자리가 아니라 도착 시점의 자리에 맞는다
-    if (!this.predGhost) {
-      this.predGhost = new THREE.Mesh(this.discGeo, new THREE.MeshBasicMaterial({
-        transparent: true, opacity: 0.16, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending,
-      }))
-      this.predGhost.renderOrder = 4
-      this.scene.add(this.predGhost)
-    }
+    // ── 1차 충돌 락온 ──────────────────────────────────────────
     const h = pred.hit
-    this.predGhost.visible = !!h
+    const on = !!h
+    this.lockDisc.visible = on; this.lockRing.visible = on
+    this.lockHemi.visible = on; this.lockBrackets.visible = on
     if (h) {
-      this.predGhost.position.set(h.x, h.y, -1)
-      this.predGhost.scale.setScalar(h.r)
-      this.predGhost.material.color.setHex(tone)
+      const pulse = 0.5 + 0.5 * Math.sin(this.lockT * 5)
+      // 락온 크기는 그 공이 **화면에 그려지는 크기** 그대로여야 한다.
+      // 판정 반경만 쓰면 줌아웃 시 락온이 공보다 작아져서 딴 걸 무는 것처럼 보인다.
+      const body = this.game.bodies.find(b => b.id === h.id)
+      const R = body ? this.renderRadius(body) : h.r
+      for (const o of [this.lockDisc, this.lockRing, this.lockHemi, this.lockBrackets]) o.material?.color.setHex(tone)
+      this.lockDisc.position.set(h.x, h.y, 4)
+      this.lockDisc.scale.setScalar(R)
+      this.lockDisc.material.opacity = 0.14 + 0.10 * pulse
+      this.lockRing.position.set(h.x, h.y, 5)
+      this.lockRing.scale.setScalar(R)
+      this.lockRing.material.opacity = 0.75 + 0.25 * pulse
+      // 반달은 폭심 쪽(= 중심에서 폭심으로 향하는 각)에 붙인다
+      this.lockHemi.position.set(h.x, h.y, 5)
+      this.lockHemi.scale.setScalar(R)
+      this.lockHemi.rotation.z = Math.atan2(-h.dy, -h.dx)
+      this.lockHemi.material.opacity = 0.55 + 0.35 * pulse
+      // 브래킷은 락온이 "물었다"는 신호 — 천천히 돌면서 숨을 쉰다
+      this.lockBrackets.position.set(h.x, h.y, 5)
+      this.lockBrackets.scale.setScalar(R * (1 + 0.06 * pulse))
+      this.lockBrackets.rotation.z = -this.lockT * 0.8
+      for (const m of this.lockBrackets.children) {
+        m.material.color.setHex(tone)
+        m.material.opacity = 0.6 + 0.4 * pulse
+      }
     }
 
     const ppw = this.rig.worldPerPx
@@ -584,20 +653,24 @@ export class SceneView {
       this.blastRing.material.color.setHex(h.outcome === 'earth' ? 0xf87171 : 0xf59e0b)
     }
     if (push) {
+      const R = this.lockRing.scale.x   // 락온과 같은 반경 위에서 화살표를 시작한다
       // 임펄스(노랑): 폭심에서 공의 중심을 뚫고 나가는 방향 — 길이 ∝ Δv
-      const len = Math.max(26 * ppw, h.dv * 5)
-      setArrow(this.pushArrow, h.px, h.py, Math.atan2(h.dy, h.dx), len, Math.max(3 * ppw, len * 0.06), 6)
+      const len = Math.max(22 * ppw, R * 0.9 + h.dv * 2.5)
+      setArrow(this.pushArrow, h.px, h.py, Math.atan2(h.dy, h.dx), len, Math.max(3 * ppw, len * 0.07), 6)
       // 진로(흰색): 원래 궤도 속도 + 임펄스 = 공이 실제로 출발하는 방향.
-      // 플레이어가 실제로 겨냥하는 건 이 화살표라 임펄스 화살표보다 굵고 길게 뽑는다.
+      // 공의 가장자리에서 뻗어 나가게 해서 "이 공이 저리로 간다"로 읽히게 한다.
       const sp = Math.hypot(h.vx, h.vy) || 1
-      const cl = Math.max(90 * ppw, h.r * 2 + sp * 6)
-      setArrow(this.courseArrow, h.x, h.y, Math.atan2(h.vy, h.vx), cl, Math.max(4 * ppw, cl * 0.05), 7)
+      const ca = Math.atan2(h.vy, h.vx)
+      const cl = Math.max(60 * ppw, sp * 3)
+      setArrow(this.courseArrow, h.x + Math.cos(ca) * R, h.y + Math.sin(ca) * R, ca,
+        cl, Math.max(3.5 * ppw, cl * 0.07), 7)
     }
   }
 
   hidePredEnd() {
     if (this.predEnd) this.predEnd.visible = false
-    if (this.predGhost) this.predGhost.visible = false
+    this.lockDisc.visible = false; this.lockRing.visible = false
+    this.lockHemi.visible = false; this.lockBrackets.visible = false
     this.pushArrow.visible = false
     this.courseArrow.visible = false
     this.blastRing.visible = false
