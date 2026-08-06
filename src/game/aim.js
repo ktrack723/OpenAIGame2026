@@ -2,7 +2,7 @@ import { fromAngle } from '../core/vector.js'
 import { wrapPi } from '../core/angle.js'
 import { CFG, blastRadius, hitRadiusOf } from './config.js'
 import { cloneBodies, segCircleEntry, segHitsCircle, stepBodies, stepMissile } from './physics.js'
-import { effDv, volatileRadius } from './roles.js'
+import { effDv, hasRole, volatileRadius } from './roles.js'
 
 // ─── 조준 보조 — game.js에서 떼어낸 순수 계산부 ───────────────────
 // 상태를 바꾸는 건 scanContact/findIntercept가 game.aim·game.power를 쓰는 것뿐이고,
@@ -223,7 +223,7 @@ export function interceptInfo(game, x, y, yld) {
 // 충돌 한 건의 "큐 정보" — 폭심, 임펄스 방향, 타격 직후 공의 진로
 export function impactInfo(game, o, point, simEarth) {
   const isT = game.isTarget(o)
-  const shielded = o.role === 'shield'
+  const shielded = hasRole(o, 'shield')
   let outcome = 'neutral'
   if (o.type === 'debris') outcome = 'debris'
   else if (o.isEarth) outcome = 'earth'

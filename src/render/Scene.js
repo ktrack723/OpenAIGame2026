@@ -1,12 +1,13 @@
 import * as THREE from 'three'
 import { CFG, VIS, hitRadiusOf } from '../game/config.js'
-import { ROLES, volatileRadius } from '../game/roles.js'
+import { ROLES, hasRole, volatileRadius } from '../game/roles.js'
 import { CameraRig } from './CameraRig.js'
 import { Particles } from './Particles.js'
 import { Markers } from './Markers.js'
 import { Explosions } from './Explosions.js'
 import { AimHelper, PRED_TONE } from './AimHelper.js'
 import { Orbits } from './Orbits.js'
+import { LaserView } from './LaserView.js'
 
 // 바이옴별 재질 — 색은 이전과 동일, 거칠기/발광만 3D용으로 추가
 const MATS = {
@@ -136,6 +137,7 @@ export class SceneView {
     this.markers = new Markers(this.scene)
     this.boom = new Explosions(this.parts, this.rig, (v, c) => this.flash(v, c))
     this.orbits = new Orbits(this.scene)
+    this.laserView = new LaserView(this.scene, this.rig)
 
     // 발사대 마커 — 미사일이 지구가 아니라 여기서 나간다는 걸 못 박는다
     this.pad = new THREE.Mesh(new THREE.RingGeometry(0.62, 1, 24), new THREE.MeshBasicMaterial({
@@ -236,6 +238,7 @@ export class SceneView {
     this.rig.update(dt)
     this.boom.drain(this.game)
     this.syncBodies(dt)
+    this.laserView.update(this.game, dt)
     this.orbits.sync(this.game.bodies, this.game.aMax,
       (b) => b.isEarth ? 0x60a5fa : b.isTarget ? 0x22d3ee : colorOf(b.type))
     this.syncMissiles()
@@ -280,6 +283,10 @@ export class SceneView {
     for (const o of [fx.mesh, fx.halo, fx.ring, fx.trueRing]) {
       this.scene.remove(o); o.material.dispose()
     }
+    if (fx.mod) {
+      for (const m of fx.mod.grp.children) { m.geometry.dispose(); m.material.dispose() }
+      this.scene.remove(fx.mod.grp)
+    }
     if (fx.role) {
       for (const m of fx.role.grp.children) { m.geometry.dispose(); m.material.dispose() }
       this.scene.remove(fx.role.grp)
@@ -321,7 +328,28 @@ export class SceneView {
     const fx = { mesh, halo, ring, trueRing, type: b.type, spin: 0.15 + Math.random() * 0.5, role: null }
     this.bodyFx.set(b.id, fx)
     if (b.role) this.attachRoleFx(fx, b)
+    if (b.mods && b.mods.length) this.attachModFx(fx, b, b.mods[0])
     return fx
+  }
+
+  // 겹쳐 얹은 성질(mods) 표식 — 주 역할 링보다 안쪽에 한 겹 더 두른다
+  attachModFx(fx, b, mod) {
+    const def = ROLES[mod], spec = ROLE_RING[mod]
+    if (!def || !spec) return
+    const grp = new THREE.Group()
+    const step = Math.PI * 2 / spec.n
+    for (let i = 0; i < spec.n; i++) {
+      const m = new THREE.Mesh(
+        new THREE.RingGeometry(spec.r0 - 0.16, spec.r1 - 0.16, 8, 1, i * step, step * (1 - spec.gap)),
+        new THREE.MeshBasicMaterial({
+          color: def.color, transparent: true, opacity: 0.8,
+          depthTest: false, depthWrite: false, side: THREE.DoubleSide,
+        }))
+      m.renderOrder = 13
+      grp.add(m)
+    }
+    this.scene.add(grp)
+    fx.mod = { grp, spin: -(spec.spin || 0.3) }
   }
 
   // 역할 표식 — 점선 링 + (휘발성은) 유폭 반경 원.
@@ -388,6 +416,14 @@ export class SceneView {
       fx.halo.visible = b.alive && solid
       fx.ring.visible = b.alive && solid
       fx.trueRing.visible = b.alive && solid && r > hitRadiusOf(b) * VIS.TRUE_R_HINT
+      if (fx.mod) {
+        fx.mod.grp.visible = b.alive
+        if (b.alive) {
+          fx.mod.grp.position.set(b.pos.x, b.pos.y, 1)
+          fx.mod.grp.scale.setScalar(r)
+          fx.mod.grp.rotation.z += fx.mod.spin * dt
+        }
+      }
       if (fx.role) {
         fx.role.grp.visible = b.alive
         if (fx.role.blast) fx.role.blast.visible = b.alive
@@ -414,8 +450,20 @@ export class SceneView {
       }
       if (!b.alive) continue
 
+      // 워프인 — 게임 시간이 멈춰 있어도 보여야 하므로 실시간 dt로 감쇠시킨다
+      let scale = r
+      if (b.warp > 0) {
+        b.warp = Math.max(0, b.warp - dt / CFG.WARP_TIME)
+        const u = 1 - b.warp                       // 0 → 1
+        scale = r * (0.05 + 0.95 * (1 - Math.pow(1 - u, 3)))
+        fx.mesh.material.emissiveIntensity = 0.6 + 2.5 * b.warp
+      } else if (fx.warped !== true) {
+        fx.warped = true
+        const spec = MATS[b.type] ?? MATS.rock
+        fx.mesh.material.emissiveIntensity = spec.emis
+      }
       fx.mesh.position.set(b.pos.x, b.pos.y, 0)
-      fx.mesh.scale.setScalar(r)
+      fx.mesh.scale.setScalar(scale)
       fx.mesh.rotation.y += fx.spin * dt
 
       // 핵을 맞을 때마다 그을음이 남는다(부서지진 않는다) + 히트 플래시 (§14.5)
@@ -432,7 +480,7 @@ export class SceneView {
       // 캐롬 스테이지의 목표는 보라색 — "직격이 안 통하는 공"이라는 뜻이다.
       if (b.isEarth) { fx.ring.material.color.setHex(0x60a5fa); fx.ring.material.opacity = 0.9 }
       else if (b.isTarget) {
-        fx.ring.material.color.setHex(b.role === 'shield' ? 0xa78bfa : 0x22d3ee)
+        fx.ring.material.color.setHex(hasRole(b, 'shield') ? 0xa78bfa : 0x22d3ee)
         fx.ring.material.opacity = 0.7 + 0.25 * Math.abs(Math.sin(performance.now() / 320))
       } else { fx.ring.material.color.setHex(0xe2e8f0); fx.ring.material.opacity = 0.34 }
       if (aimHit && aimHit.id === b.id) {   // 이번 샷이 건드릴 공 — 예측선 색으로 물어 준다

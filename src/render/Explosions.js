@@ -22,7 +22,10 @@ export class Explosions {
         this.parts.burst(e.x, e.y, { n: 40, color: c, speed: 90, size: 8, ttl: 0.5, spread: 1.4, dir: e.a })
         this.parts.shock(e.x, e.y, 26, c, 0.4)
         if (e.hostile) { this.rig.hit(6); this.flash(0.12, '#ffe4e6') }
-      } else if (e.kind === 'volatile') this.volatile(e)
+      } else if (e.kind === 'warp') this.warp(e)
+      else if (e.kind === 'laserCharge') this.laserCharge(e)
+      else if (e.kind === 'laserFire') this.laserFire(e)
+      else if (e.kind === 'volatile') this.volatile(e)
       else if (e.kind === 'absorb') this.absorb(e)
       else if (e.kind === 'nuke') this.nuke(e)
       else if (e.kind === 'destroy') this.destroy(e)
@@ -42,6 +45,61 @@ export class Explosions {
       }
     }
     q.length = 0
+  }
+
+  // ─── 워프인 — 조르그 행성계에서 텔레포트 ─────────────────────
+  // 밖에서 안으로 조여드는 링 → 흰 섬광 → 밖으로 터지는 고리.
+  // "없던 게 생겼다"가 폭발과 구분되어야 해서 색을 보라/청록으로 잡았다.
+  warp(e) {
+    const P = this.parts, R = Math.max(70, (e.r ?? 30) * 3.2)
+    const tone = e.fort ? 0xff5c9e : 0x7dd3fc
+    // ① 공간이 찢어지며 좁혀 들어오는 링 (from > to = 수축)
+    P.shock(e.x, e.y, R, tone, 0.55, { thin: true, from: 3.4, to: 0.12, alpha: 1 })
+    P.shock(e.x, e.y, R, 0xa855f7, 0.75, { from: 4.2, to: 0.2, alpha: 0.6, delay: 0.08 })
+    // ② 바깥에서 중심으로 빨려드는 입자
+    for (let i = 0; i < 150; i++) {
+      const a = Math.random() * Math.PI * 2, d = R * (1.4 + Math.random() * 2.2)
+      const sp = 260 + Math.random() * 380
+      P.spawn(e.x + Math.cos(a) * d, e.y + Math.sin(a) * d, -Math.cos(a) * sp, -Math.sin(a) * sp,
+        _pc.setHex(Math.random() < 0.4 ? 0xffffff : tone), 7 + Math.random() * 8, 0.55 + Math.random() * 0.4, 0.15)
+    }
+    // ③ 도착 섬광 + 밖으로 터지는 고리
+    P.puff(e.x, e.y, { r0: R * 0.05, r1: R * 0.8, ttl: 0.3, color: 0xffffff, alpha: 1, delay: 0.42 })
+    P.puff(e.x, e.y, { r0: R * 0.3, r1: R * 1.9, ttl: 1.2, color: tone, alpha: 0.7, delay: 0.46 })
+    P.shock(e.x, e.y, R, 0xffffff, 0.6, { thin: true, from: 0.05, to: 2.6, alpha: 1, delay: 0.44 })
+    P.spikes(e.x, e.y, { n: 20, color: tone, speed: 900, size: 9, ttl: 0.55 })
+    P.burst(e.x, e.y, { n: 140, color: tone, speed: 380, size: 13, ttl: 1.1 })
+    this.rig.hit(14)
+    this.flash(0.3, e.fort ? '#ffe4ef' : '#e6f6ff')
+    this.rig.focus(e.x, e.y, R * 2.4, 2.2)
+  }
+
+  // ─── 레이저 충전 개시 — 본성이 달아오른다 ───────────────────
+  laserCharge(e) {
+    const P = this.parts
+    P.shock(e.x, e.y, 120, 0xff4d6d, 0.8, { thin: true, from: 2.8, to: 0.15, alpha: 0.9 })
+    P.burst(e.x, e.y, { n: 60, color: 0xff4d6d, speed: 160, size: 10, ttl: 0.9 })
+    this.rig.hit(8)
+    this.flash(0.16, '#ffe0e6')
+  }
+
+  // ─── 레이저 발사 ─────────────────────────────────────────────
+  laserFire(e) {
+    const P = this.parts
+    // 총구 쪽
+    P.puff(e.x, e.y, { r0: 8, r1: 150, ttl: 0.5, color: 0xff4d6d, alpha: 1 })
+    P.spikes(e.x, e.y, { n: 16, color: 0xffd7de, speed: 1400, size: 9, ttl: 0.45 })
+    // 착탄 쪽
+    if (e.hit) {
+      P.puff(e.ex, e.ey, { r0: 10, r1: 220, ttl: 0.7, color: 0xff2d4d, alpha: 1 })
+      P.shock(e.ex, e.ey, 180, 0xffffff, 0.6, { thin: true, from: 0.08, to: 2.6, alpha: 1 })
+      P.shock(e.ex, e.ey, 180, 0xff4d6d, 1.1, { from: 0.1, to: 2.0, delay: 0.06 })
+      P.burst(e.ex, e.ey, { n: 260, color: 0xff6b7f, speed: 520, size: 16, ttl: 1.6 })
+      P.burst(e.ex, e.ey, { n: 90, color: 0xffffff, speed: 900, size: 9, ttl: 0.6 })
+      this.rig.focus(e.ex, e.ey, 420, 2)
+    }
+    this.rig.hit(VIS.SHAKE_MAX)
+    this.flash(0.85, '#ffdde3')
   }
 
   // ─── 핵 기폭 (§14.5 개정) ────────────────────────────────────

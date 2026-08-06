@@ -15,7 +15,7 @@ export const ROLES = {
   battery: {
     label: '요새', icon: '✦', color: 0xf43f5e,
     dvScale: 1,
-    brief: '맞으면 맞은 쪽으로 반격 미사일을 되쏜다. 그 미사일도 행성을 민다.',
+    brief: '★ 이게 표적이다. 맞으면 반격 미사일을 되쏜다 — 전부 없애야 판이 끝난다.',
     aim: '요새 — 때린 쪽으로 반격 미사일이 튀어나온다 (붉은 화살표)',
   },
   void: {
@@ -40,9 +40,20 @@ export const ROLES = {
 
 export const roleOf = (b) => (b && b.role) ? ROLES[b.role] : null
 
-// 이 공에 실제로 먹히는 Δv — 장갑은 깎이고 특이점은 0이다.
+// 요새 위에 장갑·방어막을 겹쳐 얹을 수 있다. 주 역할은 role, 덧붙은 건 mods.
+// "이 공에 이 성질이 있는가"는 언제나 이 함수로 묻는다.
+export const hasRole = (b, r) => !!b && (b.role === r || (!!b.mods && b.mods.includes(r)))
+export const modsOf = (b) => (b && b.mods) ? b.mods : []
+
+// 이 공에 실제로 먹히는 Δv — 장갑은 깎이고 특이점·방어막은 0이다.
+// 겹쳐 얹은 성질(mods)까지 보고 가장 강한 감쇠를 적용한다.
 // 예측선과 실제 임펄스가 반드시 같은 함수를 써야 조준이 거짓말을 안 한다.
-export const effDv = (b, yld) => nukeDv(yld, b.mu) * (roleOf(b)?.dvScale ?? 1)
+export function dvScaleOf(b) {
+  let s = ROLES[b.role]?.dvScale ?? 1
+  for (const m of modsOf(b)) s = Math.min(s, ROLES[m]?.dvScale ?? 1)
+  return s
+}
+export const effDv = (b, yld) => nukeDv(yld, b.mu) * dvScaleOf(b)
 
 // 휘발성 유폭 반경 — 작약량과 무관하게 그 행성의 크기로 정해진다.
 // 상수라서 조준 전에 화면에 원으로 그려 줄 수 있다(= 계획이 가능하다).
