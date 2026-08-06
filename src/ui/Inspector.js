@@ -78,11 +78,21 @@ export class Inspector {
     const hp = b.hp ?? CFG.PLANET_HP, hpMax = b.hpMax ?? CFG.PLANET_HP
     const pips = '◆'.repeat(Math.max(0, hp)) + '◇'.repeat(Math.max(0, hpMax - hp))
     const out = []
+    // 태그 줄 — 넷 중 붙은 것만. 하나도 없으면 "일반 행성"이라고 못 박는다.
+    const tags = []
+    if (hostile) tags.push(['foe', `${HOSTILE.icon} 조르그 요새`])
+    for (const key of [b.role, ...modsOf(b)]) {
+      if (!key || key === 'battery') continue
+      const R = ROLES[key]
+      if (R) tags.push(['tag', `${R.icon} ${R.label}`])
+    }
     out.push(`<div class="ihead"><span class="iicon">${cat.icon}</span><b>${b.name}</b>`
-      + (hostile ? `<span class="ibadge foe">${HOSTILE.icon} 표적</span>` : '')
       + (b.isEarth ? '<span class="ibadge earth">본대</span>' : '')
       + (b.homeworld ? '<span class="ibadge foe">본성</span>' : '')
       + '</div>')
+    out.push(`<div class="itags">${tags.length
+      ? tags.map(([c, t]) => `<span class="ibadge ${c}">${t}</span>`).join('')
+      : '<span class="ibadge plain">태그 없음 · 일반 행성</span>'}</div>`)
     out.push(`<div class="isub" style="color:${cat.color}">${cat.label} — ${cat.desc}</div>`)
     out.push(`<div class="irow"><span>체력</span><b class="${hp <= 1 ? 'crit' : ''}">${pips} ${hp}/${hpMax}</b></div>`)
     out.push(`<div class="irow"><span>질량 μ</span><b>${fmt(b.mu)}</b></div>`)

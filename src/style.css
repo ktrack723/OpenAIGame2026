@@ -35,6 +35,7 @@ h1{margin:0;color:var(--cy);letter-spacing:.34em;font-size:15px;font-weight:800;
   letter-spacing:.22em;text-transform:uppercase;margin-bottom:6px}
 .modhead .tick{width:3px;height:11px;background:var(--cy);box-shadow:0 0 8px var(--cy);flex:0 0 auto}
 .modhead>span:nth-child(3){margin-left:auto;letter-spacing:.06em}
+#tagNote{font-size:9.5px;font-weight:700;color:var(--dim);letter-spacing:.04em}
 
 /* ── 작전 목표 ── */
 .objname{color:#eaf7ff;font-size:13px;font-weight:700;line-height:1.45;font-family:var(--mono)}
@@ -159,6 +160,30 @@ button:disabled{opacity:.32;cursor:not-allowed;box-shadow:none}
 .zoomv{color:var(--cy);font-size:10.5px;font-weight:700;font-variant-numeric:tabular-nums;font-family:var(--mono)}
 pre{white-space:pre-wrap;line-height:1.55;color:#9fd0c4;margin:0;font-size:11px;font-family:var(--mono)}
 
+/* ── 관측 모드의 유일한 UI ──
+   패널이 통째로 사라진 화면에서 "돌아가는 길"이 하나는 보여야 한다.
+   크게, 화면 아래 가운데에, 손가락으로도 눌리게. */
+.aimbtn{position:fixed;left:50%;bottom:max(22px,env(safe-area-inset-bottom));transform:translateX(-50%);
+  z-index:4;display:flex;flex-direction:column;align-items:center;gap:3px;
+  padding:13px 30px;border:1px solid #2f7f9c;border-radius:0;cursor:pointer;
+  background:linear-gradient(180deg,rgba(14,53,73,.94),rgba(7,32,46,.94));backdrop-filter:blur(10px);
+  color:#d9f6ff;font-family:inherit;box-shadow:0 12px 40px #000a,inset 0 0 30px #4fd6f722;
+  clip-path:polygon(0 0,calc(100% - 14px) 0,100% 14px,100% 100%,14px 100%,0 calc(100% - 14px));
+  transition:background .12s,box-shadow .12s}
+/* display:flex 가 UA의 [hidden]{display:none}을 이겨 버린다 — 명시적으로 되돌린다 */
+.aimbtn[hidden]{display:none}
+.aimbtn:hover,.aimbtn:focus-visible{background:linear-gradient(180deg,#155d7c,#0a3348);
+  box-shadow:0 12px 40px #000a,0 0 26px #4fd6f766}
+.aimbtn .aimtitle{font-size:15px;font-weight:900;letter-spacing:.22em;color:#9fe8ff}
+.aimbtn .aimsub{font-size:10.5px;letter-spacing:.05em;color:#6ea8c0;font-family:var(--mono);
+  font-variant-numeric:tabular-nums}
+.aimbtn.alarm{border-color:#a02630;background:linear-gradient(180deg,rgba(74,14,22,.95),rgba(42,7,12,.95));
+  animation:firealarm 1s ease-in-out infinite}
+.aimbtn.alarm .aimtitle{color:#ffd9dc}
+.aimbtn.alarm .aimsub{color:#ff9aa6}
+.ghost.obs{border-color:#2f7f9c;color:#9fe8ff;background:#0c2b3a}
+.ghost.obs:hover:not(:disabled){background:#155d7c;color:#fff;box-shadow:0 0 14px #4fd6f755}
+
 /* ── 천체 정보창 (호버/터치) ── */
 .inspect{position:fixed;z-index:5;pointer-events:none;width:min(266px,calc(100vw - 24px));
   padding:9px 11px 8px;background:rgba(4,10,18,.94);backdrop-filter:blur(10px);
@@ -172,6 +197,9 @@ pre{white-space:pre-wrap;line-height:1.55;color:#9fd0c4;margin:0;font-size:11px;
   background:#12303f;color:#a5f3fc;border:1px solid #1e5a72}
 .ibadge.foe{background:#3a0a11;color:#ffb3bb;border-color:#8c1f28}
 .ibadge.earth{background:#0d2148;color:#bfdbfe;border-color:#274b8c}
+.ibadge.tag{background:#2a1c05;color:#fcd34d;border-color:#7a5310}
+.ibadge.plain{background:#141c22;color:#7b93a2;border-color:#22333d}
+.itags{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:5px}
 .isub{margin-bottom:6px;font-size:10.5px;line-height:1.45}
 .irow{display:flex;justify-content:space-between;gap:10px;font-size:11px;line-height:1.7;
   font-family:var(--mono);border-top:1px solid #0d1c28}

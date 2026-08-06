@@ -2,10 +2,10 @@ import { fromAngle } from '../core/vector.js'
 import { wrapPi } from '../core/angle.js'
 import { CFG, beltRadius, blastRadius, counterSpeed, escapeSpeed, hitRadiusOf } from './config.js'
 import { beltBounce, cloneBodies, segCircleEntry, segHitsCircle, stepBodies, stepMissile } from './physics.js'
-import { effDv, hasRole, volatileRadius } from './roles.js'
+import { effDv, volatileRadius } from './roles.js'
 
 // ─── 조준 보조 — game.js에서 떼어낸 순수 계산부 ───────────────────
-// 상태를 바꾸는 건 scanContact/findIntercept가 game.aim·game.power를 쓰는 것뿐이고,
+// 상태를 바꾸는 건 scanContact가 game.aim을 쓰는 것뿐이고,
 // 나머지는 전부 판을 복제해 굴려 보기만 한다. game.js는 얇은 래퍼만 남긴다.
 
 const EMPTY_PRED = { pts: [], outcome: null, hit: null }
@@ -133,96 +133,25 @@ export function scanContact(game, dir = 1) {
   return false
 }
 
-// ─── 요격각 탐색 ────────────────────────────────────────────
-// 요격 창은 각도 1° 미만이라 접촉각 버튼(1° 간격)으로는 그냥 건너뛴다.
-// 그래서 "닿는가"를 훑는 대신 **반격탄과의 최소 접근거리를 각도의 함수로 보고
-// 그 최소점을 찾는다**. 굵게 72방향 → 절반씩 좁히며 정밀화.
-// 발사 속도도 같이 훑는다 — 각도만으로는 대부분의 판에서 해가 없다(계측 2/24).
-export function findIntercept(game) {
-  if (!game.canAim || !game.missiles.some(f => f.alive)) return false
-  const powers = [CFG.LAUNCH_MIN, 24, 30, 36, 42, CFG.LAUNCH_MAX]
-  let best = { d: Infinity, a: game.aim, pw: game.power }
-  for (const pw of powers) {
-    for (let i = 0; i < 24; i++) {
-      const a = i / 24 * Math.PI * 2
-      const d = interceptMiss(game, a, pw)
-      if (d < best.d) best = { d, a, pw }
-    }
-  }
-  for (let step = 8; step >= 0.2; step /= 2) {   // 최소점 근처를 절반씩 좁힌다
-    for (const s of [-step, step]) {
-      const a = best.a + s * Math.PI / 180
-      const d = interceptMiss(game, a, best.pw)
-      if (d < best.d) best = { d, a, pw: best.pw }
-    }
-  }
-  game.aim = wrapPi(best.a)
-  game.power = best.pw
-  // 거친 적분(dt 1/40)이 "만난다"고 해도 실제 적분(1/120)에선 다를 수 있다.
-  // 정식 예측으로 확정한 결과만 플레이어에게 말한다.
-  game._predKey = null; game._predAt = 0
-  if (predictPath(game).outcome === 'intercept') {
-    game.setToast('요격각 확보 — 두 탄두가 만난다')
-    return true
-  }
-  game.setToast(`요격 불가 — 최소 접근 ${best.d.toFixed(0)} GU (이 판에선 안 만난다)`)
-  return false
-}
+// ─── 요격각 탐색은 없앴다 ────────────────────────────────────
+// 공중 요격(두 탄두가 만나 동시 기폭)은 **효과로는 그대로 남아 있다** —
+// missilePairs()가 여전히 판정하고 작약량도 합쳐진다. 다만 "만나는 각도를
+// 대신 찾아 주는" 조준 보조는 제거했다. 각도를 찾아 주는 순간 요격은
+// 플레이어가 읽어 낸 수가 아니라 버튼 하나가 되기 때문이다.
 
-// 이 각도·속도로 쐈을 때 반격탄과 가장 가까워지는 거리 (둘 중 하나가 죽으면 거기까지)
-export function interceptMiss(game, ang, pw = game.power) {
-  const foeSrc = game.missiles.find(f => f.alive)
-  if (!foeSrc) return Infinity
-  const sim = cloneBodies(game.bodies)
-  const dt = 1 / 40
-  const p = { x: game.earth.pos.x + Math.cos(ang) * CFG.LAUNCH_OFFSET, y: game.earth.pos.y + Math.sin(ang) * CFG.LAUNCH_OFFSET }
-  const m = { pos: { ...p }, vel: fromAngle(ang, pw), age: 0, pathN: 0, path: [], minSunDist: Infinity, prev: { ...p } }
-  const f = { pos: { ...foeSrc.pos }, vel: { ...foeSrc.vel }, age: foeSrc.age, pathN: 0, path: [], minSunDist: Infinity, prev: { ...foeSrc.pos } }
-  let min = Infinity
-  const beltR = beltRadius(game.aMax)
-  const steps = Math.round(CFG.MISSILE_TTL / dt)
-  let tick = 0
-  const dies = (q) => {
-    for (const o of sim) {
-      if (!o.alive) continue
-      if (segHitsCircle(q.prev.x, q.prev.y, q.pos.x, q.pos.y, o.pos.x, o.pos.y, hitRadiusOf(o))) return true
-    }
-    if (Math.hypot(q.pos.x, q.pos.y) >= beltR) beltBounce(q, beltR)   // 벨트는 죽이지 않는다 — 튕긴다
-    return Math.hypot(q.pos.x, q.pos.y) < CFG.R_STAR + 8
-  }
-  for (let i = 0; i < steps; i++) {
-    if (bodyTurn(tick++, COARSE_BODY_EVERY)) stepBodies(sim, dt * COARSE_BODY_EVERY)
-    stepMissile(m, sim, dt); stepMissile(f, sim, dt)
-    min = Math.min(min, Math.hypot(m.pos.x - f.pos.x, m.pos.y - f.pos.y))
-    if (dies(m) || dies(f)) break
-  }
-  return min
-}
-
-// 거친 접촉 판정 — 무엇에 닿는지만 본다(폭심·임펄스는 계산하지 않는다).
-// 공중 요격도 유효한 접촉으로 친다 — 반격탄이 날아오는 판에서 요격각을
-// 손으로 찾는 건 사실상 불가능하기 때문(계측: 전체 조합의 0.8%).
+// 거친 접촉 판정 — **천체**에 닿는지만 본다(폭심·임펄스는 계산하지 않는다).
+// 비행 중인 반격탄은 일부러 무시한다: 요격각을 대신 찾아 주는 건
+// 조준 보조라 없앴고, 접촉각 탐색은 "어느 공을 칠 수 있는가"만 답한다.
 export function coarseContact(game, ang) {
   const sim = cloneBodies(game.bodies)
   const dt = 1 / 40
   const p = { x: game.earth.pos.x + Math.cos(ang) * CFG.LAUNCH_OFFSET, y: game.earth.pos.y + Math.sin(ang) * CFG.LAUNCH_OFFSET }
   const m = { pos: { ...p }, vel: fromAngle(ang, game.power), age: 0, pathN: 0, path: [], minSunDist: Infinity, prev: { ...p } }
-  const foes = game.missiles.filter(f => f.alive).map(f => ({
-    pos: { ...f.pos }, vel: { ...f.vel }, age: f.age, pathN: 0, path: [], minSunDist: Infinity, prev: { ...f.pos },
-  }))
   const beltR = beltRadius(game.aMax)
   const steps = Math.round(CFG.MISSILE_TTL / dt)
   for (let i = 0; i < steps; i++) {
     if (bodyTurn(i, COARSE_BODY_EVERY)) stepBodies(sim, dt * COARSE_BODY_EVERY)
     stepMissile(m, sim, dt)
-    for (const f of foes) {
-      if (f.dead) continue
-      stepMissile(f, sim, dt)
-      for (const o of sim) {
-        if (!o.alive) continue
-        if (segHitsCircle(f.prev.x, f.prev.y, f.pos.x, f.pos.y, o.pos.x, o.pos.y, hitRadiusOf(o))) { f.dead = true; break }
-      }
-    }
     for (const o of sim) {
       if (!o.alive) continue
       if (!segHitsCircle(m.prev.x, m.prev.y, m.pos.x, m.pos.y, o.pos.x, o.pos.y, hitRadiusOf(o))) continue
@@ -230,7 +159,6 @@ export function coarseContact(game, ang) {
       if (o.isEarth) return 'earth'
       return 'body'
     }
-    if (foes.some(f => !f.dead && Math.hypot(f.pos.x - m.pos.x, f.pos.y - m.pos.y) <= 2 * CFG.MISSILE_HIT_R)) return 'intercept'
     const r = Math.hypot(m.pos.x, m.pos.y)
     if (r < CFG.R_STAR + 8) return null
     if (r >= beltR) beltBounce(m, beltR)   // 벨트에 튕겨 되돌아온 뒤에도 계속 훑는다
@@ -255,18 +183,16 @@ export function interceptInfo(game, x, y, yld) {
 // 충돌 한 건의 "큐 정보" — 폭심, 임펄스 방향, 타격 직후 공의 진로
 export function impactInfo(game, o, point, simEarth) {
   const isT = game.isTarget(o)
-  const shielded = hasRole(o, 'shield')
   let outcome = 'neutral'
   if (o.type === 'debris') outcome = 'debris'
   else if (o.isEarth) outcome = 'earth'
   else if (o.role === 'void') outcome = 'void'
-  else if (shielded) outcome = 'shield'
   else if (o.role === 'volatile') outcome = 'volatile'
   else if (isT) outcome = 'target'
   let dx = o.pos.x - point.x, dy = o.pos.y - point.y
   const d = Math.hypot(dx, dy) || 1
   dx /= d; dy /= d
-  const dv = o.type === 'debris' || o.isEarth || shielded || o.role === 'volatile'
+  const dv = o.type === 'debris' || o.isEarth || o.role === 'volatile'
     ? 0 : effDv(o, game.yieldMt)
   const R = blastRadius(game.yieldMt)
   // 큰 탄두는 폭풍이 지구까지 닿는다 — 쏘기 전에 그것만은 알려준다
@@ -291,7 +217,7 @@ export function impactInfo(game, o, point, simEarth) {
     role: o.role ?? null,
     // 요새를 치면 임펄스의 정반대로 반격탄이 나온다 — 그것까지가 "이 한 방"의 정보다.
     // 단 방어막에 삼켜지는 샷은 기폭 자체가 없으므로 반격도 없다(detonate가 먼저 리턴).
-    counter: o.role === 'battery' && (o.ammo ?? 0) > 0 && !shielded && !o.isEarth && o.type !== 'debris',
+    counter: o.role === 'battery' && (o.ammo ?? 0) > 0 && !o.isEarth && o.type !== 'debris',
     counterSpeed: cSpeed, counterEsc: cEsc, counterEscapes: cSpeed > cEsc,
     volatileR: o.role === 'volatile' ? volatileRadius(o) : 0,
     // 체력 — 이 한 방으로는 안 부서진다. 몇 번 더 처박아야 하는지가 정보다.

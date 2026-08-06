@@ -2,8 +2,7 @@ import { Rng } from '../core/random.js'
 import { CFG, aMaxOf, beltRadius, hitRadiusOf, radiusOf } from './config.js'
 import { makeBody } from './body.js'
 import { cloneBodies, segHitsCircle, stepBodies, stepMissile } from './physics.js'
-import { rolePool } from './roles.js'
-import { buildBodies, elementsToState, pickBiome, stablePresim } from './stage.js'
+import { buildSolarSystem, elementsToState, pickBiome, stablePresim } from './stage.js'
 
 // ─── 지속 성계 ──────────────────────────────────────────────────
 // 판이 끝나도 성계를 새로 만들지 않는다. 살아남은 행성은 위치·속도 그대로
@@ -14,17 +13,20 @@ const ZORG_NAMES = ['Krath', 'Vorn', 'Zeth', 'Mogul', 'Skarn', 'Dral', 'Ulth', '
 let uid = 0
 const nextId = () => `z${(uid++).toString(36)}`
 
-// ── 첫 성계: 중립 행성 + 지구. 조르그는 아직 없다 ──
+// ── 첫 성계: **우리 태양계**. 조르그는 아직 없다 ──
+// 판은 늘 같은 자리에서 시작한다 — 수성부터 에리스까지 실제 천체 15개.
+// 무작위 성계와 달리 "어디에 뭐가 있는지"를 플레이어가 이미 알고 있으므로
+// 첫 판은 규칙을 익히는 데만 쓰면 된다. 궤도 위상(지금 어느 행성이 어디쯤
+// 와 있는가)만 시드로 흔들어 판마다 다른 배치가 나오게 한다.
 export function createSystem(seed) {
   const rng = new Rng(seed)
-  for (let attempt = 0; attempt < 40; attempt++) {
-    const built = buildBodies(rng, 1, CFG.PLANET_BASE)
-    if (!built) continue
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const built = buildSolarSystem(rng, 1)
     if (!stablePresim(built.bodies, built.aMax)) continue
     return { bodies: built.bodies, earth: built.earth, rng }
   }
-  const built = buildBodies(rng, 1, 4)
-  if (!built) throw new Error('성계 생성 실패')
+  // 위상 추첨이 60번 다 실패해도 판은 열려야 한다 — 마지막 한 벌을 그대로 쓴다
+  const built = buildSolarSystem(rng, 1)
   return { bodies: built.bodies, earth: built.earth, rng }
 }
 
@@ -115,19 +117,17 @@ function warpBody(rng, bodies, aMax, spec) {
     hp: CFG.PLANET_HP,
     zorg: true, warp: 1,            // warp: 1 → 0 으로 렌더러가 실시간 감쇠시킨다
   })
-  if (spec.role) applyRole(b, spec.role)
-  if (spec.role === 'battery') b.isTarget = true   // 위협 = 반드시 없애야 할 표적
+  if (spec.role === 'battery') { b.role = 'battery'; b.ammo = CFG.BATTERY_AMMO; b.isTarget = true }
+  if (b.role === 'void') { b.mu = Math.max(b.mu, 900); b.radius = radiusOf(b.mu) }
   return b
 }
 
-export function applyRole(b, role) {
-  if (!b || b.role) return
-  b.role = role
-  if (role === 'battery') b.ammo = CFG.BATTERY_AMMO
-  if (role === 'void') { b.type = 'void'; b.mu = Math.max(b.mu, 900); b.radius = radiusOf(b.mu) }
-  if (role === 'volatile') b.type = 'gas'
-  if (role === 'armor') b.type = 'iron'
-}
+// 조르그 요새로 쓸 종류 — 가스(터짐)·특이점(못 부숨)은 제외한다.
+// 가스 요새는 핵 한 방에 제 유폭으로 죽어 표적 구실을 못 하고,
+// 특이점 요새는 아예 부술 수가 없어서 판이 성립하지 않는다.
+const FORT_TYPES = ['rock', 'iron', 'lava', 'toxic']
+// 큐볼로 굴러오는 중립 천체 종류 — 넷 중 셋(금속·가스·특이점)이 여기서 나온다
+const NEUTRAL_TYPES = ['rock', 'ice', 'ocean', 'iron', 'gas', 'lava', 'toxic', 'void']
 
 // ── 증원 ────────────────────────────────────────────────────────
 // 지금 성계에 뭐가 남아 있는지 보고 그만큼만 보낸다. 지난 판에서 판을
@@ -144,32 +144,31 @@ export function reinforce(rng, bodies, earth, ante, stageIdx) {
   let neutral = Math.min(CFG.REINF_NEUTRAL, Math.max(0, room - fort), cueBalls < 2 ? 2 : 1)
   if (room <= fort) neutral = 0
 
-  const pool = rolePool(stageIdx).filter(r => r !== 'battery')
   const added = []
   const muFor = () => 120 + rng.next() * (220 + 60 * ante)
 
   for (let i = 0; i < fort; i++) {
     const name = `Zorg ${ZORG_NAMES[rng.int(0, ZORG_NAMES.length - 1)]}-${stageIdx + 1}${i ? String.fromCharCode(97 + i) : ''}`
-    // 요새는 반격탄을 쏘므로 그 자체가 위협이다 — 이게 반드시 없애야 할 표적
+    // 요새는 반격탄을 쏘므로 그 자체가 위협이다 — 이게 반드시 없애야 할 표적.
+    // 금속으로 지어진 요새는 잘 안 밀린다(태그가 둘 붙는다) — 종류가 곧 공략법이다.
+    const type = FORT_TYPES[rng.int(0, FORT_TYPES.length - 1)]
     let b = null
     const pool2 = bodies.concat(added)
     for (let t = 0; t < 2 && !b; t++) {
-      b = warpBody(rng, pool2, aMax, { mu: muFor() * 1.15, name, role: 'battery' })
+      b = warpBody(rng, pool2, aMax, { mu: muFor() * 1.15, name, type, role: 'battery' })
       // 마지막 시도는 검사를 건너뛴다 — 못 찾고 요새를 아예 안 보내는 것보다 낫다
       if (b && t === 0 && !reachable(pool2.concat([b]), earth, b)) b = null
     }
     if (!b) continue
-    // 장갑/방어막을 겹쳐 얹어 요새마다 공략법이 달라지게 한다
-    if (rng.next() < 0.45 && pool.length) {
-      const extra = pool[rng.int(0, pool.length - 1)]
-      if (extra === 'armor' || extra === 'shield') { b.mods = [extra]; if (extra === 'armor') b.type = 'iron' }
-    }
+    if (type === 'iron') b.mods = ['armor']   // 금속 요새 — 핵으로는 거의 안 밀린다
     added.push(b)
   }
   for (let i = 0; i < neutral; i++) {
-    const role = pool.length && rng.next() < 0.6 ? pool[rng.int(0, pool.length - 1)] : null
+    // 특이점은 안테 6부터만 굴러온다 — 부술 수 없는 공은 늦게 가르친다
+    let type = NEUTRAL_TYPES[rng.int(0, NEUTRAL_TYPES.length - 1)]
+    if (type === 'void' && stageIdx < 6) type = 'rock'
     const b = warpBody(rng, bodies.concat(added), aMax, {
-      mu: muFor(), name: `${ZORG_NAMES[rng.int(0, ZORG_NAMES.length - 1)]}-${stageIdx + 1}x${i}`, role,
+      mu: muFor(), name: `${ZORG_NAMES[rng.int(0, ZORG_NAMES.length - 1)]}-${stageIdx + 1}x${i}`, type,
     })
     if (b) { b.zorg = false; added.push(b) }   // 중립으로 굴러온 잔챙이 — 큐볼로 쓴다
   }

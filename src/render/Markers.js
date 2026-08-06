@@ -118,7 +118,7 @@ export class Markers {
     this.place(this.earthLabel, this.earthArrow, e, rig, er)
 
     // 레티클 — 목표마다 하나씩. 반경의 2.1배에서 천천히 회전 + 맥동
-    const tone = game.targets.some(t => hasRole(t, 'shield')) ? 0xa78bfa : 0x22d3ee
+    const tone = 0xf43f5e
     game.targets.forEach((b, i) => {
       if (!this.reticles[i]) { this.reticles[i] = reticle(tone); this.scene.add(this.reticles[i]) }
       const grp = this.reticles[i]
