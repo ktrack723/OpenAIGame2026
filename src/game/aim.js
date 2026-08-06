@@ -213,7 +213,7 @@ export function interceptInfo(game, x, y, yld) {
   return {
     name: '공중 요격', id: null, type: 'missile', role: null,
     isEarth: false, isTarget: false, outcome: 'intercept',
-    x, y, px: x, py: y, r: CFG.MISSILE_HIT_R * 2,
+    x, y, px: x, py: y, r: CFG.MISSILE_HIT_R,
     dx: 0, dy: 0, dv: 0, vx: 0, vy: 0,
     blast: blastRadius(yld), yld, earthInBlast: false,
     vAfter: 0, vEsc: 0, willEject: false, counter: false, volatileR: 0,
