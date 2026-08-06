@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { hasRole } from '../game/roles.js'
 
 // 목표/지구를 한눈에: 라벨 + 조준 레티클 + 화면 밖 방향 화살표 + 발사 회랑.
 // "조르그 행성이 어딘지 모르겠다"를 없애는 게 이 파일의 유일한 목적이다.
@@ -107,7 +108,7 @@ export class Markers {
     this.t += dt
     const t = game.target, e = game.earth
     const nAlive = game.aliveTargets
-    const suffix = game.targets.length > 1 ? ` (남은 조르그 ${nAlive})` : ''
+    const suffix = game.targets.length > 1 ? ` (남은 요새 ${nAlive})` : ''
     this.setLabel('target', `◎ 목표  ${t.name}${suffix}`, '#a5f3fc', 'rgba(8,47,73,.92)')
     this.setLabel('earth', '◉ 지구 · 발사대 (핵 직격 = 즉사)', '#bfdbfe', 'rgba(23,37,84,.92)')
 
@@ -116,7 +117,7 @@ export class Markers {
     this.place(this.earthLabel, this.earthArrow, e, rig, er)
 
     // 레티클 — 목표마다 하나씩. 반경의 2.1배에서 천천히 회전 + 맥동
-    const tone = game.targets.some(t => t.role === 'shield') ? 0xa78bfa : 0x22d3ee
+    const tone = game.targets.some(t => hasRole(t, 'shield')) ? 0xa78bfa : 0x22d3ee
     game.targets.forEach((b, i) => {
       if (!this.reticles[i]) { this.reticles[i] = reticle(tone); this.scene.add(this.reticles[i]) }
       const grp = this.reticles[i]

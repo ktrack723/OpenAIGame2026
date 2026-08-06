@@ -1,14 +1,15 @@
 import { fromAngle, len } from '../core/vector.js'
 import { Rng } from '../core/random.js'
-import { CFG, hitRadiusOf, radiusOf } from './config.js'
+import { CFG, aMaxOf, hitRadiusOf, radiusOf } from './config.js'
 import {
   applyNuke, blastWave, resolveBodyPairs, segCircleEntry, segHitsCircle,
   shatter, stepBodies, stepMissile, updateEncounters,
 } from './physics.js'
-import { roleOf, volatileRadius } from './roles.js'
-import { CAUSE_KO } from './objectives.js'
+import { hasRole, roleOf, volatileRadius } from './roles.js'
+import { CAUSE_KO, makeGoal } from './objectives.js'
 import { bearing } from '../core/angle.js'
-import { makeStage } from './stage.js'
+import { createSystem, pickHomeworld, reinforce } from './system.js'
+import { chargeLeft, makeLaser, stepLaser, LASER_CHARGE } from './laser.js'
 import * as Aim from './aim.js'
 
 // 파괴 사유별 점수 (목표 / 중립)
@@ -24,6 +25,12 @@ export class Game {
     this.seed = seed >>> 0
     this.stageIdx = 0; this.runScore = 0; this.runOver = false
     this.rng = new Rng(this.seed ^ 0x9e3779b9)
+    // ─── 지속 성계 ───
+    // 성계는 런 전체에서 하나뿐이다. 판이 끝나도 새로 만들지 않고,
+    // 살아남은 행성이 위치·속도 그대로 다음 판으로 넘어간다.
+    const sys = createSystem(this.seed)
+    this.bodies = sys.bodies; this.earth = sys.earth
+    this.laser = makeLaser(this.rng)
     this.loadStage()
   }
 
@@ -37,18 +44,41 @@ export class Game {
   get timeBonus() { return Math.round(this.timeLeft * CFG.TIME_BONUS) }
 
   loadStage() {
-    const s = makeStage((this.seed + this.stageIdx * 7919) >>> 0, this.ante, this.stageIdx)
-    this.stage = s; this.bodies = s.bodies; this.earth = s.earth
-    this.targets = s.targets; this.aMax = s.aMax; this.goal = s.goal
+    this.aMax = aMaxOf(this.ante)
+    this.fx = []   // 렌더러가 매 프레임 비워가는 연출 이벤트 큐 (§14.5)
+    // 판 사이에 잔해는 치운다 — 안 치우면 판을 거듭할수록 파편만 쌓인다
+    this.bodies = this.bodies.filter(b => b.alive && b.type !== 'debris')
+    // 조르그 증원 — 지금 성계에 남은 것을 보고 그만큼만 보낸다
+    const { added, fortresses } = reinforce(this.rng, this.bodies, this.earth, this.ante, this.stageIdx)
+    for (const b of added) this.addFx({ kind: 'warp', x: b.pos.x, y: b.pos.y, r: hitRadiusOf(b), fort: b.role === 'battery' })
+    this.targets = fortresses
+    this.goal = makeGoal(fortresses)
+    this.homeworld = pickHomeworld(this.bodies)
+    // 레이저는 판이 바뀌어도 이어진다. 다만 새 판 시작 직후 바로 쏘진 않는다.
+    this.laser.state = 'idle'; this.laser.t = 0; this.laser.nextAt = CFG.LASER_FIRST
+
     this.missiles = []; this.rockets = CFG.ROCKETS; this.score = 0; this.chainLast = 0
     this.won = false; this.lost = false; this.failReason = null
-    this.aim = Math.atan2(s.target.pos.y - this.earth.pos.y, s.target.pos.x - this.earth.pos.x)
+    const t = this.target
+    this.aim = Math.atan2(t.pos.y - this.earth.pos.y, t.pos.x - this.earth.pos.x)
     this.power = 30; this.yieldMt = CFG.YIELD_DEFAULT
     this.observing = false; this.time = 0
     this.toast = null; this.toastT = 0
-    this.fx = []   // 렌더러가 매 프레임 비워가는 연출 이벤트 큐 (§14.5)
     this.winBanked = false; this.timeWarn = 0
-    this.message = `작전 개시 — ${this.goal.title}. ${this.goal.rule}`
+    this.stage = { roles: this.presentRoles(), added: added.length }
+    this.message = added.length
+      ? `조르그 증원 워프 — 요새 ${fortresses.length}기 진입. ${this.goal.rule}`
+      : `작전 개시 — ${this.goal.rule}`
+  }
+
+  presentRoles() {
+    const set = new Set()
+    for (const b of this.bodies) {
+      if (!b.alive) continue
+      if (b.role) set.add(b.role)
+      if (b.role2) set.add(b.role2)
+    }
+    return [...set]
   }
 
   nextStage() {
@@ -56,12 +86,20 @@ export class Game {
     this.runScore += this.score; this.stageIdx++; this.loadStage()
   }
 
-  // 목표 행성 — 살아 있는 것 우선. 카메라/레티클이 물고 있을 대상이다.
-  get target() { return this.targets.find(t => t.alive) || this.targets[0] }
+  // 목표 행성 — 살아 있는 요새 우선. 카메라/레티클이 물고 있을 대상이다.
+  // 요새가 다 죽었으면(=클리어) 마지막 요새를 그대로 들고 있는다.
+  get target() {
+    return this.targets.find(t => t.alive) || this.targets[0] || this.earth
+  }
+  // 위협 = 반격하는 조르그 요새. 이것만 전멸시키면 판이 끝난다.
+  get fortresses() { return this.bodies.filter(b => b.role === 'battery') }
+  get aliveFortresses() { return this.bodies.filter(b => b.alive && b.role === 'battery').length }
   // id로 비교한다 — 예측선은 cloneBodies()가 만든 복제본을 넘기므로
   // 참조 비교를 쓰면 "예측에서는 목표가 목표가 아닌" 사고가 난다.
-  isTarget(b) { return this.targets.some(t => t.id === b.id) }
-  get aliveTargets() { return this.targets.filter(t => t.alive).length }
+  // 표적 = 반격하는 요새. 규칙이 하나로 통일됐으므로 id 목록이 아니라
+  // 성질로 판정한다 — 예측선이 넘기는 복제본에서도 그대로 성립한다.
+  isTarget(b) { return b.role === 'battery' }
+  get aliveTargets() { return this.aliveFortresses }
   // 특이점은 부술 수 없으니 "남은 재료"에서 뺀다 (연쇄 충돌 목표의 달성 가능성 판정용)
   get alivePlanets() {
     return this.bodies.filter(b => b.alive && !b.isEarth && b.type !== 'debris' && b.role !== 'void').length
@@ -126,6 +164,7 @@ export class Game {
     this.missilePairs()
     resolveBodyPairs(this.bodies, this)
     this.bodyBounds()
+    this.tickLaser(dt)
     this.time += dt
     this.warnTime()
     this.checkEnd()
@@ -163,6 +202,52 @@ export class Game {
     this.setToast('공중 요격 — 두 탄두가 함께 터졌다')
     if (wave.pushed.some(p => p.body.isEarth)) this.setToast('경고 — 요격 폭풍이 지구를 밀었다')
   }
+
+  // ─── 조르그 레이저 ─────────────────────────────────────────
+  tickLaser(dt) {
+    const ev = stepLaser(this.laser, this, dt)
+    if (!ev) return
+    if (ev.kind === 'charge') {
+      this.addFx({ kind: 'laserCharge', x: this.laser.ox, y: this.laser.oy })
+      this.setToast(`조르그 레이저 조준! — ${CFG.LASER_CHARGE}초 뒤 발사. 막거나 피해라`)
+      this.message = `${ev.src.name} 본성이 지구 예상 위치를 조준했다 — 조준선을 끊어라`
+      return
+    }
+    if (ev.kind === 'abort') {
+      this.setToast('본성 파괴 — 레이저 조준 해제')
+      return
+    }
+    // ── 발사 ──
+    const L = this.laser
+    const hit = ev.hit
+    const end = hit ? { x: L.ox + L.ux * hit.t, y: L.oy + L.uy * hit.t }
+      : { x: L.ox + L.ux * L.range, y: L.oy + L.uy * L.range }
+    this.addFx({ kind: 'laserFire', x: L.ox, y: L.oy, ex: end.x, ey: end.y, hit: !!hit })
+    if (!hit) {
+      this.message = '조르그 레이저 — 빗나갔다'
+      this.setToast('레이저 회피 성공')
+      return
+    }
+    if (hit.body.isEarth) {
+      this.addFx({ kind: 'destroy', x: this.earth.pos.x, y: this.earth.pos.y, r: this.earth.radius * 2, earth: true })
+      this.earth.alive = false
+      this.fail('EARTH_LASER', '조르그 레이저가 지구를 관통했다. 작전 종료.')
+      this.setToast('지구 피격 — 게임 오버')
+      return
+    }
+    // 다른 행성이 대신 맞았다 — 그 행성은 광선 방향으로 크게 밀린다.
+    // 즉 "막는 것"이 곧 "그 공을 세게 치는 것"이라 당구로 되돌아온다.
+    const b = hit.body
+    const dv = CFG.LASER_PUSH / b.mu
+    b.vel.x += L.ux * dv; b.vel.y += L.uy * dv
+    b.hitFlash = 1.0; b.trailFlash = 2.5
+    b.scorch = Math.min(3, (b.scorch || 0) + 1)
+    this.message = `${b.name}이(가) 레이저를 대신 맞았다 — Δv ${dv.toFixed(1)}로 밀려남`
+    this.setToast(`레이저 차단 — ${b.name}`)
+  }
+
+  get laserCharging() { return this.laser.state === LASER_CHARGE }
+  get laserLeft() { return chargeLeft(this.laser) }
 
   // 시한이 줄고 있다는 걸 토스트로 못 박는다 (남은 60/30/10초)
   warnTime() {
@@ -229,7 +314,7 @@ export class Game {
       return
     }
 
-    if (b.role === 'shield') {   // 방어막 — 임펄스도 폭풍도 없이 통째로 삼킨다
+    if (hasRole(b, 'shield')) {   // 방어막 — 임펄스도 폭풍도 없이 통째로 삼킨다
       this.addFx({ kind: 'nuke', x: point.x, y: point.y, yld, r: b.radius, shield: true })
       b.hitFlash = 0.6
       this.message = `${b.name} 방어막이 핵을 삼켰다 — 직격은 무효다`
@@ -242,7 +327,7 @@ export class Game {
     const wave = blastWave(this.bodies, point.x, point.y, yld, b)
     this.addFx({
       kind: 'nuke', x: point.x, y: point.y, yld, r: b.radius,
-      px: push.dx, py: push.dy, wave: wave.radius, armor: b.role === 'armor',
+      px: push.dx, py: push.dy, wave: wave.radius, armor: hasRole(b, 'armor'),
     })
 
     // §9.1 스타일 배율 — 체인/니어미스/태양 가속은 여전히 점수에 얹힌다
@@ -250,11 +335,11 @@ export class Game {
     const gained = m.hostile ? 0 : Math.round(8 * M)
     this.score += gained; this.chainLast = m.chain
     this.message = `${b.name} 타격 — Δv ${push.dv.toFixed(1)} · 방위 ${bearing(push.dx, push.dy).toFixed(0)}°`
-      + (b.role === 'armor' ? ' (장갑에 막혀 거의 안 밀렸다)' : gained ? ` (+${gained})` : '')
+      + (hasRole(b, 'armor') ? ' (장갑에 막혀 거의 안 밀렸다)' : gained ? ` (+${gained})` : '')
     // 폭풍이 지구를 정통으로 훑었다면 경고 — 지구가 밀려 태양에 빠지는 사고가 실제로 난다
     if (wave.pushed.some(p => p.body.isEarth)) this.setToast('경고 — 폭풍이 지구를 밀었다')
     // 요새 — 때린 쪽으로 반격탄을 되쏜다. 그 탄도 행성을 미는 큐다.
-    if (b.role === 'battery') this.retaliate(b, point, push)
+    if (b.role === 'battery' && b.alive) this.retaliate(b, point, push)
   }
 
   // ─── 요새의 반격 ─────────────────────────────────────────────
@@ -348,31 +433,36 @@ export class Game {
     this.recordKill(b, cause)
   }
 
+  // 파괴 사유는 이제 아무 상관이 없다 — 요새가 없어졌으면 그걸로 끝이다.
   recordKill(b, cause) {
     if (b.type === 'debris') return
-    const isTarget = this.isTarget(b)
+    const wasFort = b.role === 'battery'
     const [tp, np] = KILL_SCORE[cause] ?? [0, 0]
-    const gained = isTarget ? tp : np
+    const gained = wasFort ? tp : np
     this.score += gained
-    const ev = { body: b, isTarget, cause }
-    const counted = this.goal.record(ev)
     const label = `${b.name} — ${CAUSE_KO[cause]} (+${gained})`
-    if (counted) {
-      this.message = `${label} · 목표 ${this.goal.done}/${this.goal.need}`
-      this.setToast(`${CAUSE_KO[cause]} 확인 — ${this.goal.label()}`)
-    } else if (this.goal.wasted(ev)) {
-      this.message = `${label} — 하지만 요구된 방식이 아니다 (${this.goal.title})`
-      this.setToast(`목표를 낭비했다 — ${this.goal.title} 조건 불충족`)
+    if (wasFort) {
+      // 본성이 죽으면 남은 요새가 지휘권을 승계한다 (레이저가 끊기지 않는다)
+      if (b.homeworld) {
+        b.homeworld = false
+        const next = pickHomeworld(this.bodies)
+        if (next) this.setToast(`본성 격파 — ${next.name}이(가) 지휘권을 승계`)
+        else this.setToast('조르그 본성 격파 — 레이저 침묵')
+        this.homeworld = next
+      }
+      this.goal.update(this.aliveFortresses)
+      this.message = `${label} · ${this.goal.label()}`
+      this.setToast(`요새 격파 — ${this.goal.label()}`)
     } else {
       this.message = label
     }
-    if (this.goal.done >= this.goal.need) this.win()
+    if (this.aliveFortresses === 0) this.win()
   }
 
   win() {
     if (this.won || this.lost) return
     this.won = true
-    this.message = `작전 성공 — ${this.goal.title} 달성. 연구비 정산`
+    this.message = '작전 성공 — 조르그 요새 전멸. 성계는 그대로 다음 판으로 이어진다'
     this.setToast('작전 성공')
   }
 
@@ -421,6 +511,7 @@ export class Game {
   }
 
   checkEnd() {
+    this.goal.update(this.aliveFortresses)
     if (this.won && !this.winBanked) {   // 클리어 시점의 남은 시간을 보너스로 정산
       this.winBanked = true
       const b = this.timeBonus
@@ -428,11 +519,8 @@ export class Game {
     }
     if (this.won || this.lost) return
     if (!this.earth.alive) { this.fail('EARTH_LOST', '작전 실패 — 지구 상실. 런 종료'); return }
-    // 재료가 다 떨어졌다 — 남은 시간을 흘려봐야 목표를 채울 수 없다
-    if (!this.goal.reachable(this.aliveTargets, this.alivePlanets)) {
-      this.fail('GOAL_LOST', `작전 실패 — ${this.goal.title} 조건을 채울 표적이 남지 않았다. 런 종료`)
-      return
-    }
+    // 요새가 어떤 이유로든 전멸했으면(연쇄로 같이 터졌든) 그 순간 클리어다
+    if (this.aliveFortresses === 0) { this.win(); return }
     // 시한 초과 — 날아가고 있는 마지막 한 발은 끝까지 보내준다
     if (this.time >= this.stageTime && !this.missiles.some(m => m.alive))
       this.fail('TIME_UP', '작전 실패 — 작전 시한 초과. 조르그가 회랑을 재정비했다. 런 종료')

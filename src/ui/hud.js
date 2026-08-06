@@ -54,6 +54,11 @@ export function makeHud(game, view) {
   <div class="roles" id="roles"></div>
 </section>
 
+<section class="mod alarm" id="laserMod" hidden>
+  <div class="modhead"><span class="tick"></span><span>ZORG BEAM</span><span class="clockv" id="laserT">—</span></div>
+  <div class="alarmtext" id="laserWhy"></div>
+</section>
+
 <section class="mod" id="clock">
   <div class="modhead"><span class="tick"></span><span>CHRONO</span><span class="clockv" id="clockV">—</span></div>
   <div class="clockbar"><i id="clockFill"></i></div>
@@ -216,7 +221,7 @@ function predLine(game, p) {
 const FAIL_WHY = {
   EARTH_LOST: '지구를 잃었다. 조르그보다 먼저 인류가 끝났다.',
   TIME_UP: '작전 시한이 끝났다. 조르그가 회랑을 재정비했다.',
-  GOAL_LOST: '목표를 채울 표적이 남지 않았다. 요구된 방식으로는 더 이상 불가능하다.',
+  EARTH_LASER: '조르그 레이저가 지구를 관통했다. 조준선을 끊었어야 했다.',
 }
 
 const CTRL_IDS = ['#fire', '#findPrev', '#findNext', '#findIc']
@@ -266,6 +271,16 @@ export function updateHud(el, game) {
     }).join('')
   }
 
+  // ── 조르그 레이저 경보 ──
+  const lm = el.querySelector('#laserMod')
+  if (game.laserCharging) {
+    lm.hidden = false
+    el.querySelector('#laserT').textContent = `T-${game.laserLeft.toFixed(1)}s`
+    el.querySelector('#laserWhy').textContent =
+      `${game.homeworld ? game.homeworld.name : '본성'} 조준선 고정 — 지구 예상 위치를 겨눈다. `
+      + '행성을 선 위로 밀어 막거나, 폭풍으로 지구를 비켜라. 본성을 부숴도 취소된다.'
+  } else lm.hidden = true
+
   const rig = el._rig
   if (rig) el.querySelector('#zoomV').textContent = `${rig.zoom.toFixed(1)}×${rig.auto ? ' AUTO' : ''}`
 
@@ -307,7 +322,8 @@ export function updateHud(el, game) {
   el.querySelector('#stats').textContent =
     `ANTE ${game.ante}   STAGE ${game.stageIdx + 1}
 ROCKET ${bar(game.rockets, CFG.ROCKETS, '▮', '▯')}   SCORE ${game.score} (${game.runScore + game.score})
-EARTH  ${e.alive ? 'NOMINAL' : 'LOST'}   ZORG ${game.aliveTargets}/${game.targets.length}
+EARTH  ${e.alive ? 'NOMINAL' : 'LOST'}   FORTRESS ${game.aliveFortresses}/${g.total}
+SYSTEM ${game.bodies.filter(b => b.alive && b.type !== 'debris').length} bodies  HOME ${game.homeworld ? game.homeworld.name : '—'}
 > ${game.message}`
 
   const toast = el._toast
