@@ -74,7 +74,8 @@ export class Game {
 
   fire() {
     if (this.won || this.lost || this.rockets <= 0 || !this.earth.alive) return
-    if (this.missiles.some(m => m.alive && !m.hostile)) return   // 반격탄이 날아오는 중엔 쏠 수 있다(요격)
+    // 연속 발사 허용 — 두 탄을 원하는 지점에서 만나게 하는 게 정식 전술이다.
+    // (미사일이 날고 있는 동안에도 시계는 1×로 흐르므로 공짜는 아니다.)
     const p = this.launchPos(), v = fromAngle(this.aim, this.power)
     this.missiles.push({
       pos: { ...p }, vel: v, yld: this.yieldMt, alive: true, chain: 0, nearMiss: 0, age: 0,
@@ -152,7 +153,9 @@ export class Game {
     const x = (a.pos.x + b.pos.x) / 2, y = (a.pos.y + b.pos.y) / 2
     const yld = a.yld + b.yld               // 작약량은 합쳐진다 — 폭풍이 그만큼 넓다
     const wave = blastWave(this.bodies, x, y, yld, null)
-    this.addFx({ kind: 'nuke', x, y, yld, r: CFG.MISSILE_HIT_R * 2, wave: wave.radius, intercept: true })
+    // 연출 크기는 탄두 크기 기준으로 넘긴다. 신관 반경(90 GU)을 그대로 넘기면
+    // 화구 반경이 행성 직격의 4.5배가 되어 성계를 통째로 덮는다.
+    this.addFx({ kind: 'nuke', x, y, yld, r: 22, wave: wave.radius, intercept: true })
     const gained = (a.hostile !== b.hostile) ? CFG.INTERCEPT_SCORE : 0   // 반격탄을 잡았을 때만 가산
     this.score += gained
     this.message = `공중 요격 — ${a.yld}+${b.yld}Mt 동시 기폭 · 폭풍 반경 ${wave.radius.toFixed(0)} GU`
@@ -444,7 +447,6 @@ export class Game {
 
   get canAim() {
     return !this.won && !this.lost && this.rockets > 0 && this.earth.alive
-      && !this.missiles.some(m => m.alive && !m.hostile)
   }
 
   // ─── 조준 보조 (aim.js) ─────────────────────────────────────
