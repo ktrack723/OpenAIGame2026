@@ -1,4 +1,5 @@
-import { CFG, blastRadius, contactDist, nukeDv, radiusOf } from './config.js'
+import { CFG, blastRadius, contactDist, radiusOf } from './config.js'
+import { effDv } from './roles.js'
 import { clone, len, sub, vec } from '../core/vector.js'
 
 // ─── T1-1: N체 가속도 — 태양(원점 고정) + 행성 상호작용 (§4.2) ───
@@ -130,7 +131,7 @@ export function applyNuke(b, blastX, blastY, yld) {
   let dx = b.pos.x - blastX, dy = b.pos.y - blastY
   const d = Math.hypot(dx, dy) || 1
   dx /= d; dy /= d
-  const dv = nukeDv(yld, b.mu)
+  const dv = effDv(b, yld)   // 장갑은 깎이고 특이점은 0 (roles.js)
   b.vel.x += dx * dv; b.vel.y += dy * dv
   b.hitFlash = 0.9; b.trailFlash = 2.0
   b.scorch = Math.min(3, (b.scorch || 0) + 1)   // 핵 맞은 자국이 표면에 남는다
@@ -147,7 +148,7 @@ export function blastWave(bodies, blastX, blastY, yld, skip) {
     const d = Math.hypot(dx, dy)
     if (d > R || d < 1e-6) continue
     const falloff = 1 - d / R
-    const dv = nukeDv(yld, o.mu) * CFG.BLAST_PUSH * falloff * falloff
+    const dv = effDv(o, yld) * CFG.BLAST_PUSH * falloff * falloff
     o.vel.x += dx / d * dv; o.vel.y += dy / d * dv
     o.trailFlash = 1.5
     out.push({ body: o, dv })

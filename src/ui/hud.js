@@ -1,4 +1,7 @@
 import { CFG, VIS } from '../game/config.js'
+import { ROLES } from '../game/roles.js'
+
+const hex = (n) => '#' + n.toString(16).padStart(6, '0')
 
 const clamp0 = (n) => Math.max(0, n)
 const bar = (full, total, on, off) => on.repeat(clamp0(Math.min(full, total))) + off.repeat(clamp0(total - clamp0(Math.min(full, total))))
@@ -20,6 +23,7 @@ export function makeHud(game, view) {
   <b class="rd">지구에 핵을 박으면 그 자리에서 게임 오버.</b> 흰 링은 자유롭게 써도 되는 <b>큐볼</b>.
   <b class="am">노란 화살표</b> = 핵이 미는 방향, <b>흰 화살표</b> = 맞은 직후 그 공이 출발하는 방향.</div>
 </div>
+<div class="roles" id="roles" hidden></div>
 <div class="clock" id="clock">
   <div class="clockrow"><span class="clocklabel">작전 시한</span><span class="clockv" id="clockV">—</span></div>
   <div class="clockbar"><i id="clockFill"></i></div>
@@ -107,9 +111,13 @@ export function makeHud(game, view) {
 // 예측 = "어느 살을 치는가"까지. 그 뒤 판이 어떻게 굴러갈지는 안 알려준다.
 function predLine(game, p) {
   const h = p.hit
+  const role = h && h.role ? ROLES[h.role] : null
+  const badge = role ? ` [${role.icon} ${role.label}]` : ''
   switch (p.outcome) {
     case 'earth': return ['bad', '지구 직격 — 즉시 게임 오버. 각도를 바꿔라']
     case 'shield': return ['warn', `${h.name} 방어막 — 직격 무효. 중립 행성을 큐볼로 써라`]
+    case 'void': return ['warn', `${h.name}${badge} — ${role.aim}`]
+    case 'volatile': return ['hit', `${h.name}${badge} — ${role.aim} (반경 ${h.volatileR.toFixed(0)} GU)`]
     case 'debris': return ['warn', '파편에 조기 폭발']
     case 'sun': return ['warn', '태양 소멸 — 근일점이 너무 낮다']
     case 'lost': return ['warn', '유실 — 성계 이탈 (파워 과다)']
@@ -117,10 +125,12 @@ function predLine(game, p) {
     case 'target':
     case 'neutral': {
       const tag = p.outcome === 'target' ? '◎ 조르그' : '큐볼'
+      const note = (h.counter ? ' · 반격탄이 때린 쪽으로 튀어나온다' : '')
+        + (h.role === 'armor' ? ' · 장갑에 막혀 거의 안 밀린다' : '')
       const warn = (h.earthInBlast ? ' · ⚠ 폭풍이 지구를 훑는다' : '')
         + (h.willEject ? ` · ⚠ 탈출속도 초과 (${h.vAfter.toFixed(0)}>${h.vEsc.toFixed(0)}) — 성계 밖으로 날아간다` : '')
       return [warn ? 'warn' : 'hit',
-        `${tag} ${h.name} 타격 — ${dirOf(h.dx, h.dy)}° 방향으로 Δv ${h.dv.toFixed(1)}${warn}`]
+        `${tag} ${h.name}${badge} 타격 — ${dirOf(h.dx, h.dy)}° 방향으로 Δv ${h.dv.toFixed(1)}${note}${warn}`]
     }
     default: return ['warn', '—']
   }
@@ -139,6 +149,18 @@ export function updateHud(el, game) {
     `${g.label()}   ▸ ◎ ${t.name} · 거리 ${dist.toFixed(0)} GU · 방위 ${(((Math.atan2(dy, dx) * 180 / Math.PI) + 360) % 360).toFixed(0)}°`
   el.querySelector('#goalFill').style.width = `${Math.min(100, g.done / g.need * 100).toFixed(0)}%`
   el.querySelector('#goalRule').textContent = g.rule
+
+  // 특수 천체 범례 — 이 판에 실제로 깔린 것만. 색은 화면의 점선 링과 같다.
+  const rolesEl = el.querySelector('#roles')
+  if (el._roleKey !== game.stageIdx) {
+    el._roleKey = game.stageIdx
+    const list = game.stage.roles ?? []
+    rolesEl.hidden = !list.length
+    rolesEl.innerHTML = list.map(k => {
+      const d = ROLES[k]
+      return `<div class="rolerow"><b style="color:${hex(d.color)}">${d.icon} ${d.label}</b><span>${d.brief}</span></div>`
+    }).join('')
+  }
 
   const rig = el._rig
   if (rig) el.querySelector('#zoomV').textContent = `${rig.zoom.toFixed(1)}×${rig.auto ? ' 자동' : ''}`

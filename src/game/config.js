@@ -40,7 +40,15 @@ export const CFG = {
   NUKE_IMPULSE: 520,
   BLAST_R: 26,                        // 폭풍 반경 = BLAST_R × 작약량 (주변 천체 2차 압력)
   BLAST_PUSH: 0.30,                   // 2차 압력 계수 (직격 Δv 대비)
-  EARTH_SAFE_R: 0.6,                  // 이 배율 안쪽에서 터지면 지구도 폭풍을 정통으로 맞는다
+
+  // ─── 특수 천체 (roles.js) ────────────────────────────────────
+  ARMOR_DV: 0.15,                     // 장갑 — 핵 임펄스 감쇠율
+  BATTERY_AMMO: 2,                    // 요새 — 반격 미사일 재고
+  BATTERY_SPEED: 30, BATTERY_YIELD: 6,
+  VOID_GROW: 0.5, VOID_MU_MAX: 4200,  // 특이점 — 삼킨 질량의 절반을 흡수하며 자란다
+  VOLATILE_R: 13, VOLATILE_MIN_R: 240,   // 휘발성 유폭 반경 = 반지름 × 13
+  VOLATILE_IMPULSE: 7200,             // 유폭 임펄스: Δv = 이 값 × 감쇠² / 질량
+  ROLE_PER_ANTE: 0.5,                 // 안테당 특수 천체 증가량
 }
 export const radiusOf = (mu) => 1.6 * Math.cbrt(mu)   // T1-9
 // 미사일 명중 반경 — 물리(행성끼리 충돌)는 여전히 b.radius를 쓴다.

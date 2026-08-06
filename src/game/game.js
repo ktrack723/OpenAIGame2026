@@ -1,19 +1,25 @@
 import { fromAngle, len } from '../core/vector.js'
 import { Rng } from '../core/random.js'
-import { CFG, blastRadius, hitRadiusOf, nukeDv } from './config.js'
+import { CFG, blastRadius, hitRadiusOf, radiusOf } from './config.js'
 import {
   applyNuke, blastWave, cloneBodies, resolveBodyPairs, segCircleEntry, segHitsCircle,
   shatter, stepBodies, stepMissile, updateEncounters,
 } from './physics.js'
+import { effDv, roleOf, volatileRadius } from './roles.js'
 import { makeStage } from './stage.js'
 
 // 파괴 사유별 점수 (목표 / 중립)
 const KILL_SCORE = {
   collision: [120, 40],
+  absorb: [110, 35],
   sun: [100, 30],
   exile: [90, 25],
+  blast: [80, 25],
 }
-const CAUSE_KO = { collision: '충돌 파괴', sun: '항성 처분', exile: '성계 추방' }
+const CAUSE_KO = {
+  collision: '충돌 파괴', absorb: '특이점 흡수', sun: '항성 처분',
+  exile: '성계 추방', blast: '유폭',
+}
 
 export class Game {
   constructor(seed) {
@@ -58,7 +64,10 @@ export class Game {
   // 참조 비교를 쓰면 "예측에서는 목표가 목표가 아닌" 사고가 난다.
   isTarget(b) { return this.targets.some(t => t.id === b.id) }
   get aliveTargets() { return this.targets.filter(t => t.alive).length }
-  get alivePlanets() { return this.bodies.filter(b => b.alive && !b.isEarth && b.type !== 'debris').length }
+  // 특이점은 부술 수 없으니 "남은 재료"에서 뺀다 (연쇄 충돌 목표의 달성 가능성 판정용)
+  get alivePlanets() {
+    return this.bodies.filter(b => b.alive && !b.isEarth && b.type !== 'debris' && b.role !== 'void').length
+  }
 
   launchPos() {
     const d = CFG.LAUNCH_OFFSET   // 지구 중력권 밖에서 발사 (§4.3 κ 증폭 때문)
@@ -151,6 +160,21 @@ export class Game {
   detonate(m, b, point) {
     m.alive = false; m.hit = b
     const yld = m.yld
+    const who = m.hostile ? '반격탄' : '핵'
+
+    // 특이점 — 탄두째로 삼킨다. 밀리지도, 터지지도 않는다.
+    if (b.role === 'void') {
+      this.addFx({ kind: 'absorb', x: point.x, y: point.y, r: b.radius, small: true })
+      this.message = `${b.name}이(가) ${who}을 삼켰다 — 특이점엔 아무것도 안 통한다`
+      return
+    }
+
+    // 휘발성 — 맞는 순간 그 자리에서 유폭. 반경 안이 통째로 밀린다.
+    if (b.role === 'volatile') {
+      this.addFx({ kind: 'nuke', x: point.x, y: point.y, yld, r: b.radius })
+      this.volatileBlast(b)
+      return
+    }
 
     if (b.type === 'debris') {
       this.addFx({ kind: 'nuke', x: point.x, y: point.y, yld, r: b.radius })
@@ -182,16 +206,70 @@ export class Game {
     const wave = blastWave(this.bodies, point.x, point.y, yld, b)
     this.addFx({
       kind: 'nuke', x: point.x, y: point.y, yld, r: b.radius,
-      px: push.dx, py: push.dy, wave: wave.radius,
+      px: push.dx, py: push.dy, wave: wave.radius, armor: b.role === 'armor',
     })
 
     // §9.1 스타일 배율 — 체인/니어미스/태양 가속은 여전히 점수에 얹힌다
     const M = 1 + 0.75 * m.chain + 0.25 * m.nearMiss + (m.minSunDist < CFG.SUN_BONUS_R ? 0.5 : 0)
-    const gained = Math.round(8 * M)
+    const gained = m.hostile ? 0 : Math.round(8 * M)
     this.score += gained; this.chainLast = m.chain
-    this.message = `${b.name} 타격 — Δv ${push.dv.toFixed(1)} · 방위 ${degOf(push.dx, push.dy)}° (+${gained})`
+    this.message = `${b.name} 타격 — Δv ${push.dv.toFixed(1)} · 방위 ${degOf(push.dx, push.dy)}°`
+      + (b.role === 'armor' ? ' (장갑에 막혀 거의 안 밀렸다)' : gained ? ` (+${gained})` : '')
     // 폭풍이 지구를 정통으로 훑었다면 경고 — 지구가 밀려 태양에 빠지는 사고가 실제로 난다
     if (wave.pushed.some(p => p.body.isEarth)) this.setToast('경고 — 폭풍이 지구를 밀었다')
+    // 요새 — 때린 쪽으로 반격탄을 되쏜다. 그 탄도 행성을 미는 큐다.
+    if (b.role === 'battery') this.retaliate(b, point, push)
+  }
+
+  // ─── 요새의 반격 ─────────────────────────────────────────────
+  // 방향은 임펄스의 정반대 = 내가 때린 쪽으로 되나온다. 즉 어느 살을
+  // 쳤느냐로 반격탄의 진로까지 내가 정한다 — 적의 미사일을 큐로 쓰는 것.
+  retaliate(b, point, push) {
+    if ((b.ammo ?? 0) <= 0) { this.setToast(`${b.name} 반격 재고 소진`); return }
+    b.ammo--
+    const dx = -push.dx, dy = -push.dy
+    const off = hitRadiusOf(b) * 1.15
+    const p = { x: b.pos.x + dx * off, y: b.pos.y + dy * off }
+    this.missiles.push({
+      pos: p, vel: { x: dx * CFG.BATTERY_SPEED + b.vel.x, y: dy * CFG.BATTERY_SPEED + b.vel.y },
+      yld: CFG.BATTERY_YIELD, alive: true, hostile: true, chain: 0, nearMiss: 0, age: 0,
+      path: [{ ...p }], pathN: 0, enc: new Map(), bestDeflection: 0,
+      encountered: false, minSunDist: Infinity, hit: null, out: null,
+    })
+    this.addFx({ kind: 'launch', x: p.x, y: p.y, a: Math.atan2(dy, dx), hostile: true })
+    this.setToast(`${b.name} 반격! — 되날아오는 탄도 행성을 민다`)
+  }
+
+  // ─── 휘발성 유폭 ─────────────────────────────────────────────
+  // 반경은 그 행성의 크기로 고정 — 조준 전에 원으로 그려 줄 수 있어야
+  // "여기까지 밀린다"를 계획할 수 있다.
+  volatileBlast(b) {
+    if (!b.alive) return
+    const R = volatileRadius(b)
+    this.addFx({ kind: 'volatile', x: b.pos.x, y: b.pos.y, r: b.radius, R })
+    for (const o of this.bodies) {
+      if (!o.alive || o === b) continue
+      let dx = o.pos.x - b.pos.x, dy = o.pos.y - b.pos.y
+      const d = Math.hypot(dx, dy)
+      if (d > R || d < 1e-6) continue
+      const f = 1 - d / R
+      const dv = CFG.VOLATILE_IMPULSE * f * f / o.mu * (roleOf(o)?.dvScale ?? 1)
+      o.vel.x += dx / d * dv; o.vel.y += dy / d * dv
+      o.trailFlash = 2
+    }
+    this.message = `${b.name} 유폭! — 반경 ${R.toFixed(0)} GU 안이 전부 밀렸다`
+    this.killBody(b, 'blast', { fx: false })
+  }
+
+  // ─── 특이점 흡수 ─────────────────────────────────────────────
+  absorb(hole, prey) {
+    this.addFx({ kind: 'absorb', x: hole.pos.x, y: hole.pos.y, r: hitRadiusOf(hole) })
+    if (hole.mu < CFG.VOID_MU_MAX) {   // 삼킨 만큼 자란다 — 판이 점점 위험해진다
+      hole.mu = Math.min(CFG.VOID_MU_MAX, hole.mu + prey.mu * CFG.VOID_GROW)
+      hole.radius = radiusOf(hole.mu)
+    }
+    this.message = `${prey.name}이(가) ${hole.name}에 삼켜졌다`
+    this.killBody(prey, 'absorb', { fx: false, shatterIt: false })
   }
 
   // ─── 행성끼리의 충돌 = 폭파 (유일한 파괴 수단) ────────────────
@@ -201,6 +279,20 @@ export class Game {
       this.addFx({ kind: 'destroy', x: e.pos.x, y: e.pos.y, r: e.radius * 2, earth: true })
       e.alive = false; o.alive = false
       this.fail('EARTH_LOST', `${o.name}이(가) 지구에 처박혔다. 작전 종료.`)
+      return
+    }
+    // 특이점 — 상대만 삼킨다. 특이점끼리 만나면 큰 쪽이 작은 쪽을 먹는다.
+    if (a.role === 'void' || b.role === 'void') {
+      const hole = a.role === 'void' && (b.role !== 'void' || a.mu >= b.mu) ? a : b
+      this.absorb(hole, hole === a ? b : a)
+      return
+    }
+    // 휘발성 — 부딪혀도 유폭한다. 연쇄를 노릴 수 있는 자리.
+    if (a.role === 'volatile' || b.role === 'volatile') {
+      const vol = a.role === 'volatile' ? a : b, other = vol === a ? b : a
+      this.message = `${vol.name} ✕ ${other.name} — 충돌 유폭!`
+      this.killBody(other, 'collision', { fx: true })
+      this.volatileBlast(vol)
       return
     }
     const vRel = Math.hypot(a.vel.x - b.vel.x, a.vel.y - b.vel.y)
@@ -281,6 +373,7 @@ export class Game {
   // §14.4 실패 피드백 — 빗나간 샷마다 원인 태그 1개
   finishShot(m) {
     if (m.hit) return
+    if (m.hostile) { this.setToast('반격탄 소멸'); return }   // 내 탓이 아니다
     let tag
     if (m.out === 'lost') tag = '유실 — 성계 이탈 (파워 과다)'
     else if (m.out === 'sun') tag = '태양 소멸 — 근일점이 너무 낮다'
@@ -373,12 +466,15 @@ export class Game {
     let outcome = 'neutral'
     if (o.type === 'debris') outcome = 'debris'
     else if (o.isEarth) outcome = 'earth'
+    else if (o.role === 'void') outcome = 'void'
     else if (shielded) outcome = 'shield'
+    else if (o.role === 'volatile') outcome = 'volatile'
     else if (isT) outcome = 'target'
     let dx = o.pos.x - point.x, dy = o.pos.y - point.y
     const d = Math.hypot(dx, dy) || 1
     dx /= d; dy /= d
-    const dv = o.type === 'debris' || o.isEarth || shielded ? 0 : nukeDv(this.yieldMt, o.mu)
+    const dv = o.type === 'debris' || o.isEarth || shielded || o.role === 'volatile'
+      ? 0 : effDv(o, this.yieldMt)
     const R = blastRadius(this.yieldMt)
     // 큰 탄두는 폭풍이 지구까지 닿는다 — 쏘기 전에 그것만은 알려준다
     const earthInBlast = !!simEarth && !o.isEarth &&
@@ -394,6 +490,11 @@ export class Game {
       dx, dy, dv,                          // 임펄스 방향/크기
       vx: o.vel.x + dx * dv, vy: o.vel.y + dy * dv,   // 타격 직후 공의 속도
       blast: R, earthInBlast, vAfter, vEsc, willEject: dv > 0 && vAfter > vEsc,
+      role: o.role ?? null,
+      // 요새를 치면 임펄스의 정반대로 반격탄이 나온다 — 그것까지가 "이 한 방"의 정보다.
+      // 단 방어막에 삼켜지는 샷은 기폭 자체가 없으므로 반격도 없다(detonate가 먼저 리턴).
+      counter: o.role === 'battery' && (o.ammo ?? 0) > 0 && !shielded && !o.isEarth && o.type !== 'debris',
+      volatileR: o.role === 'volatile' ? volatileRadius(o) : 0,
     }
   }
 }

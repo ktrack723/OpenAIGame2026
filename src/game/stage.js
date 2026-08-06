@@ -1,5 +1,6 @@
 import { Rng } from '../core/random.js'
 import { CFG, aMaxOf, contactDist, hitRadiusOf, radiusOf } from './config.js'
+import { rolePool } from './roles.js'
 import { cloneBodies, stepBodies } from './physics.js'
 import { makeGoal, pickGoalSpec } from './objectives.js'
 
@@ -39,9 +40,11 @@ function placeOrbits(rng, mus, K, aMax) {
     }
   }
   build()
-  for (let g = 0; g < 2 && axes[n - 1] > aMax; g++) {
+  // 오버플로 해소 — 연쇄 충돌 목표는 공을 많이 깔아야 해서 6회까지 조인다.
+  // 간격 하한도 3.0 힐 반경까지 내렸다: 궤도가 붙을수록 밀어서 만나게 하기 쉽다.
+  for (let g = 0; g < 6 && axes[n - 1] > aMax; g++) {
     const kMean = K.reduce((s, k) => s + k, 0) / K.length
-    if (kMean > Math.min(...K) + 0.3) for (let i = 0; i < K.length; i++) K[i] = Math.max(3.6, K[i] * 0.9)
+    if (kMean > Math.min(...K) + 0.3) for (let i = 0; i < K.length; i++) K[i] = Math.max(3.0, K[i] * 0.9)
     else for (let i = 0; i < n; i++) mus[i] *= 0.85
     build()
   }
@@ -174,10 +177,60 @@ function trySim(eph, bodies, earthIdx, tIdx, aMax, t0, ang, pw) {
   return false
 }
 
-function finalize(bodies, earth, tIdx, B, aMax, seed, ante, goal, extraTargets) {
+// ─── 특수 천체 배정 ─────────────────────────────────────────────
+// 판을 풍성하게 만드는 건 규칙의 수가 아니라 규칙끼리의 상호작용이다.
+// 목표 위에 얹을 수 있는 건 장갑·요새뿐: 특이점은 부술 수 없고,
+// 휘발성은 유폭해 버려서 "충돌로 부숴라" 같은 조건과 충돌한다.
+// 목표 위에 얹어도 되는 역할은 요새뿐. 장갑은 "밀어서 처리"를 막아 버리고,
+// 특이점은 부술 수 없고, 휘발성은 유폭해서 목표 조건과 충돌한다.
+// 단 충돌 파괴 계열 목표에서는 장갑 표적이 정확히 그 주제라 예외로 붙인다.
+const TARGET_OK = new Set(['battery'])
+function assignRoles(rng, bodies, earth, targets, goal, stageIdx, ante) {
+  const pool = rolePool(stageIdx)
+  const cand = bodies.filter(b => b !== earth && b.type !== 'debris')
+  const isT = (b) => targets.includes(b)
+
+  // "밀어선 안 되고 던져야 한다" — 충돌 파괴 목표의 주제 그 자체
+  if ((goal.kind === 'SMASH' || goal.kind === 'PILEUP') && pool.includes('armor')) setRole(targets[0], 'armor')
+
+  const want = Math.min(cand.length - 1, 1 + Math.floor(ante * CFG.ROLE_PER_ANTE))
+  const shuffle = (arr) => {   // 피셔–예이츠
+    for (let i = arr.length - 1; i > 0; i--) { const j = rng.int(0, i); const t = arr[i]; arr[i] = arr[j]; arr[j] = t }
+    return arr
+  }
+  const free = shuffle(cand.filter(b => !b.role))
+  // 같은 역할이 판을 뒤덮지 않게 풀을 한 바퀴 다 돌린 뒤에야 중복을 허용한다.
+  // 위에서 강제 배정한 역할도 이미 쓴 것으로 친다.
+  const used = new Set(cand.filter(b => b.role).map(b => b.role))
+  let deck = shuffle(pool.filter(r => !used.has(r)))
+  if (!deck.length) deck = shuffle([...pool])
+  let placed = cand.length - free.length
+  for (const b of free) {
+    if (placed >= want) break
+    const usable = isT(b) ? deck.filter(r => TARGET_OK.has(r)) : deck
+    if (!usable.length) continue
+    const role = usable[rng.int(0, usable.length - 1)]
+    setRole(b, role)
+    deck = deck.filter(r => r !== role)
+    if (!deck.length) deck = shuffle([...pool])
+    placed++
+  }
+}
+function setRole(b, role) {
+  if (!b || b.role) return
+  b.role = role
+  if (role === 'battery') b.ammo = CFG.BATTERY_AMMO
+  if (role === 'void') { b.type = 'void'; b.mu = Math.max(b.mu, 900); b.radius = radiusOf(b.mu) }
+  if (role === 'volatile') b.type = 'gas'
+  if (role === 'armor') b.type = 'iron'
+}
+
+function finalize(bodies, earth, tIdx, B, aMax, seed, ante, goal, extraTargets, rng, stageIdx) {
   const targets = [bodies[tIdx], ...extraTargets]
   targets.forEach((t, i) => { t.name = `Zork ${t.name}`; t.isTarget = true; t.targetNo = i + 1 })
-  return { bodies, earth, target: targets[0], targets, aMax, B, seed, ante, goal }
+  assignRoles(rng, bodies, earth, targets, goal, stageIdx, ante)
+  const roles = [...new Set(bodies.filter(b => b.role).map(b => b.role))]
+  return { bodies, earth, target: targets[0], targets, aMax, B, seed, ante, goal, roles }
 }
 
 // 목표 후보 정렬 — 개정: "부딪힐 짝이 가까이 있는가"가 1순위다.
@@ -229,11 +282,11 @@ export function makeStage(seed = Date.now(), ante = 1, stageIdx = 0) {
     if (primary.B > 2.8) continue
     if (attempt < 20 && !solvable(eph, bodies, earthIdx, primary.i, aMax)) continue
     return finalize(bodies, earth, primary.i, primary.B, aMax, seed, ante, goal,
-      pick.slice(1).map(p => bodies[p.i]))
+      pick.slice(1).map(p => bodies[p.i]), rng, stageIdx)
   }
   if (fallback) {
     return finalize(fallback.bodies, fallback.earth, fallback.pick[0].i, fallback.pick[0].B,
-      fallback.aMax, seed, ante, goal, fallback.pick.slice(1).map(p => fallback.bodies[p.i]))
+      fallback.aMax, seed, ante, goal, fallback.pick.slice(1).map(p => fallback.bodies[p.i]), rng, stageIdx)
   }
   // 최후 안전망: 검증 없이 생성해 바깥쪽 행성들을 목표로
   for (let i = 0; i < 20; i++) {
@@ -241,7 +294,7 @@ export function makeStage(seed = Date.now(), ante = 1, stageIdx = 0) {
     if (!built) continue
     const { bodies, earth, aMax } = built
     const idx = bodies.map((b, k) => k).filter(k => bodies[k] !== earth).reverse().slice(0, goal.targetCount)
-    return finalize(bodies, earth, idx[0], 0, aMax, seed, ante, goal, idx.slice(1).map(k => bodies[k]))
+    return finalize(bodies, earth, idx[0], 0, aMax, seed, ante, goal, idx.slice(1).map(k => bodies[k]), rng, stageIdx)
   }
   throw new Error('스테이지 생성 실패')
 }

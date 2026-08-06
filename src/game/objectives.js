@@ -1,23 +1,29 @@
 // ─── 작전 목표 (행성당구 규칙) ──────────────────────────────────
 // 핵미사일은 행성을 부수지 못한다. 미는 것만 한다.
-// 행성을 없애는 방법은 셋뿐이다: ① 다른 행성과 충돌 ② 태양 낙하 ③ 성계 추방.
+// 없애는 방법: ① 다른 행성과 충돌 ② 태양 낙하 ③ 성계 추방
+//              ④ 특이점에 흡수 ⑤ 휘발성 행성 유폭 (roles.js)
 // 안테마다 "어떤 방법으로 없앨 것인가"를 지정해서, 같은 판이 매번 다른 문제가 되게 한다.
 
-// cause: 'collision' | 'sun' | 'exile'
-const CAUSE_KO = { collision: '충돌', sun: '항성 처분', exile: '성계 추방' }
+// cause: 'collision' | 'absorb' | 'sun' | 'exile' | 'blast'
+const CAUSE_KO = {
+  collision: '충돌', absorb: '특이점 흡수', sun: '항성 처분',
+  exile: '성계 추방', blast: '유폭',
+}
+// "다른 천체에 처박아 없앤다" 계열 — 특이점에 밀어 넣은 것도 같은 주제로 친다
+const SMASHED = new Set(['collision', 'absorb'])
 
 export const GOALS = {
   ANYKILL: {
     title: '조르그 말살',
-    rule: '방법은 자유 — 충돌·태양·추방 중 아무거나.',
+    rule: '방법은 자유 — 충돌·태양·추방·흡수·유폭 중 아무거나.',
     targets: (need) => need,
     counts: (ev) => ev.isTarget,
   },
   SMASH: {
     title: '충돌 파괴',
-    rule: '조르그 행성을 다른 행성에 처박아라. 태양행·추방은 인정 안 된다.',
+    rule: '조르그 행성을 다른 행성에 처박아라(특이점에 밀어 넣어도 된다). 태양행·추방은 인정 안 된다.',
     targets: (need) => need,
-    counts: (ev) => ev.isTarget && ev.cause === 'collision',
+    counts: (ev) => ev.isTarget && SMASHED.has(ev.cause),
   },
   SUNDIVE: {
     title: '항성 처분',
@@ -40,9 +46,9 @@ export const GOALS = {
   },
   PILEUP: {
     title: '연쇄 충돌',
-    rule: '조르그든 중립이든 상관없다. 행성끼리 부딪혀 터지는 것만 센다.',
+    rule: '조르그든 중립이든 상관없다. 부딪혀 터지거나 삼켜진 것만 센다.',
     targets: () => 1,
-    counts: (ev) => ev.cause === 'collision',
+    counts: (ev) => SMASHED.has(ev.cause),
     loose: true,          // 목표 행성을 "잘못된 방법"으로 잃어도 아까울 게 없다
   },
 }
@@ -81,8 +87,9 @@ export function makeGoal(spec) {
     shielded: !!def.shielded,
     targetCount,
     // 판에 깔려야 할 최소 천체 수 — 목표 + 큐볼 + 지구.
-    // 연쇄 충돌은 "부딪힐 짝"이 있어야 하므로 요구량만큼 공을 더 깐다.
-    minBodies: Math.min(8, (def.loose ? spec.need + 1 : targetCount + 2) + 1),
+    // 연쇄 충돌은 "부딪힐 짝"이 반드시 있어야 하고, 공 하나를 실수로 날려도
+    // 판이 즉사하지 않도록 요구량보다 두 개를 더 깐다(계측: +1이면 오발 한 번에 GOAL_LOST).
+    minBodies: Math.min(8, (def.loose ? spec.need + 3 : targetCount + 2) + 1),
     // 파괴 이벤트 한 건을 목표에 반영. 카운트에 잡히면 true.
     record(ev) {
       if (this.done >= this.need) return false

@@ -20,6 +20,12 @@ h1{margin:0;color:#67e8f9;letter-spacing:.18em;font-size:26px}
 .objprog i{display:block;height:100%;width:0;background:linear-gradient(90deg,#22d3ee,#4ade80);transition:width .25s ease}
 .cy{color:#67e8f9}.bl{color:#93c5fd}.rd{color:#fca5a5}.am{color:#fcd34d}
 
+/* 특수 천체 범례 — 화면의 점선 링 색과 1:1로 맞춘다 */
+.roles{margin:10px 0;padding:8px 10px;border:1px solid #334155;border-radius:11px;background:rgba(15,23,42,.55);display:grid;gap:5px}
+.rolerow{display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:baseline;font-size:11.5px;line-height:1.4}
+.rolerow b{font-weight:800;white-space:nowrap}
+.rolerow span{color:#94a3b8}
+
 /* 작전 시한 — 존버를 막는 유일한 장치라 눈에 띄어야 한다 */
 .clock{margin:10px 0;padding:9px 11px;border:1px solid #334155;border-radius:11px;background:rgba(15,23,42,.6)}
 .clockrow{display:flex;align-items:baseline;justify-content:space-between}
