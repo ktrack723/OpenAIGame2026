@@ -2,6 +2,7 @@ import { Game } from './game/game.js'
 import { SceneView } from './render/Scene.js'
 import { makeHud, updateHud } from './ui/hud.js'
 import { Inspector } from './ui/Inspector.js'
+import { Intro } from './ui/Intro.js'
 
 // 시드: ?seed= 지정 시 그 값, 아니면 데일리 시드 (고정 dt + 시드 PRNG → 결정론, §4.2)
 const params = new URLSearchParams(location.search)
@@ -18,6 +19,11 @@ const inspector = new Inspector(game, view.rig, view.renderer.domElement)
 inspector.bind((b) => view.renderRadius(b))
 window.__game = game; window.__view = view   // 콘솔/자동 검증용 훅
 document.querySelector('.boot')?.remove()
+
+// 오프닝 — 목표·규칙·플로우를 박에 맞춰 훑고 지나간다.
+// 게임은 뒤에서 이미 조준 모드(시간 정지)로 대기 중이라 따로 멈출 게 없다.
+// ?nointro=1 로 끌 수 있다(반복 플레이·자동 검증용).
+if (!params.get('nointro')) new Intro().start()
 
 let last = performance.now()
 function loop(now) {

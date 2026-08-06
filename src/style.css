@@ -160,6 +160,67 @@ button:disabled{opacity:.32;cursor:not-allowed;box-shadow:none}
 .zoomv{color:var(--cy);font-size:10.5px;font-weight:700;font-variant-numeric:tabular-nums;font-family:var(--mono)}
 pre{white-space:pre-wrap;line-height:1.55;color:#9fd0c4;margin:0;font-size:11px;font-family:var(--mono)}
 
+/* ── 오프닝 컷신 (동화책 × 리듬 게임) ──
+   박에 맞춰 컷이 딱 끊어져 넘어가야 하므로 전환은 전부 짧고 과장되게.
+   ease-out 오버슈트 한 번이면 "탁" 하고 꽂히는 느낌이 난다. */
+.intro{position:fixed;inset:0;z-index:9;display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(120% 90% at 50% 40%,#0a1424 0%,#03060f 70%);
+  animation:introin .4s ease-out}
+.intro.out{opacity:0;transition:opacity .4s ease;pointer-events:none}
+@keyframes introin{from{opacity:0}to{opacity:1}}
+.introbox{width:min(620px,calc(100vw - 32px));padding:14px 16px 16px;
+  border:1px solid var(--line);background:var(--panel);
+  box-shadow:0 24px 90px #000d,inset 0 0 70px #0a1c2a55;
+  clip-path:polygon(0 14px,14px 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%)}
+.introbox.snap{animation:snap .34s cubic-bezier(.2,1.7,.4,1)}
+@keyframes snap{0%{transform:scale(.965) rotate(-.4deg)}60%{transform:scale(1.012) rotate(.15deg)}100%{transform:none}}
+
+.introtop{display:flex;align-items:center;gap:10px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.introttl{color:var(--cy);font-size:12px;font-weight:800;letter-spacing:.3em;text-shadow:0 0 12px #4fd6f755}
+.introbeat{margin-left:auto;color:var(--am);font-size:11px;letter-spacing:.22em;font-family:var(--mono)}
+.introbeat.hit{animation:beathit .22s ease-out}
+@keyframes beathit{from{transform:scale(1.35);color:#fff}to{transform:none}}
+.introskip{padding:5px 10px;border:1px solid var(--line);background:#0b1826;color:#a9c8d8;
+  font-family:inherit;font-size:10.5px;font-weight:700;letter-spacing:.06em;cursor:pointer}
+.introskip:hover{background:#16334a;color:#eaf7ff}
+
+.introframe{position:relative;margin:12px 0 10px;border:1px solid var(--line2);
+  background:linear-gradient(180deg,#06101c,#030a12);overflow:hidden}
+.introframe svg{display:block;width:100%;height:auto}
+.introboom{position:absolute;right:14px;top:10px;color:var(--am);font-size:26px;font-weight:900;
+  letter-spacing:.06em;text-shadow:0 0 18px #f5b54488,3px 3px 0 #2a1a02;
+  animation:boompop .5s cubic-bezier(.2,1.8,.4,1)}
+@keyframes boompop{0%{transform:scale(.3) rotate(-14deg);opacity:0}55%{transform:scale(1.18) rotate(4deg);opacity:1}100%{transform:none;opacity:1}}
+
+.introtag{color:var(--am);font-size:11px;font-weight:800;letter-spacing:.2em;margin-bottom:5px}
+.introline{color:#eaf7ff;font-size:14.5px;font-weight:700;line-height:1.62;min-height:2.9em;
+  word-break:keep-all;animation:linein .38s ease-out}
+.introline b{color:var(--cy);text-shadow:0 0 12px #4fd6f766}
+@keyframes linein{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.introdots{display:flex;gap:6px;margin-top:12px}
+.introdots i{flex:1;height:3px;background:#132635;transition:background .25s}
+.introdots i.on{background:var(--cy);box-shadow:0 0 8px #4fd6f7aa}
+.intro.final .introbox{border-color:#2f7f9c;box-shadow:0 24px 90px #000d,0 0 34px #4fd6f733}
+
+/* 컷 안에서 움직이는 조각들 — 박마다 한 번씩 튄다 */
+.intro .pop{animation:beatpop .46s cubic-bezier(.2,1.8,.4,1)}
+@keyframes beatpop{0%{transform:scale(.2);opacity:0}60%{transform:scale(1.25);opacity:1}100%{transform:none;opacity:1}}
+.intro .mv{animation:slidein .5s ease-out}
+.intro .mv2{animation:slidein .5s .12s ease-out both}
+@keyframes slidein{from{transform:translateX(-26px);opacity:0}to{transform:none;opacity:1}}
+.intro .beam{animation:beamflick .46s steps(2) infinite}
+@keyframes beamflick{0%,100%{opacity:.9}50%{opacity:.42}}
+.intro .ripple{animation:rip 1.4s ease-out infinite}
+.intro .ripple2{animation:rip 1.4s .3s ease-out infinite}
+@keyframes rip{from{transform:scale(.35);opacity:.9}to{transform:scale(1.35);opacity:0}}
+.intro .zeye{animation:blink 2.6s steps(1) infinite}
+@keyframes blink{0%,92%{opacity:1}94%,98%{opacity:.15}100%{opacity:1}}
+
+@media (max-width:640px){
+  .introline{font-size:13px}
+  .introboom{font-size:20px}
+}
+
 /* ── 관측 모드의 유일한 UI ──
    패널이 통째로 사라진 화면에서 "돌아가는 길"이 하나는 보여야 한다.
    크게, 화면 아래 가운데에, 손가락으로도 눌리게. */

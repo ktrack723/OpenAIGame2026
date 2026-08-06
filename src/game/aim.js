@@ -110,21 +110,27 @@ export function predictPath(game) {
 // 거친 적분(dt 1/40)으로 훑고, 찾은 각도는 다음 프레임에 정식 예측이 확정한다.
 // 한 번 누를 때마다 "다음 선택지"로 간다 — 지금 물고 있는 구간을 먼저 빠져나온
 // 다음에 찾는다. 같은 구간 안에서의 미세 조정은 방향키(±0.5~2°)가 맡는다.
-// 탐색 해상도 — 1°씩 360번 훑던 걸 1.5°씩 240번으로 내렸다. 행성이 스무 개면
-// 닿는 각도 자체가 훨씬 흔해져서 굵게 훑어도 놓치지 않고, 비용은 3분의 1이다.
-// (미세 조정은 어차피 방향키 ±0.5°가 맡는다.)
+// 탐색 해상도 — 1.5°씩 240칸.
+//
+// ※ 플레이테스트에서 이 버튼이 한 번에 2.4~3.4초씩 화면을 얼렸다(행성 17개).
+//   원인은 "지금 맞고 있는 구간을 빠져나온 다음 다시 닿는 각도를 찾는" 방식이었다.
+//   공이 열댓 개면 **거의 모든 각도가 뭔가에 닿기 때문에** 그 구간 통과 루프가
+//   240칸을 거의 다 돌았고, 한 칸이 곧 52초짜리 시뮬 한 번이었다.
+//
+//   고쳐 쓴 규칙: **"다음 다른 천체"에서 멈춘다.** 플레이어가 이 버튼에 바라는
+//   것도 그것이다("딴 공을 보여줘"). 지금 물고 있는 공과 id가 다른 순간 끝나므로
+//   보통 몇 칸 안에 끝나고, 결과적으로 얼음도 사라진다.
 const SCAN_DEG = 1.5, SCAN_N = 240
 export function scanContact(game, dir = 1) {
   if (!game.canAim) return false
   const step = dir * SCAN_DEG * Math.PI / 180
-  const ok = (h) => h && h !== 'earth' && h !== 'debris'
-  let i = 1
-  if (ok(coarseContact(game, game.aim))) {          // 이미 맞고 있으면 그 구간을 통과
-    while (i <= SCAN_N && ok(coarseContact(game, game.aim + step * i))) i++
-  }
-  for (; i <= SCAN_N; i++) {
+  const usable = (h) => h && h !== 'earth' && h !== 'debris'
+  const cur = coarseContact(game, game.aim)          // 지금 물고 있는 공(없으면 null)
+  for (let i = 1; i <= SCAN_N; i++) {
     const ang = game.aim + step * i
-    if (!ok(coarseContact(game, ang))) continue
+    const h = coarseContact(game, ang)
+    if (!usable(h)) continue
+    if (usable(cur) && h === cur) continue           // 같은 공이면 계속 — 다음 "다른" 공을 찾는다
     game.aim = wrapPi(ang)
     game._predKey = null; game._predAt = 0
     return true
@@ -142,13 +148,18 @@ export function scanContact(game, dir = 1) {
 // 거친 접촉 판정 — **천체**에 닿는지만 본다(폭심·임펄스는 계산하지 않는다).
 // 비행 중인 반격탄은 일부러 무시한다: 요격각을 대신 찾아 주는 건
 // 조준 보조라 없앴고, 접촉각 탐색은 "어느 공을 칠 수 있는가"만 답한다.
+// 반환값은 **맞는 천체의 id** (또는 'earth' / 'debris' / null). id를 돌려줘야
+// scanContact가 "같은 공인지 다른 공인지"를 알 수 있다.
+// 지평은 TTL의 60%로 자른다: 계측상 접촉의 92%가 그 안에 일어나고,
+// 나머지는 어차피 굴러가다 만나는 샷이라 "칠 수 있는 각도" 목록에 안 넣는 게 낫다.
+const COARSE_HORIZON = 0.6
 export function coarseContact(game, ang) {
   const sim = cloneBodies(game.bodies)
-  const dt = 1 / 40
+  const dt = 1 / 32
   const p = { x: game.earth.pos.x + Math.cos(ang) * CFG.LAUNCH_OFFSET, y: game.earth.pos.y + Math.sin(ang) * CFG.LAUNCH_OFFSET }
   const m = { pos: { ...p }, vel: fromAngle(ang, game.power), age: 0, pathN: 0, path: [], minSunDist: Infinity, prev: { ...p } }
   const beltR = beltRadius(game.aMax)
-  const steps = Math.round(CFG.MISSILE_TTL / dt)
+  const steps = Math.round(CFG.MISSILE_TTL * COARSE_HORIZON / dt)
   for (let i = 0; i < steps; i++) {
     if (bodyTurn(i, COARSE_BODY_EVERY)) stepBodies(sim, dt * COARSE_BODY_EVERY)
     stepMissile(m, sim, dt)
@@ -157,7 +168,7 @@ export function coarseContact(game, ang) {
       if (!segHitsCircle(m.prev.x, m.prev.y, m.pos.x, m.pos.y, o.pos.x, o.pos.y, hitRadiusOf(o))) continue
       if (o.type === 'debris') return 'debris'
       if (o.isEarth) return 'earth'
-      return 'body'
+      return o.id
     }
     const r = Math.hypot(m.pos.x, m.pos.y)
     if (r < CFG.R_STAR + 8) return null
