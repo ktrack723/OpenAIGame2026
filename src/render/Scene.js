@@ -11,16 +11,15 @@ import { LaserView } from './LaserView.js'
 import { Belt } from './Belt.js'
 import { Icons } from './Icons.js'
 
-// 바이옴별 재질 — 색은 이전과 동일, 거칠기/발광만 3D용으로 추가
+// 분류별 재질 — 분류가 다섯으로 줄었으므로 재질도 다섯이다.
+// (용암·해양·독성·생명은 게임 규칙이 없어 없앴다 — Icons.CATEGORY 주석 참고.)
+// 색은 곧 규칙이다: 회색 암석 = 규칙 없음, 하늘색 얼음 = 가벼움,
+// 흰 금속 = 무거움, 노란 가스 = 터짐, 검은 특이점 = 삼킴.
 const MATS = {
   rock: { c: 0x9aa1a8, rough: 0.95, metal: 0.05, emis: 0.00 },
-  lava: { c: 0xff6b35, rough: 0.60, metal: 0.10, emis: 0.55 },
   ice: { c: 0x8be9ff, rough: 0.25, metal: 0.05, emis: 0.06 },
-  ocean: { c: 0x2f8fff, rough: 0.30, metal: 0.10, emis: 0.05 },
-  gas: { c: 0xffd166, rough: 0.85, metal: 0.00, emis: 0.08 },
-  toxic: { c: 0x9bff6a, rough: 0.80, metal: 0.05, emis: 0.16 },
-  life: { c: 0x38d878, rough: 0.70, metal: 0.05, emis: 0.10 },
   iron: { c: 0xcbd5e1, rough: 0.30, metal: 0.95, emis: 0.00 },
+  gas: { c: 0xffd166, rough: 0.85, metal: 0.00, emis: 0.08 },
   void: { c: 0x120a1e, rough: 1.00, metal: 0.00, emis: 0.00 },
   earth: { c: 0x3b82f6, rough: 0.55, metal: 0.10, emis: 0.08 },
   debris: { c: 0x8b8f96, rough: 1.00, metal: 0.10, emis: 0.00 },

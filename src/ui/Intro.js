@@ -11,9 +11,11 @@
 //
 // 언제든 건너뛸 수 있다 — 두 번째 판부터는 이게 방해물이므로.
 
-const BEAT = 400          // 한 박(ms). 컷은 4박마다 넘어간다 → 전체 11초
-const PANEL_BEATS = 4
-const PANEL_MS = BEAT * PANEL_BEATS
+// 컷은 **자동으로 넘어가지 않는다.** 읽는 속도는 사람마다 다르고, 넘어가는
+// 타이밍을 기계가 정하면 못 읽은 컷이 반드시 생긴다. 박(BEAT)은 리듬을 보여주는
+// 장식으로만 남기고, 진행은 전적으로 누르는 사람이 정한다.
+const BEAT = 400          // 한 박(ms) — 박 표시와 컷 전환 애니메이션의 기준
+const BEAT_DOTS = 4       // 박 표시 점 개수(한 마디)
 
 // 공통 팔레트 — 본편 HUD와 같은 색을 써야 "같은 게임"으로 읽힌다
 const C = {
@@ -113,7 +115,7 @@ const PANELS = [
   },
   {
     tag: '그러니까',
-    line: '행성으로 행성을 쳐라. 당구처럼. 세 번 처박으면 박살난다.',
+    line: '행성으로 행성을 쳐라. 당구처럼. **조르그 요새는 한 번**이면 끝난다.',
     boom: '딱!',
     art: `<g>
       <circle cx="120" cy="92" r="20" fill="#9aa1a8"/>
@@ -124,7 +126,7 @@ const PANELS = [
          stroke="#fff3cd" stroke-width="4" stroke-linecap="round"/></g>
       <g transform="translate(300,92)">
         <rect x="-46" y="-19" width="92" height="38" rx="6" fill="#0b1826" stroke="${C.rd}" stroke-width="2"/>
-        <text x="0" y="6" fill="${C.rd}" font-size="17" font-weight="900" text-anchor="middle">◆◆◆ ×3</text>
+        <text x="0" y="6" fill="${C.rd}" font-size="16" font-weight="900" text-anchor="middle">☠ 체력 ◆ 1</text>
       </g>
     </g>`,
   },
@@ -166,7 +168,6 @@ export class Intro {
   constructor(onDone) {
     this.onDone = onDone
     this.i = -1
-    this.timer = null
     this.done = false
 
     const el = document.createElement('div')
@@ -176,7 +177,7 @@ export class Intro {
   <div class="introtop">
     <span class="introttl">PLANETPOOL</span>
     <span class="introbeat" id="introBeat"></span>
-    <button class="introskip" id="introSkip">건너뛰기 ▶▶</button>
+    <button class="introskip" id="introSkip">건너뛰기 (ESC)</button>
   </div>
   <div class="introframe">
     <svg id="introArt" viewBox="0 0 420 190" preserveAspectRatio="xMidYMid meet"></svg>
@@ -184,6 +185,7 @@ export class Intro {
   </div>
   <div class="introtag" id="introTag"></div>
   <div class="introline" id="introLine"></div>
+  <div class="intronext">아무 곳이나 눌러 다음 ▶</div>
   <div class="introdots" id="introDots"></div>
 </div>`
     document.body.appendChild(el)
@@ -197,10 +199,10 @@ export class Intro {
     this.dots = [...el.querySelectorAll('#introDots i')]
 
     el.querySelector('#introSkip').onclick = (e) => { e.stopPropagation(); this.finish() }
-    // 아무 데나 눌러도, 아무 키나 눌러도 넘어간다 — 두 번째 판부터는 방해물이다
+    // 아무 데나 눌러야 다음 컷으로 간다. ESC는 통째로 건너뛰기.
     this.onKey = (e) => {
-      if (e.key === 'Escape' || e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); this.finish() }
-      else this.next()
+      if (e.key === 'Escape') { e.preventDefault(); this.finish() }
+      else { e.preventDefault(); this.next() }
     }
     el.onclick = () => this.next()
     addEventListener('keydown', this.onKey)
@@ -212,8 +214,8 @@ export class Intro {
   pulse() {
     if (this.done) return
     this.beatN = (this.beatN ?? -1) + 1
-    this.beat.textContent = '●'.repeat((this.beatN % PANEL_BEATS) + 1)
-      + '○'.repeat(PANEL_BEATS - (this.beatN % PANEL_BEATS) - 1)
+    const k = this.beatN % BEAT_DOTS
+    this.beat.textContent = '●'.repeat(k + 1) + '○'.repeat(BEAT_DOTS - k - 1)
     this.beat.classList.remove('hit')
     void this.beat.offsetWidth
     this.beat.classList.add('hit')
@@ -222,7 +224,6 @@ export class Intro {
 
   next() {
     if (this.done) return
-    clearTimeout(this.timer)
     this.i++
     if (this.i >= PANELS.length) { this.finish(); return }
     const p = PANELS[this.i]
@@ -237,13 +238,12 @@ export class Intro {
     const box = this.el.querySelector('.introbox')
     box.classList.remove('snap'); void box.offsetWidth; box.classList.add('snap')
     this.el.classList.toggle('final', !!p.final)
-    this.timer = setTimeout(() => this.next(), PANEL_MS)
   }
 
   finish() {
     if (this.done) return
     this.done = true
-    clearTimeout(this.timer); clearTimeout(this.beatTimer)
+    clearTimeout(this.beatTimer)
     removeEventListener('keydown', this.onKey)
     this.el.classList.add('out')
     setTimeout(() => this.el.remove(), 420)

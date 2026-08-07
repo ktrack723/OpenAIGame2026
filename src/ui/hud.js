@@ -22,16 +22,41 @@ function stepper(id, label, unit) {
 </div>`
 }
 
-function holdRepeat(btn, fn) {
-  let timer = null, delay = 340
-  const stop = () => { clearTimeout(timer); timer = null; delay = 340 }
-  const tick = () => { fn(); delay = Math.max(45, delay * 0.72); timer = setTimeout(tick, delay) }
+// ─── 누르고 있으면 흐르는 조작 ──────────────────────────────────
+// 예전엔 한 번 누르면 1°씩 딱딱 끊어 움직였다(가속 반복). 각도를 30° 옮기려면
+// 서른 번을 눌러야 했고, 누르고 있어도 "톡 톡 톡" 계단처럼 움직여서
+// 원하는 각을 지나치기 일쑤였다.
+//
+// 이제 **시간 진행 버튼과 같은 방식**이다: 누르고 있는 동안 값이 연속으로
+// 흐르고, 오래 누를수록 빨라진다. 처음 0.35초는 느리게(정밀 조정) 가다가
+// 최대 속도까지 매끄럽게 올라간다. 짧게 톡 누르면 최소 단위 한 칸만 움직인다.
+//
+// rate: [시작 속도, 최대 속도] (초당 단위). ramp: 최대까지 걸리는 시간(초).
+function holdRamp(btn, apply, { slow, fast, ramp = 1.1, tap }) {
+  let raf = null, t0 = 0, last = 0, moved = 0
+  const stop = () => {
+    if (raf) cancelAnimationFrame(raf)
+    raf = null
+    // 거의 안 움직였으면 "톡 누른 것"으로 보고 한 칸을 확실히 준다
+    if (moved < tap * 0.75) apply(tap - moved)
+    moved = 0
+  }
+  const frame = (now) => {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now
+    const held = (now - t0) / 1000
+    // 부드러운 가속 — ease-in 이라 처음엔 정밀하고 나중엔 시원하다
+    const k = Math.min(1, held / ramp)
+    const rate = slow + (fast - slow) * k * k
+    const d = rate * dt
+    apply(d); moved += d
+    raf = requestAnimationFrame(frame)
+  }
   btn.addEventListener('pointerdown', (e) => {
     if (btn.disabled) return
     e.preventDefault()
-    // 포인터 캡처는 있으면 좋고 없어도 그만 — 실패가 반복 시작을 막으면 안 된다
     try { btn.setPointerCapture?.(e.pointerId) } catch { /* 무시 */ }
-    fn(); timer = setTimeout(tick, delay)
+    t0 = last = performance.now(); moved = 0
+    raf = requestAnimationFrame(frame)
   })
   for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) btn.addEventListener(ev, stop)
 }
@@ -97,7 +122,7 @@ export function makeHud(game, view) {
     <button id="zfull" class="ghost" title="성계 전체 ( 9 )">전체</button>
     <button id="new" class="ghost">새 런</button>
   </div>
-  <div class="hint">TAB 조준/관측 전환 · SHIFT 시간 진행 · ← → 각도 · ↑ ↓ 속도 · [ ] 작약 · F 접촉각<br>
+  <div class="hint">TAB 조준/관측 전환 · SHIFT 시간 진행 · S 관측 배속 · ← → 각도 · ↑ ↓ 속도 · [ ] 작약 · F 접촉각<br>
   조준 모드에서는 미사일이 날아가는 중에도 판이 멈춘다 · 행성에 마우스를 올리면(터치는 짚으면) 제원이 뜬다</div>
 </section>
 
@@ -125,29 +150,44 @@ export function makeHud(game, view) {
   // 관측 중에는 패널이 통째로 사라진다. 남는 건 이 버튼 하나뿐이고,
   // 꼭 필요한 정보(남은 시한 · 레이저 경보)는 버튼 안에 접어 넣는다 —
   // 화면을 비우려고 죽는 이유까지 숨길 수는 없다.
-  const obsBtn = document.createElement('button')
-  obsBtn.className = 'aimbtn'; obsBtn.hidden = true
-  obsBtn.innerHTML = `<span class="aimtitle">◎ 조준 모드</span>
-<span class="aimsub" id="obsSub">시간 정지 · TAB / 클릭</span>`
-  document.body.appendChild(obsBtn)
-  obsBtn.onclick = () => game.setMode('aim')
-  el._obsBtn = obsBtn
+  const obsBar = document.createElement('div')
+  obsBar.className = 'obsbar'; obsBar.hidden = true
+  obsBar.innerHTML = `
+<button class="aimbtn" id="toAim"><span class="aimtitle">◎ 조준 모드</span>
+<span class="aimsub" id="obsSub">시간 정지 · TAB / 클릭</span></button>
+<button class="spdbtn" id="obsSpd" title="관측 배속 (S)"><span class="spdv" id="obsSpdV">2×</span>
+<span class="spdlbl">배속</span></button>`
+  document.body.appendChild(obsBar)
+  obsBar.querySelector('#toAim').onclick = () => game.setMode('aim')
+  obsBar.querySelector('#obsSpd').onclick = (e) => {
+    e.stopPropagation()
+    game.setToast(`관측 배속 ${game.cycleObsSpeed()}×`)
+  }
+  el._obsBar = obsBar
 
   const qs = (id) => el.querySelector(id)
 
   // ── 스테퍼 배선 ────────────────────────────────────────────
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
+  // slow/fast = 누르기 시작할 때와 최대로 빨라졌을 때의 **초당** 변화량.
+  // 각도는 처음 2°/s로 기어가다 60°/s까지 붙는다 — 정밀 조정과 큰 이동이
+  // 같은 버튼 하나에 들어간다. ◀◀/▶▶ 는 그 두 배로 시작한다.
   const CTL = {
-    angle: { fine: 1, coarse: 8, get: () => toDeg180(game.aim), set: (v) => { game.aim = v * Math.PI / 180 }, fmt: (v) => v.toFixed(1) },
-    power: { fine: 1, coarse: 5, get: () => game.power, set: (v) => { game.power = clamp(v, CFG.LAUNCH_MIN, CFG.LAUNCH_MAX) }, fmt: (v) => v.toFixed(0) },
-    yield: { fine: 1, coarse: 3, get: () => game.yieldMt, set: (v) => { game.yieldMt = clamp(v, CFG.YIELD_MIN, CFG.YIELD_MAX) }, fmt: (v) => v.toFixed(0) },
+    angle: { tap: 0.5, slow: 2, fast: 60, big: 3, get: () => toDeg180(game.aim), set: (v) => { game.aim = v * Math.PI / 180 }, fmt: (v) => v.toFixed(1) },
+    power: { tap: 1, slow: 3, fast: 26, big: 2.5, get: () => game.power, set: (v) => { game.power = clamp(v, CFG.LAUNCH_MIN, CFG.LAUNCH_MAX) }, fmt: (v) => v.toFixed(0) },
+    yield: { tap: 1, slow: 2, fast: 9, big: 2, get: () => game.yieldMt, set: (v) => { game.yieldMt = clamp(v, CFG.YIELD_MIN, CFG.YIELD_MAX) }, fmt: (v) => v.toFixed(0) },
   }
   el._sync = () => { for (const k in CTL) qs(`#${k}V`).textContent = CTL[k].fmt(CTL[k].get()) }
   for (const k in CTL) {
+    const c = CTL[k]
     for (const btn of qs(`#${k}`).querySelectorAll('.stepbtn')) {
       const d = +btn.dataset.d
-      const amount = (Math.abs(d) === 2 ? CTL[k].coarse : CTL[k].fine) * Math.sign(d)
-      holdRepeat(btn, () => { if (!game.canAim) return; CTL[k].set(CTL[k].get() + amount); el._sync() })
+      const sign = Math.sign(d), mul = Math.abs(d) === 2 ? c.big : 1
+      holdRamp(btn, (amount) => {
+        if (!game.canAim) return
+        c.set(c.get() + amount * sign * mul)
+        el._sync()
+      }, { slow: c.slow, fast: c.fast, tap: c.tap })
     }
   }
   el._sync()
@@ -186,6 +226,7 @@ export function makeHud(game, view) {
     // TAB — 두 모드를 오간다. 관측 중에도 유일하게 살아 있는 키다.
     if (e.code === 'Tab') { e.preventDefault(); game.toggleMode(); el._sync(); return }
     if (e.key === 'Shift') startWait()
+    if (e.key === 's' || e.key === 'S') { game.setToast(`관측 배속 ${game.cycleObsSpeed()}×`); return }
     if (game.mode !== 'aim') {
       // 관측 모드에서는 조작이 전부 잠긴다 — 아무 키나 누르면 조준으로 돌아온다
       if (e.code === 'Space' || e.code === 'Escape') { e.preventDefault(); game.setMode('aim') }
@@ -259,7 +300,7 @@ export function updateHud(el, game) {
   if (el._observing !== observing) {
     el._observing = observing
     el.hidden = observing
-    el._obsBtn.hidden = !observing
+    el._obsBar.hidden = !observing
   }
   if (observing) {
     // 버튼 하나에 접어 넣는 최소 정보: 배속 · 남은 시한 · 레이저 경보
@@ -268,9 +309,11 @@ export function updateHud(el, game) {
     const sub = game.laserCharging
       ? `⚠ 조르그 레이저 T-${game.laserLeft.toFixed(0)}s — 지금 조준하라`
       : `${game.effTimeScale()}× 진행 중 · 잔여 ${clock}`
-    const btn = el._obsBtn
-    if (btn._sub !== sub) { btn._sub = sub; btn.querySelector('#obsSub').textContent = sub }
+    const bar = el._obsBar, btn = bar.querySelector('#toAim')
+    if (btn._sub !== sub) { btn._sub = sub; bar.querySelector('#obsSub').textContent = sub }
     btn.classList.toggle('alarm', !!game.laserCharging)
+    const spd = game.obsSpeedLabel
+    if (bar._spd !== spd) { bar._spd = spd; bar.querySelector('#obsSpdV').textContent = spd }
     return   // 패널이 숨겨져 있으므로 나머지 갱신은 통째로 건너뛴다
   }
 
@@ -349,12 +392,14 @@ export function updateHud(el, game) {
     el.querySelector('#lcdSub').textContent = sub
       || `작약 ${game.yieldMt}Mt · Δv=${CFG.NUKE_IMPULSE}×${game.yieldMt}/질량 · 폭풍 ${(CFG.BLAST_R * game.yieldMt).toFixed(0)} GU`
     fireBtn.classList.toggle('danger', p.outcome === 'earth')
-    fireBtn.querySelector('.ftext').textContent = p.outcome === 'earth' ? 'ABORT — 지구 직격' : 'FIRE'
+    fireBtn.disabled = game.inFlight
+    fireBtn.querySelector('.ftext').textContent = game.inFlight ? '재장전 대기 — 비행 중'
+      : p.outcome === 'earth' ? 'ABORT — 지구 직격' : 'FIRE'
   } else {
     lcd.className = 'lcd off'
     el.querySelector('#lcdTag').textContent = game.runOver ? 'DEAD' : 'HOLD'
     el.querySelector('#lcdText').textContent = game.runOver ? '작전 종료' : '발사 불가'
-    el.querySelector('#lcdSub').textContent = game.rockets <= 0 ? '로켓 소진' : ''
+    el.querySelector('#lcdSub').textContent = game.inFlight ? '탄이 비행 중 — 결판난 뒤에 다음 탄' : ''
     fireBtn.classList.remove('danger')
     fireBtn.querySelector('.ftext').textContent = 'FIRE'
   }
@@ -362,7 +407,7 @@ export function updateHud(el, game) {
   const hpBar = (b) => bar(b.hp ?? 0, b.hpMax ?? CFG.PLANET_HP, '◆', '◇')
   el.querySelector('#stats').textContent =
     `ANTE ${game.ante}   STAGE ${game.stageIdx + 1}
-ROCKET ${bar(game.rockets, CFG.ROCKETS, '▮', '▯')}   SCORE ${game.score} (${game.runScore + game.score})
+SHOTS ${game.shots} (무제한 · 동시 1발)   SCORE ${game.score} (${game.runScore + game.score})
 EARTH  ${e.alive ? hpBar(e) : 'LOST'}   TARGET ${t.alive ? hpBar(t) : '—'}
 FORTRESS ${game.aliveFortresses}/${g.total}   HOME ${game.homeworld ? game.homeworld.name : '—'}
 SYSTEM ${game.bodies.filter(b => b.alive && b.type !== 'debris').length} bodies   BELT R=${game.beltR.toFixed(0)}

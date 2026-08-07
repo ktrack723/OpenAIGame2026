@@ -8,18 +8,21 @@ import { VIS } from '../game/config.js'
 //
 // 적대 표식(해골)은 별도다: 내가 반드시 부숴야 하는 공(조르그 요새)에만 붙고,
 // 붉은 배지 + 맥동으로 나머지와 확실히 갈린다.
+// ─── 행성 분류 ──────────────────────────────────────────────────
+// **규칙이 없는 분류는 없앴다.** 예전엔 용암·해양·독성·생명이 따로 있었는데
+// 넷 다 색만 다르고 게임에 아무 영향이 없었다 — 플레이어가 외워야 할 이름만
+// 늘리고 판단은 하나도 안 바뀌는 분류는 노이즈다. 전부 암석으로 합쳤다.
+//
+// 남은 다섯은 저마다 **한 줄짜리 메카닉**이 있다. 아이콘도 상징 기호(⚙·☣)가
+// 아니라 그 물건 자체를 그린 것으로 바꿨다 — 보면 무엇인지 알아야 한다.
 export const CATEGORY = {
-  rock: { icon: '⛰', label: '암석 행성', color: '#cbd5e1', desc: '태그 없음 — 일반 행성. 마음 놓고 큐볼로 써라.' },
-  lava: { icon: '🌋', label: '용암 행성', color: '#ff9c6b', desc: '태그 없음 — 일반 행성. 항성 가까이에 많다.' },
-  ice: { icon: '❄', label: '얼음 행성', color: '#a5f3fc', desc: '태그 없음 — 일반 행성. 가볍고 잘 밀린다.' },
-  ocean: { icon: '🌊', label: '해양 행성', color: '#7dd3fc', desc: '태그 없음 — 일반 행성.' },
-  toxic: { icon: '☣', label: '독성 행성', color: '#bef264', desc: '태그 없음 — 일반 행성. 유독 대기뿐이다.' },
-  life: { icon: '🌿', label: '생명 행성', color: '#6ee7b7', desc: '태그 없음 — 일반 행성. 생물권이 있다.' },
-  gas: { icon: '🪐', label: '가스 행성', color: '#fcd34d', desc: '태그 [가스] — 핵을 맞으면 그 자리에서 유폭한다.' },
-  iron: { icon: '⚙', label: '금속 행성', color: '#e2e8f0', desc: '태그 [금속] — 무거워서 핵으로 거의 안 밀린다.' },
-  void: { icon: '🕳', label: '특이점', color: '#c084fc', desc: '태그 [특이점] — 닿는 것을 전부 삼킨다. 부술 수 없다.' },
-  earth: { icon: '🌍', label: '지구', color: '#93c5fd', desc: '우리 집이자 발사대. 잃으면 끝이다.' },
-  debris: { icon: '·', label: '파편', color: '#94a3b8', desc: '충돌 잔해. 미사일을 조기 격발시킨다.' },
+  rock: { icon: '🪨', label: '암석 행성', color: '#cbd5e1', mech: '규칙 없음 — 무게대로만 움직인다', desc: '태그 없는 일반 행성. 마음 놓고 큐볼로 써라.' },
+  ice: { icon: '🧊', label: '얼음 행성', color: '#a5f3fc', mech: '가볍다 — 같은 크기 대비 질량 절반, 두 배로 밀린다', desc: '가장 좋은 큐볼. 한 방에 멀리 날아간다.' },
+  iron: { icon: '🔩', label: '금속 행성', color: '#e2e8f0', mech: '무겁다 — 핵 임펄스가 15%만 먹는다', desc: '핵으로는 못 민다. 다른 행성을 던져서 부숴라.' },
+  gas: { icon: '🪐', label: '가스 행성', color: '#fcd34d', mech: '터진다 — 핵을 맞거나 세게 처박히면 유폭', desc: '유폭 반경 안의 모든 천체가 밀려난다. 연쇄를 노려라.' },
+  void: { icon: '🕳', label: '특이점', color: '#c084fc', mech: '삼킨다 — 닿는 것을 없앤다. 부술 수 없다', desc: '블랙홀·태양과 같은 부류. 여기로 밀어 넣어라.' },
+  earth: { icon: '🌍', label: '지구', color: '#93c5fd', mech: '우리 집 — 세 번 처박히면 게임 오버', desc: '발사대이자 지켜야 할 것.' },
+  debris: { icon: '·', label: '파편', color: '#94a3b8', mech: '미사일을 조기 격발시킨다', desc: '충돌 잔해.' },
 }
 export const HOSTILE = { icon: '☠', label: '조르그 요새', color: '#ff5c6a' }
 

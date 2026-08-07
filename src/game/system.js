@@ -1,6 +1,7 @@
 import { Rng } from '../core/random.js'
 import { CFG, aMaxOf, beltRadius, hitRadiusOf, nukeDv, radiusOf } from './config.js'
 import { makeBody } from './body.js'
+import { TYPE_MU_MUL } from './roles.js'
 import { cloneBodies, segHitsCircle, stepBodies, stepMissile } from './physics.js'
 import { buildSolarSystem, elementsToState, pickBiome, stablePresim } from './stage.js'
 
@@ -145,7 +146,8 @@ const fortBand = (earth) => {
 }
 
 function warpBody(rng, bodies, aMax, spec) {
-  const mu = spec.mu
+  const type = spec.type ?? pickBiome(rng, 0.5)
+  const mu = spec.mu * (TYPE_MU_MUL[type] ?? 1)   // 얼음은 가볍다
   // 요새는 ① 지구 궤도 대역 안에서 ② 밀 수 있는 공 옆자리에 놓는다.
   // 못 찾으면 제약을 하나씩 풀어 재시도 — 요새를 아예 안 보내는 것보다는 낫다.
   const orb = (spec.role === 'battery'
@@ -159,8 +161,9 @@ function warpBody(rng, bodies, aMax, spec) {
     name: spec.name,
     mu, radius: radiusOf(mu),
     pos: orb.pos, vel: orb.vel,
-    type: spec.type ?? pickBiome(rng, orb.a / aMax),
-    hp: CFG.PLANET_HP,
+    type,
+    // 조르그가 보낸 것은 체력 1 — 제대로 한 번 처박으면 끝난다
+    hp: CFG.ZORG_HP,
     zorg: true, warp: 1,            // warp: 1 → 0 으로 렌더러가 실시간 감쇠시킨다
   })
   if (spec.role === 'battery') { b.role = 'battery'; b.ammo = CFG.BATTERY_AMMO; b.isTarget = true }
@@ -171,9 +174,9 @@ function warpBody(rng, bodies, aMax, spec) {
 // 조르그 요새로 쓸 종류 — 가스(터짐)·특이점(못 부숨)은 제외한다.
 // 가스 요새는 핵 한 방에 제 유폭으로 죽어 표적 구실을 못 하고,
 // 특이점 요새는 아예 부술 수가 없어서 판이 성립하지 않는다.
-const FORT_TYPES = ['rock', 'iron', 'lava', 'toxic']
+const FORT_TYPES = ['rock', 'rock', 'iron']   // 요새는 암석이 기본, 가끔 금속(안 밀리는 표적)
 // 큐볼로 굴러오는 중립 천체 종류 — 넷 중 셋(금속·가스·특이점)이 여기서 나온다
-const NEUTRAL_TYPES = ['rock', 'ice', 'ocean', 'iron', 'gas', 'lava', 'toxic', 'void']
+const NEUTRAL_TYPES = ['rock', 'ice', 'ice', 'iron', 'gas', 'void']
 
 // ── 증원 ────────────────────────────────────────────────────────
 // 지금 성계에 뭐가 남아 있는지 보고 그만큼만 보낸다. 지난 판에서 판을

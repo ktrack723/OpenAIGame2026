@@ -197,7 +197,10 @@ pre{white-space:pre-wrap;line-height:1.55;color:#9fd0c4;margin:0;font-size:11px;
   word-break:keep-all;animation:linein .38s ease-out}
 .introline b{color:var(--cy);text-shadow:0 0 12px #4fd6f766}
 @keyframes linein{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-.introdots{display:flex;gap:6px;margin-top:12px}
+.intronext{margin-top:9px;color:var(--cy);font-size:11px;font-weight:800;letter-spacing:.14em;
+  text-align:right;animation:nextblink 1.4s ease-in-out infinite}
+@keyframes nextblink{0%,100%{opacity:.45}50%{opacity:1}}
+.introdots{display:flex;gap:6px;margin-top:10px}
 .introdots i{flex:1;height:3px;background:#132635;transition:background .25s}
 .introdots i.on{background:var(--cy);box-shadow:0 0 8px #4fd6f7aa}
 .intro.final .introbox{border-color:#2f7f9c;box-shadow:0 24px 90px #000d,0 0 34px #4fd6f733}
@@ -224,15 +227,15 @@ pre{white-space:pre-wrap;line-height:1.55;color:#9fd0c4;margin:0;font-size:11px;
 /* ── 관측 모드의 유일한 UI ──
    패널이 통째로 사라진 화면에서 "돌아가는 길"이 하나는 보여야 한다.
    크게, 화면 아래 가운데에, 손가락으로도 눌리게. */
-.aimbtn{position:fixed;left:50%;bottom:max(22px,env(safe-area-inset-bottom));transform:translateX(-50%);
-  z-index:4;display:flex;flex-direction:column;align-items:center;gap:3px;
+.obsbar{position:fixed;left:50%;bottom:max(22px,env(safe-area-inset-bottom));transform:translateX(-50%);
+  z-index:4;display:flex;align-items:stretch;gap:8px}
+.obsbar[hidden]{display:none}
+.aimbtn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
   padding:13px 30px;border:1px solid #2f7f9c;border-radius:0;cursor:pointer;
   background:linear-gradient(180deg,rgba(14,53,73,.94),rgba(7,32,46,.94));backdrop-filter:blur(10px);
   color:#d9f6ff;font-family:inherit;box-shadow:0 12px 40px #000a,inset 0 0 30px #4fd6f722;
   clip-path:polygon(0 0,calc(100% - 14px) 0,100% 14px,100% 100%,14px 100%,0 calc(100% - 14px));
   transition:background .12s,box-shadow .12s}
-/* display:flex 가 UA의 [hidden]{display:none}을 이겨 버린다 — 명시적으로 되돌린다 */
-.aimbtn[hidden]{display:none}
 .aimbtn:hover,.aimbtn:focus-visible{background:linear-gradient(180deg,#155d7c,#0a3348);
   box-shadow:0 12px 40px #000a,0 0 26px #4fd6f766}
 .aimbtn .aimtitle{font-size:15px;font-weight:900;letter-spacing:.22em;color:#9fe8ff}
@@ -242,6 +245,18 @@ pre{white-space:pre-wrap;line-height:1.55;color:#9fd0c4;margin:0;font-size:11px;
   animation:firealarm 1s ease-in-out infinite}
 .aimbtn.alarm .aimtitle{color:#ffd9dc}
 .aimbtn.alarm .aimsub{color:#ff9aa6}
+/* 관측 배속 — 조준 버튼 옆에 붙는 작은 토글. 누를 때마다 1→2→4→8×로 돈다 */
+.spdbtn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  padding:10px 16px;border:1px solid #7a5310;border-radius:0;cursor:pointer;font-family:inherit;
+  background:linear-gradient(180deg,rgba(42,28,5,.94),rgba(24,16,2,.94));backdrop-filter:blur(10px);
+  box-shadow:0 12px 40px #000a;transition:background .12s,box-shadow .12s;
+  clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,12px 100%,0 calc(100% - 12px))}
+.spdbtn:hover,.spdbtn:focus-visible{background:linear-gradient(180deg,#5a3d08,#332203);
+  box-shadow:0 12px 40px #000a,0 0 22px #f5b54455}
+.spdbtn .spdv{font-size:17px;font-weight:900;color:var(--am);font-family:var(--mono);
+  font-variant-numeric:tabular-nums;text-shadow:0 0 12px #f5b54455}
+.spdbtn .spdlbl{font-size:9px;letter-spacing:.16em;color:#a07a22;font-weight:700}
+
 .ghost.obs{border-color:#2f7f9c;color:#9fe8ff;background:#0c2b3a}
 .ghost.obs:hover:not(:disabled){background:#155d7c;color:#fff;box-shadow:0 0 14px #4fd6f755}
 
