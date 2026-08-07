@@ -127,7 +127,6 @@ export class SceneView {
     this.sphereGeo = new THREE.SphereGeometry(1, 40, 28)
     this.discGeo = new THREE.CircleGeometry(1, 64)
     this.ringGeo = new THREE.RingGeometry(0.9, 1, 64)
-    this.thinRingGeo = new THREE.RingGeometry(0.965, 1, 48)
     this.glowTex = glowTexture()
     this.missileGeo = missileParts()
     this.texCache = new Map()
@@ -177,7 +176,7 @@ export class SceneView {
     document.body.appendChild(this.flashEl)
     this.flashV = 0
 
-    this.bodyFx = new Map()   // b.id → { mesh, halo, ring, trueRing }
+    this.bodyFx = new Map()   // b.id → { mesh, halo, ring, hpArc, ... }
     this.missileFx = new Map()
     this.lines = []
     this.lastBodies = null
@@ -187,15 +186,24 @@ export class SceneView {
     this.resize()
   }
 
-  // ── 렌더 반경 = 명중 반경 ───────────────────────────────────
-  // 기하 반지름(§4.1)은 물리용으로 그대로 두되, 화면에는 미사일 명중 반경
-  // (b.radius × HIT_R)을 그린다 → "닿았는데 통과"가 원천적으로 사라진다.
-  // 화면 최소 지름 바닥값은 줌아웃 시에만 작동하고, 그때는 얇은 링으로 실제 반경을 병기한다.
-  renderRadius(b) {
-    const hr = hitRadiusOf(b)   // 그리는 원 = 맞는 원
+  // ── 그리는 원 = 판정 원. 예외 없다 ─────────────────────────
+  // 예전에는 여기에 "화면 최소 지름" 바닥값이 걸려 있어서, 줌아웃하면 작은 공이
+  // 판정 반경의 최대 2.2배까지 부풀어 그려졌다(계측: 히기에이아·베스타 ×2.20,
+  // 수성 ×1.85). 그 결과 **화면에서는 두 공이 겹쳤는데 실제로는 통과**하는
+  // 케이스가 생겼다 — 당구 게임에서 이건 거짓말이다.
+  //
+  // (판정 자체는 멀쩡했다. 상대속도 1000 GU/s까지 훑어도 놓치는 띠가 0.01 GU
+  //  미만이라 터널링은 없다. 문제는 오로지 그림이 판정보다 컸다는 것.)
+  //
+  // 이제 공은 언제나 판정 반경 그대로 그린다. 대신 너무 작아서 안 보이는 문제는
+  // **표식**(markerRadius)이 맡는다 — 속이 빈 링이라 "여기 작은 게 있다"로 읽히지
+  // "이만큼이 공이다"로는 안 읽힌다.
+  renderRadius(b) { return hitRadiusOf(b) }
+
+  // 찾기용 최소 크기 — 공이 아니라 **표식에만** 적용한다(외곽 링·체력 호·조준 물들임).
+  markerRadius(b) {
     const minPx = b.type === 'debris' ? VIS.MIN_DEBRIS_PX : VIS.MIN_PLANET_PX
-    const minWorld = minPx * 0.5 * this.rig.worldPerPx
-    return Math.min(hr * VIS.MAX_INFLATE, Math.max(hr, minWorld))
+    return Math.max(hitRadiusOf(b), minPx * 0.5 * this.rig.worldPerPx)
   }
 
   // 별 배경 — 성계 "바깥"에만 뿌리면 정작 판 위가 텅 빈다.
@@ -305,7 +313,7 @@ export class SceneView {
   }
 
   disposeBodyFx(fx) {
-    for (const o of [fx.mesh, fx.halo, fx.ring, fx.trueRing]) {
+    for (const o of [fx.mesh, fx.halo, fx.ring]) {
       this.scene.remove(o); o.material.dispose()
     }
     if (fx.hpArc) { this.scene.remove(fx.hpArc); fx.hpArc.geometry.dispose(); fx.hpArc.material.dispose() }
@@ -346,10 +354,6 @@ export class SceneView {
       transparent: true, depthWrite: false, depthTest: false, side: THREE.DoubleSide,
     }))
     ring.renderOrder = 12
-    const trueRing = new THREE.Mesh(this.thinRingGeo, new THREE.MeshBasicMaterial({
-      color: 0xffffff, transparent: true, opacity: 0.32, depthWrite: false, depthTest: false, side: THREE.DoubleSide,
-    }))
-    trueRing.renderOrder = 13
     // ── 체력 게이지 ──
     // 공은 이제 체력이 다 닳아야 부서진다. "몇 번 남았나"가 판을 읽는 1순위 정보라
     // 공 둘레에 남은 체력만큼 호(arc)를 그린다. 상처 없는 공(hp = hpMax)은 안 그린다 —
@@ -359,8 +363,8 @@ export class SceneView {
     }))
     hpArc.renderOrder = 15
     hpArc.visible = false
-    this.scene.add(mesh, halo, ring, trueRing, hpArc)
-    const fx = { mesh, halo, ring, trueRing, hpArc, hpKey: -1, type: b.type, spin: 0.15 + Math.random() * 0.5, role: null }
+    this.scene.add(mesh, halo, ring, hpArc)
+    const fx = { mesh, halo, ring, hpArc, hpKey: -1, type: b.type, spin: 0.15 + Math.random() * 0.5, role: null }
     this.bodyFx.set(b.id, fx)
     if (b.role) this.attachRoleFx(fx, b)
     if (b.mods && b.mods.length) this.attachModFx(fx, b, b.mods[0])
@@ -460,14 +464,14 @@ export class SceneView {
         fx.halo.material.color.set(spec.c)
         fx.type = b.type
       }
-      const r = this.renderRadius(b)
+      const r = this.renderRadius(b)          // 공 = 판정 반경 그대로
+      const mr = this.markerRadius(b)         // 표식 = 화면에서 안 사라질 최소 크기
       const solid = b.type !== 'debris'
       // 아직 워프해 들어오지 않은 증원은 존재하지 않는 것처럼 취급한다
       const waiting = (b.warpIn ?? 0) > 0
       fx.mesh.visible = b.alive && !waiting
       fx.halo.visible = b.alive && solid && !waiting
       fx.ring.visible = b.alive && solid && !waiting
-      fx.trueRing.visible = b.alive && solid && r > hitRadiusOf(b) * VIS.TRUE_R_HINT
       // 체력 링은 **여기서** 끈다. 아래 체력 블록은 `if (!b.alive) continue` 뒤에
       // 있어서 죽은 공에는 아예 도달하지 않는다 — 그 탓에 부서진 공의 체력 링만
       // 궤도에 유령처럼 남아 돌고 있었다. 켜는 건 아래, 끄는 건 여기다.
@@ -531,7 +535,7 @@ export class SceneView {
       fx.halo.scale.setScalar(b.radius * CFG.SWING_ZONE)
 
       fx.ring.position.set(b.pos.x, b.pos.y, 0)
-      fx.ring.scale.setScalar(r * 1.22)
+      fx.ring.scale.setScalar(mr * 1.22)
       // 목표=시안, 지구=파랑(치면 즉사), 중립=흰색(자유롭게 쓰는 큐볼).
       // 캐롬 스테이지의 목표는 보라색 — "직격이 안 통하는 공"이라는 뜻이다.
       if (b.isEarth) { fx.ring.material.color.setHex(0x60a5fa); fx.ring.material.opacity = 0.9 }
@@ -546,22 +550,22 @@ export class SceneView {
         const pulse = 0.5 + 0.5 * Math.sin(this.lockT * 5)
         fx.ring.material.color.setHex(tone)
         fx.ring.material.opacity = 1
-        fx.ring.scale.setScalar(r * (1.30 + 0.06 * Math.sin(this.lockT * 5)))
+        fx.ring.scale.setScalar(mr * (1.30 + 0.06 * Math.sin(this.lockT * 5)))
         // ① 공을 덮는 원반 ② 그 바깥 번짐
         this.tintDisc.position.set(b.pos.x, b.pos.y, 1.2)
-        this.tintDisc.scale.setScalar(r)
+        this.tintDisc.scale.setScalar(mr)
         this.tintDisc.material.color.setHex(tone)
         this.tintDisc.material.opacity = 0.26 + 0.16 * pulse
         this.tintDisc.visible = true
         this.tintGlow.position.set(b.pos.x, b.pos.y, -2)
-        this.tintGlow.scale.setScalar(r * (2.1 + 0.25 * pulse))
+        this.tintGlow.scale.setScalar(mr * (2.1 + 0.25 * pulse))
         this.tintGlow.material.color.setHex(tone)
         this.tintGlow.material.opacity = 0.10 + 0.06 * pulse
         this.tintGlow.visible = true
         // ③ 지금 위치 → 락온(미래 위치)을 잇는 실선
         const dx = aimHit.x - b.pos.x, dy = aimHit.y - b.pos.y
         const d = Math.hypot(dx, dy)
-        if (d > r * 0.6) {
+        if (d > mr * 0.6) {
           this.tintLink.position.set(b.pos.x, b.pos.y, 1)
           this.tintLink.rotation.z = Math.atan2(dy, dx)
           this.tintLink.scale.set(d, Math.max(1.1 * this.rig.worldPerPx, 1.4), 1)
@@ -578,11 +582,6 @@ export class SceneView {
         fx.mesh.material.emissiveIntensity = targeted ? 0.5 : spec.emis
       }
 
-      if (fx.trueRing.visible) {   // 줌아웃으로 부풀었을 때만 실제 명중 반경을 얇게 병기
-        fx.trueRing.position.set(b.pos.x, b.pos.y, 0.2)
-        fx.trueRing.scale.setScalar(hitRadiusOf(b))
-      }
-
       // ── 체력 호 — 다친 공만. 남은 칸이 줄면 호가 짧아지고 색이 식는다 ──
       // (여기는 살아 있는 공만 도달한다 — 죽은 공은 위에서 이미 껐다.)
       const hpMax = b.hpMax ?? CFG.PLANET_HP, hp = b.hp ?? hpMax
@@ -597,7 +596,7 @@ export class SceneView {
           fx.hpArc.material.color.setHex(hp <= 1 ? 0xff5c6a : 0xfbbf24)
         }
         fx.hpArc.position.set(b.pos.x, b.pos.y, 5)
-        fx.hpArc.scale.setScalar(r)
+        fx.hpArc.scale.setScalar(mr)
         // 방금 부딪힌 공은 잠깐 밝게 — 어느 공이 맞았는지 눈이 따라간다
         fx.hpArc.material.opacity = b.bumpFlash > 0 ? 1 : 0.8
       }
