@@ -9,7 +9,8 @@ import { hasRole, roleOf, volatileRadius } from './roles.js'
 import { CAUSE_KO, makeGoal } from './objectives.js'
 import { bearing } from '../core/angle.js'
 import { createSystem, pickHomeworld, reinforce } from './system.js'
-import { chargeLeft, impactLeft, makeLaser, stepLaser, LASER_CHARGE, LASER_TRAVEL } from './laser.js'
+import { makeBody } from './body.js'
+import { chargeLeft, impactLeft, makeDoom, makeLaser, stepDoom, stepLaser, LASER_CHARGE, LASER_TRAVEL } from './laser.js'
 import * as Aim from './aim.js'
 
 // 관측 모드 배속 단계 — 화면의 배속 버튼이 이 사이를 돈다
@@ -73,6 +74,7 @@ export class Game {
     this.laser.state = 'idle'; this.laser.t = 0; this.laser.nextAt = CFG.LASER_FIRST
 
     this.pairCool.clear()
+    this.doom = null; this.mothership = null
     this.missiles = []; this.shots = 0; this.score = 0; this.chainLast = 0
     this.won = false; this.lost = false; this.failReason = null
     const t = this.target
@@ -134,7 +136,7 @@ export class Game {
   get inFlight() { return this.missiles.some(m => m.alive) }
 
   fire() {
-    if (this.won || this.lost || !this.earth.alive) return
+    if (this.won || this.lost || this.doom || !this.earth.alive) return
     if (this.inFlight) {
       this.setToast('아직 탄이 날고 있다 — 결판난 뒤에 다음 탄을 쏜다')
       return
@@ -179,6 +181,7 @@ export class Game {
 
   effTimeScale() {
     if (this.lost || this.won) return 0   // 클리어 후에는 시계를 세운다
+    if (this.doom) return 1               // 모성이 오는 동안엔 1×로만 흐른다 (조작 불가)
     if (this.mode === 'aim') {
       // 기본은 정지. 진행 버튼(SHIFT)을 누르고 있는 동안만 흐른다.
       if (!this.advancing) return 0
@@ -239,7 +242,8 @@ export class Game {
     }
     resolveBodyPairs(this.bodies, this)
     this.bodyBounds()
-    this.tickLaser(dt)
+    if (this.doom) this.tickDoom(dt)
+    else this.tickLaser(dt)
     this.time += dt
     this.warnTime()
     this.checkEnd()
@@ -311,7 +315,7 @@ export class Game {
 
   // 시한이 줄고 있다는 걸 토스트로 못 박는다 (남은 60/30/10초)
   warnTime() {
-    if (this.won || this.lost) return
+    if (this.won || this.lost || this.doom) return
     const marks = [60, 30, 10], left = this.timeLeft
     while (this.timeWarn < marks.length && left <= marks[this.timeWarn]) {
       const s = marks[this.timeWarn]
@@ -342,6 +346,13 @@ export class Game {
     m.alive = false; m.hit = b
     const yld = m.yld
     const who = '핵'
+
+    // 모성 — 핵도 안 통한다. 부술 수 없는 것에는 부술 수 없다고 말해 준다.
+    if (b.mothership) {
+      this.addFx({ kind: 'nuke', x: point.x, y: point.y, yld, r: b.radius })
+      this.message = `${b.name}에 ${who}이 통하지 않았다 — 부술 수 없다`
+      return
+    }
 
     // 특이점 — 탄두째로 삼킨다. 밀리지도, 터지지도 않는다.
     if (b.role === 'void') {
@@ -485,6 +496,7 @@ export class Game {
   // 튕겨 나갈 뿐이라 "스치기만 해도 즉사"하던 예전 규칙보다 훨씬 관대하다.
   damage(b, n, cause) {
     if (!b.alive || b.type === 'debris') return false
+    if (b.mothership) return false        // 모성은 부술 수 없다
     b.hp = (b.hp ?? CFG.PLANET_HP) - n
     b.hitFlash = Math.max(b.hitFlash, 0.6)
     b.trailFlash = 2.0
@@ -505,6 +517,7 @@ export class Game {
   }
 
   killBody(b, cause, { fx = true, shatterIt = cause === 'collision' } = {}) {
+    if (b.mothership) return          // 모성은 어떤 사유로도 안 죽는다
     if (b.trail) b.trail.length = 0   // 죽은 공의 잔여 트레일은 즉시 지운다
     if (!b.alive) return
     b.alive = false
@@ -602,6 +615,9 @@ export class Game {
   }
 
   checkEnd() {
+    // 모성이 오는 중이면 판정을 멈춘다 — 연출이 끝나야 진짜 종료다.
+    // (안 막으면 광선이 지구를 부순 순간 EARTH_LOST로 끝나 버려 난사가 중간에 멎는다.)
+    if (this.doom) return
     // 증원이 아직 워프 중이면 판정을 미룬다 — 안 그러면 "요새 0기"로
     // 도착하기도 전에 클리어가 나 버린다.
     if (this.warpPending) return
@@ -615,9 +631,61 @@ export class Game {
     if (!this.earth.alive) { this.fail('EARTH_LOST', '작전 실패 — 지구 상실. 런 종료'); return }
     // 요새가 어떤 이유로든 전멸했으면(연쇄로 같이 터졌든) 그 순간 클리어다
     if (this.aliveFortresses === 0) { this.win(); return }
-    // 시한 초과 — 날아가고 있는 마지막 한 발은 끝까지 보내준다
-    if (this.time >= this.stageTime && !this.missiles.some(m => m.alive))
-      this.fail('TIME_UP', '작전 실패 — 작전 시한 초과. 조르그가 회랑을 재정비했다. 런 종료')
+    // 시한 초과 — 날아가고 있는 마지막 한 발은 끝까지 보내준다.
+    // 문장으로 통보하지 않는다. **모성이 온다.**
+    if (this.time >= this.stageTime && !this.missiles.some(m => m.alive)) this.summonMothership()
+  }
+
+  // ─── 시한 종료 — 조르그 모성 ─────────────────────────────────
+  // 시한을 넘기면 판돈을 회수하러 모성이 직접 온다. 지구 반대편 하늘로 워프해
+  // 들어와 사방에 광선을 뿌린다. 부술 수도, 막을 수도 없다 — 이건 싸움이 아니라
+  // 통보다. 그래서 화면에 남기는 문장도 하나뿐이다: **그들이 왔다…**
+  //
+  // (예전에는 "작전 시한 초과. 조르그가 회랑을 재정비했다"라는 두 줄짜리 통보로
+  //  끝냈다. 진 이유를 글로 읽는 것과 판이 쓸려나가는 걸 보는 것은 다른 일이다.)
+  summonMothership() {
+    if (this.doom) return
+    // 자리: **지구와 같은 쪽 하늘, 궤도 바깥.** 처음엔 지구 정반대편(+π)에
+    // 놓았는데 그러면 지구를 향하는 광선이 반드시 태양을 통과해 막혔다 —
+    // 마지막 한 발이 매번 항성에 삼켜져 지구가 멀쩡히 살아남았다(계측: 5시드 전부).
+    // 살짝만 비틀어(0.4 rad) 궤도선 위에 정확히 겹치지 않게 한다.
+    const r = Math.hypot(this.earth.pos.x, this.earth.pos.y) || 400
+    const a = Math.atan2(this.earth.pos.y, this.earth.pos.x) + 0.4
+    const R = Math.min(this.beltR * 0.8, r * 2.4)
+    const ship = makeBody({
+      id: 'mothership', name: '조르그 모성', type: 'zorg',
+      mu: CFG.DOOM_MU, radius: CFG.DOOM_R,
+      pos: { x: Math.cos(a) * R, y: Math.sin(a) * R }, vel: { x: 0, y: 0 },
+      hp: 1, zorg: true, mothership: true, warp: 1,
+    })
+    this.bodies.push(ship)
+    this.mothership = ship
+    this.doom = makeDoom(ship.pos.x, ship.pos.y, this.aMax * CFG.LASER_RANGE_MUL, ship)
+    this.addFx({ kind: 'warp', x: ship.pos.x, y: ship.pos.y, r: hitRadiusOf(ship), fort: true })
+    this.setMode('observe')
+    this.message = '그들이 왔다…'
+    this.setToast('그들이 왔다…')
+  }
+
+  tickDoom(dt) {
+    for (const e of stepDoom(this.doom, this, dt)) {
+      if (e.kind === 'beam') {
+        this.addFx({ kind: 'laserFire', x: this.doom.x, y: this.doom.y, a: e.a })
+        continue
+      }
+      const b = e.body
+      this.addFx({ kind: 'laserHit', x: e.x, y: e.y, r: b ? hitRadiusOf(b) : CFG.R_STAR, sun: !b })
+      if (!b || b.role === 'void' || b.mothership) continue   // 태양·특이점·모성은 안 부서진다
+      if (b.isEarth) {
+        this.addFx({ kind: 'destroy', x: b.pos.x, y: b.pos.y, r: b.radius * 2, earth: true })
+        b.alive = false
+      } else {
+        this.addFx({ kind: 'destroy', x: b.pos.x, y: b.pos.y, r: b.radius * 1.8, big: true })
+        this.killBody(b, 'laser', { fx: false })
+      }
+    }
+    this.message = '그들이 왔다…'
+    if (this.doom.done) this.fail('TIME_UP', '그들이 왔다…')
   }
 
   fail(reason, msg) {
@@ -629,7 +697,7 @@ export class Game {
 
   // 조준 가능 = 조준 모드일 것. 관측 모드에서는 조준선도 발사대도 사라진다.
   get canAim() {
-    return this.mode === 'aim' && !this.won && !this.lost && this.earth.alive
+    return this.mode === 'aim' && !this.won && !this.lost && !this.doom && this.earth.alive
   }
 
   // ─── 조준 보조 (aim.js) ─────────────────────────────────────

@@ -14,6 +14,9 @@ import { CFG } from '../game/config.js'
 //      이대로 맞고, 청록이면 빗나간다. 회피 성공 여부가 색 하나로 끝난다.
 //
 // 비행 중 — 짧고 밝은 탄두 하나가 조준선을 따라 달린다. 그게 전부다.
+//
+// 시한이 끝나면 모성이 와서 사방에 뿌린다(doom). 그때는 탄두가 여럿이므로
+// 같은 모양의 막대를 필요한 만큼 빌려 쓴다 — 규칙도 그림도 본성 것과 같다.
 
 function quad(color, opacity) {
   const geo = new THREE.PlaneGeometry(1, 1)
@@ -70,6 +73,7 @@ export class LaserView {
     }))
     this.orb.renderOrder = 18; this.orb.visible = false
     scene.add(this.orb)
+    this.doomBolts = []   // 모성 난사용 막대 풀
   }
 
   place(mesh, ox, oy, ang, len, width, z) {
@@ -81,13 +85,51 @@ export class LaserView {
 
   hideAll() {
     for (const o of this.parts) o.visible = false
+    for (const o of this.doomBolts) o.visible = false
     this.markGrp.visible = false
     this.orb.visible = false
+  }
+
+  // 모성 난사용 막대 — 필요한 만큼만 만들어 두고 재사용한다
+  doomBolt(i) {
+    while (this.doomBolts.length <= i) {
+      const m = quad(0xff2d4d, 1)
+      m.renderOrder = 18
+      this.scene.add(m)
+      this.doomBolts.push(m)
+    }
+    return this.doomBolts[i]
+  }
+
+  // ─── 모성의 난사 ────────────────────────────────────────────
+  // 조준도 조준점도 없다. 뻗어 나간 자리를 흐리게 남기고, 머리에 밝은 막대.
+  showDoom(D) {
+    const ppw = this.rig.worldPerPx
+    let i = 0
+    for (const b of D.beams) {
+      const ang = Math.atan2(b.uy, b.ux)
+      const trail = this.doomBolt(i++)
+      this.place(trail, D.x, D.y, ang, b.head, Math.max(1.6 * ppw, 2.4), 6.9)
+      trail.material.color.setHex(0xff2d4d)
+      trail.material.opacity = b.dead ? 0.12 : 0.26
+      if (b.dead) continue
+      const tail = Math.min(b.head, Math.max(90, 150 * ppw))
+      const hx = D.x + b.ux * (b.head - tail), hy = D.y + b.uy * (b.head - tail)
+      const head = this.doomBolt(i++)
+      this.place(head, hx, hy, ang, tail, Math.max(8 * ppw, 11), 7)
+      head.material.color.setHex(0xff2d4d)
+      head.material.opacity = 1
+      const core = this.doomBolt(i++)
+      this.place(core, hx, hy, ang, tail, Math.max(3 * ppw, 4), 7.2)
+      core.material.color.setHex(0xffffff)
+      core.material.opacity = 1
+    }
   }
 
   update(game) {
     const L = game.laser
     this.hideAll()
+    if (game.doom) { this.showDoom(game.doom); return }   // 모성이 왔으면 그것만 그린다
     if (!L || game.runOver) return
     const ppw = this.rig.worldPerPx
 

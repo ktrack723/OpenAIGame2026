@@ -32,6 +32,7 @@ export function makeBody(spec = {}) {
     isEarth: !!spec.isEarth,
     isTarget: !!spec.isTarget,
     zorg: !!spec.zorg,
+    mothership: !!spec.mothership,   // 시한 종료 시 오는 조르그 모성 — 부술 수 없다
     homeworld: !!spec.homeworld,
     role,
     mods: spec.mods ?? null,
