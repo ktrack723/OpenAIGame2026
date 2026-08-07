@@ -166,7 +166,7 @@ function warpBody(rng, bodies, aMax, spec) {
     hp: CFG.ZORG_HP,
     zorg: true, warp: 1,            // warp: 1 → 0 으로 렌더러가 실시간 감쇠시킨다
   })
-  if (spec.role === 'battery') { b.role = 'battery'; b.ammo = CFG.BATTERY_AMMO; b.isTarget = true }
+  if (spec.role === 'battery') { b.role = 'battery'; b.isTarget = true }
   if (b.role === 'void') { b.mu = Math.max(b.mu, 900); b.radius = radiusOf(b.mu) }
   return b
 }

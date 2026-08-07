@@ -18,10 +18,9 @@ export class Explosions {
     if (!q || !q.length) return
     for (const e of q) {
       if (e.kind === 'launch') {
-        const c = e.hostile ? 0xfb7185 : 0xbfdbfe
+        const c = 0xbfdbfe
         this.parts.burst(e.x, e.y, { n: 40, color: c, speed: 90, size: 8, ttl: 0.5, spread: 1.4, dir: e.a })
         this.parts.shock(e.x, e.y, 26, c, 0.4)
-        if (e.hostile) { this.rig.hit(6); this.flash(0.12, '#ffe4e6') }
       } else if (e.kind === 'warp') this.warp(e)
       else if (e.kind === 'laserCharge') this.laserCharge(e)
       else if (e.kind === 'laserFire') this.laserFire(e)

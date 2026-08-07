@@ -112,7 +112,6 @@ export class Inspector {
       out.push(`<div class="irole" style="color:#${R.color.toString(16).padStart(6, '0')}">`
         + `${R.icon} ${R.label} — ${R.brief}</div>`)
     }
-    if (b.role === 'battery') out.push(`<div class="irow"><span>반격 재고</span><b>${b.ammo ?? 0}발</b></div>`)
     if (b.role === 'volatile') out.push(`<div class="irow"><span>유폭 반경</span><b>${fmt(volatileRadius(b))} GU</b></div>`)
     out.push(`<div class="ifoot">${b.isEarth
       ? '지구는 세 번 처박히면 끝난다 — 폭풍으로도 밀리니 조심해라.'

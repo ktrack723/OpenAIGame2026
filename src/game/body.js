@@ -35,7 +35,6 @@ export function makeBody(spec = {}) {
     homeworld: !!spec.homeworld,
     role,
     mods: spec.mods ?? null,
-    ammo: spec.ammo ?? 0,
     hp, hpMax: spec.hpMax ?? hp,
     hitFlash: spec.hitFlash ?? 0,
     trailFlash: spec.trailFlash ?? 0,

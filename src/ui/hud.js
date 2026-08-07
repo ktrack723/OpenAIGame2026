@@ -255,7 +255,7 @@ export function makeHud(game, view) {
 //                 Δv, 남은 체력. 화면에는 같은 값이 노란/흰 화살표 + 수치
 //                 라벨로도 나온다(AimHelper). 계산으로 확정되는 값만 넣는다.
 //  [3층 · 경고]   플레이어가 **의도하지 않았을 가능성이 높은 부작용**만.
-//                 지구가 폭풍 반경에 들어간다, 반격탄이 나온다, 벨트까지 날아간다.
+//                 지구가 폭풍 반경에 들어간다, 맞은 공이 벨트까지 날아갔다 돌아온다.
 //                 조건은 전부 "지금 이 한 발에서 확정적으로 참"인 것들이라
 //                 추측이나 확률은 한 줄도 넣지 않는다.
 //
@@ -271,7 +271,6 @@ function predLine(game, p) {
     case 'earth': return ['bad', 'ABORT', '지구 직격 — 즉시 게임 오버', '각도를 바꿔라']
     case 'void': return ['warn', 'VOID', `${h.name}${badge}`, role.aim]
     case 'volatile': return ['hit', 'CHAIN', `${h.name}${badge}`, `${role.aim} · 반경 ${h.volatileR.toFixed(0)} GU`]
-    case 'intercept': return ['hit', 'INTCP', `공중 요격 — ${h.yld}Mt 동시 기폭`, `폭풍 반경 ${h.blast.toFixed(0)} GU`]
     case 'debris': return ['warn', 'DEBRIS', '파편에 조기 폭발', '']
     case 'sun': return ['warn', 'SOLAR', '태양 소멸', '근일점이 너무 낮다']
     // '성계 이탈(유실)'은 없다 — 카이퍼 벨트가 튕겨 되돌려 보낸다.
@@ -288,7 +287,6 @@ function predLine(game, p) {
       // [3층] 의도하지 않았을 부작용만. 전부 이 한 발에서 확정적으로 참인 것.
       const warn = [
         h.earthInBlast ? '⚠ 폭풍 반경에 지구가 들어간다' : '',
-        h.counter ? `⚠ 반격탄이 되날아온다 (${h.counterSpeed.toFixed(0)} GU/s, 때린 쪽)` : '',
         h.role === 'armor' ? `무겁다 — 임펄스 ${(CFG.ARMOR_DV * 100).toFixed(0)}%만 먹었다` : '',
         h.willEject ? `↩ 벨트까지 날아갔다 되돌아온다 (${h.vAfter.toFixed(0)}>${h.vEsc.toFixed(0)})` : '',
       ].filter(Boolean).join(' · ')

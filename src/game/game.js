@@ -1,6 +1,6 @@
 import { fromAngle, len } from '../core/vector.js'
 import { Rng } from '../core/random.js'
-import { CFG, aMaxOf, beltRadius, counterSpeed, escapeSpeed, hitRadiusOf, radiusOf } from './config.js'
+import { CFG, aMaxOf, beltRadius, escapeSpeed, hitRadiusOf, radiusOf } from './config.js'
 import {
   applyNuke, beltBounce, blastWave, elasticBounce, resolveBodyPairs, segCircleEntry,
   segHitsCircle, shatter, stepBodies, stepMissile, updateEncounters,
@@ -106,12 +106,12 @@ export class Game {
   get target() {
     return this.targets.find(t => t.alive) || this.targets[0] || this.earth
   }
-  // 위협 = 반격하는 조르그 요새. 이것만 전멸시키면 판이 끝난다.
+  // 위협 = 조르그 요새. 이것만 전멸시키면 판이 끝난다.
   get fortresses() { return this.bodies.filter(b => b.role === 'battery') }
   get aliveFortresses() { return this.bodies.filter(b => b.alive && b.role === 'battery').length }
   // id로 비교한다 — 예측선은 cloneBodies()가 만든 복제본을 넘기므로
   // 참조 비교를 쓰면 "예측에서는 목표가 목표가 아닌" 사고가 난다.
-  // 표적 = 반격하는 요새. 규칙이 하나로 통일됐으므로 id 목록이 아니라
+  // 표적 = 조르그 요새. 규칙이 하나로 통일됐으므로 id 목록이 아니라
   // 성질로 판정한다 — 예측선이 넘기는 복제본에서도 그대로 성립한다.
   isTarget(b) { return b.role === 'battery' }
   get aliveTargets() { return this.aliveFortresses }
@@ -126,11 +126,11 @@ export class Game {
   }
 
   // 지구 발사점에서의 κ증폭 탈출속도. 이 아래로 쏘면 탄이 지구 중력에
-  // 붙잡혀 되떨어진다 = 자기 지구에 핵을 박는다. 반격탄과 같은 검사다.
+  // 붙잡혀 되떨어진다 = 자기 지구에 핵을 박는다.
   get launchEscape() { return escapeSpeed(this.earth.mu, CFG.LAUNCH_OFFSET) }
 
-  // 비행 중인 아군 탄이 있으면 다음 탄을 못 쏜다 — 탄약이 아니라 **차례**가 자원이다.
-  get inFlight() { return this.missiles.some(m => m.alive && !m.hostile) }
+  // 비행 중인 탄이 있으면 다음 탄을 못 쏜다 — 탄약이 아니라 **차례**가 자원이다.
+  get inFlight() { return this.missiles.some(m => m.alive) }
 
   fire() {
     if (this.won || this.lost || !this.earth.alive) return
@@ -236,46 +236,12 @@ export class Game {
       if (m.alive) this.missileBounds(m)
       if (!m.alive) this.finishShot(m)
     }
-    this.missilePairs()
     resolveBodyPairs(this.bodies, this)
     this.bodyBounds()
     this.tickLaser(dt)
     this.time += dt
     this.warnTime()
     this.checkEnd()
-  }
-
-  // ─── 공중 요격 — 탄두끼리 만나면 그 자리에서 동시 기폭 ────────
-  // 속도가 30~50 GU/s이고 스텝이 1/120초라 한 스텝 이동이 0.5 GU 미만이다.
-  // 터널링이 불가능하므로 점 거리 판정으로 충분하다.
-  missilePairs() {
-    const live = this.missiles.filter(m => m.alive)
-    for (let i = 0; i < live.length; i++) {
-      for (let j = i + 1; j < live.length; j++) {
-        const a = live[i], b = live[j]
-        if (!a.alive || !b.alive) continue
-        if (Math.hypot(a.pos.x - b.pos.x, a.pos.y - b.pos.y) > 2 * CFG.MISSILE_HIT_R) continue
-        this.intercept(a, b)
-        return
-      }
-    }
-  }
-
-  intercept(a, b) {
-    a.alive = false; b.alive = false
-    a.hit = 'missile'; b.hit = 'missile'   // 빗나감 태그를 붙이지 않기 위한 표시
-    const x = (a.pos.x + b.pos.x) / 2, y = (a.pos.y + b.pos.y) / 2
-    const yld = a.yld + b.yld               // 작약량은 합쳐진다 — 폭풍이 그만큼 넓다
-    const wave = blastWave(this.bodies, x, y, yld, null)
-    // 연출 크기는 탄두 크기 기준으로 넘긴다. 접촉 거리(2×MISSILE_HIT_R = 90 GU)를
-    // 그대로 넘기면 화구 반경이 행성 직격의 4.5배가 되어 성계를 통째로 덮는다.
-    this.addFx({ kind: 'nuke', x, y, yld, r: 22, wave: wave.radius, intercept: true })
-    const gained = (a.hostile !== b.hostile) ? CFG.INTERCEPT_SCORE : 0   // 반격탄을 잡았을 때만 가산
-    this.score += gained
-    this.message = `공중 요격 — ${a.yld}+${b.yld}Mt 동시 기폭 · 폭풍 반경 ${wave.radius.toFixed(0)} GU`
-      + (gained ? ` (+${gained})` : '')
-    this.setToast('공중 요격 — 두 탄두가 함께 터졌다')
-    if (wave.pushed.some(p => p.body.isEarth)) this.setToast('경고 — 요격 폭풍이 지구를 밀었다')
   }
 
   // ─── 조르그 레이저 ─────────────────────────────────────────
@@ -356,7 +322,7 @@ export class Game {
   detonate(m, b, point) {
     m.alive = false; m.hit = b
     const yld = m.yld
-    const who = m.hostile ? '반격탄' : '핵'
+    const who = '핵'
 
     // 특이점 — 탄두째로 삼킨다. 밀리지도, 터지지도 않는다.
     if (b.role === 'void') {
@@ -399,34 +365,12 @@ export class Game {
 
     // §9.1 스타일 배율 — 체인/니어미스/태양 가속은 여전히 점수에 얹힌다
     const M = 1 + 0.75 * m.chain + 0.25 * m.nearMiss + (m.minSunDist < CFG.SUN_BONUS_R ? 0.5 : 0)
-    const gained = m.hostile ? 0 : Math.round(8 * M)
+    const gained = Math.round(8 * M)
     this.score += gained; this.chainLast = m.chain
     this.message = `${b.name} 타격 — Δv ${push.dv.toFixed(1)} · 방위 ${bearing(push.dx, push.dy).toFixed(0)}°`
       + (hasRole(b, 'armor') ? ' (장갑에 막혀 거의 안 밀렸다)' : gained ? ` (+${gained})` : '')
     // 폭풍이 지구를 정통으로 훑었다면 경고 — 지구가 밀려 태양에 빠지는 사고가 실제로 난다
     if (wave.pushed.some(p => p.body.isEarth)) this.setToast('경고 — 폭풍이 지구를 밀었다')
-    // 요새 — 때린 쪽으로 반격탄을 되쏜다. 그 탄도 행성을 미는 큐다.
-    if (b.role === 'battery' && b.alive) this.retaliate(b, point, push)
-  }
-
-  // ─── 요새의 반격 ─────────────────────────────────────────────
-  // 방향은 임펄스의 정반대 = 내가 때린 쪽으로 되나온다. 즉 어느 살을
-  // 쳤느냐로 반격탄의 진로까지 내가 정한다 — 적의 미사일을 큐로 쓰는 것.
-  retaliate(b, point, push) {
-    if ((b.ammo ?? 0) <= 0) { this.setToast(`${b.name} 반격 재고 소진`); return }
-    b.ammo--
-    const dx = -push.dx, dy = -push.dy
-    const off = hitRadiusOf(b) * 1.15
-    const p = { x: b.pos.x + dx * off, y: b.pos.y + dy * off }
-    const sp = counterSpeed(b, off)
-    this.missiles.push({
-      pos: p, vel: { x: dx * sp + b.vel.x, y: dy * sp + b.vel.y },
-      yld: CFG.BATTERY_YIELD, alive: true, hostile: true, chain: 0, nearMiss: 0, age: 0,
-      path: [{ ...p }], pathN: 0, enc: new Map(), bestDeflection: 0,
-      encountered: false, minSunDist: Infinity, hit: null, out: null, lastBelt: -99,
-    })
-    this.addFx({ kind: 'launch', x: p.x, y: p.y, a: Math.atan2(dy, dx), hostile: true })
-    this.setToast(`${b.name} 반격! — 되날아오는 탄도 행성을 민다 (${sp.toFixed(0)} GU/s)`)
   }
 
   // ─── 휘발성 유폭 ─────────────────────────────────────────────
@@ -629,7 +573,6 @@ export class Game {
   // §14.4 실패 피드백 — 빗나간 샷마다 원인 태그 1개
   finishShot(m) {
     if (m.hit) return
-    if (m.hostile) { this.setToast('반격탄 소멸'); return }   // 내 탓이 아니다
     let tag
     // '유실'은 이제 없다 — 벨트가 튕겨 되돌려 보낸다. 남은 실패는 태양/시간뿐이다.
     if (m.out === 'sun') tag = '태양 소멸 — 근일점이 너무 낮다'

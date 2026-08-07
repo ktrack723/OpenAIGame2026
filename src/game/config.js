@@ -69,20 +69,11 @@ export const CFG = {
   MU_SCALE: 0.45,                     // 전역 질량 배율 — 낮을수록 핵이 잘 먹힌다
   BLAST_R: 26,                        // 폭풍 반경 = BLAST_R × 작약량 (주변 천체 2차 압력)
   BLAST_PUSH: 0.30,                   // 2차 압력 계수 (직격 Δv 대비)
-  // 근접 신관 반경. 두 탄이 이 반경 안에서 만나면 그 자리에서 동시 기폭한다 —
-  // 작약량이 합쳐진다. 내 탄은 한 번에 하나뿐이므로 이 판정이 실제로 걸리는 건
-  // **요새의 반격탄을 내 탄으로 맞받아치는** 경우다.
-  // 20(접촉 40 GU)에서는 요격 창이 각도 1° 미만이라 사실상 못 맞혔다(계측).
-  // 신관을 키워 "노려서 되는" 수준으로 올린다.
-  MISSILE_HIT_R: 45, INTERCEPT_SCORE: 40,
 
   // ─── 특수 천체 (roles.js) ────────────────────────────────────
   // 금속 행성 감쇠 — 0.15는 사실상 "안 움직임"이라 태그가 곧 사망 선고였다.
   // 0.5면 확실히 무겁되(다른 공의 절반) 핵으로도 밀 수는 있다 — 선택지가 남는다.
   ARMOR_DV: 0.5,
-  BATTERY_AMMO: 2,                    // 요새 — 반격 미사일 재고
-  BATTERY_SPEED: 30, BATTERY_YIELD: 6,
-  COUNTER_ESC_MARGIN: 1.25,           // 반격탄 속도 하한 = 요새 탈출속도 × 이 배수
   VOID_GROW: 0.5, VOID_MU_MAX: 4200,  // 특이점 — 삼킨 질량의 절반을 흡수하며 자란다
   // 가스 유폭 — 반경과 힘을 함께 키웠다. 가스 행성 하나가 터지면
   // 그 구역의 판이 통째로 재배치되어야 "터진다"는 태그값을 한다.
@@ -167,14 +158,8 @@ export const aMaxOf = (A) => 1700 + 130 * Math.min(A, 6)   // §7.2
 export const beltRadius = (aMax) => aMax * CFG.BELT_MUL
 // 미사일이 느끼는 탈출속도 — 미사일 중력장은 행성 μ를 κ배로 증폭해서 받는다
 // (physics.fieldAccel). 그래서 "이 속도로 쏘면 저 천체를 벗어나는가"는
-// 진짜 물리가 아니라 이 식으로 물어야 한다. 반격탄 발사 속도의 근거.
+// 진짜 물리가 아니라 이 식으로 물어야 한다. 지구 발사 하한(LAUNCH_MIN)의 근거.
 export const escapeSpeed = (mu, d) => Math.sqrt(2 * CFG.KAPPA * mu / Math.max(1, d))
-// 반격탄 발사 속도 — 고정 30이던 값은 **요새를 벗어나지도 못하는 속도**였다.
-// (μ=300 요새의 발사점 탈출속도는 51.6인데 30으로 쏘고 있었다 → 반격탄이
-//  포물선을 그리며 제 요새로 되떨어지거나 그 자리를 맴돌았다.)
-// 이제 매번 그 요새의 탈출속도를 계산해 여유배수를 곱한 값과 비교한다.
-export const counterSpeed = (b, offset) =>
-  Math.max(CFG.BATTERY_SPEED, escapeSpeed(b.mu, offset) * CFG.COUNTER_ESC_MARGIN)
 // 핵 임펄스 — 작약량과 표적 질량만의 함수. 이 한 줄이 게임의 조준 규칙 전부다.
 export const nukeDv = (yld, mu) => CFG.NUKE_IMPULSE * yld / mu
 export const blastRadius = (yld) => CFG.BLAST_R * yld
