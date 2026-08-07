@@ -276,6 +276,20 @@ export class Game {
       this.message = '조르그 레이저 발사 — 직진한다. 조준점이 틀어져 있으면 스쳐 지나간다'
       return
     }
+    if (ev.kind === 'intercept') {
+      // 내 탄두가 광선의 진로를 막았다. 그 자리에서 터지며 광선이 끊긴다 —
+      // 폭풍도 그대로 남으므로 "막으면서 동시에 공을 민다"가 성립한다.
+      const m = ev.missile
+      m.alive = false; m.hit = 'laser'
+      const wave = blastWave(this.bodies, ev.x, ev.y, m.yld, null)
+      this.addFx({ kind: 'nuke', x: ev.x, y: ev.y, yld: m.yld, r: 22, wave: wave.radius })
+      this.addFx({ kind: 'laserMiss', x: ev.x, y: ev.y })
+      this.score += CFG.INTERCEPT_SCORE
+      this.message = `레이저 요격 — ${m.yld}Mt 탄두로 광선을 끊었다 (+${CFG.INTERCEPT_SCORE})`
+      this.setToast('레이저 요격 성공')
+      if (wave.pushed.some(p => p.body.isEarth)) this.setToast('경고 — 요격 폭풍이 지구를 밀었다')
+      return
+    }
     if (ev.kind === 'expire') {
       this.addFx({ kind: 'laserMiss', x: ev.x, y: ev.y })
       this.message = '조르그 레이저 — 아무것도 맞히지 못하고 성계를 벗어났다'
@@ -682,6 +696,10 @@ export class Game {
     for (const e of stepDoom(this.doom, this, dt)) {
       if (e.kind === 'beam') {
         this.addFx({ kind: 'laserFire', x: this.doom.x, y: this.doom.y, a: e.a })
+        continue
+      }
+      if (e.kind === 'volley') {   // 지구가 아직 살아 있다 → 또 쏜다
+        this.addFx({ kind: 'laserCharge', x: this.doom.x, y: this.doom.y })
         continue
       }
       const b = e.body
