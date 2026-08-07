@@ -1,6 +1,7 @@
 import { CFG, VIS, hitRadiusOf } from '../game/config.js'
 import { ROLES } from '../game/roles.js'
 import { bearing, toDeg180 } from '../core/angle.js'
+import { defeatArt, defeatTag } from './defeatArt.js'
 
 const hex = (n) => '#' + n.toString(16).padStart(6, '0')
 const clamp0 = (n) => Math.max(0, n)
@@ -118,7 +119,8 @@ export function makeHud(game, view) {
 
   const over = document.createElement('div')
   over.className = 'gameover'; over.hidden = true
-  over.innerHTML = `<h2>작전 실패</h2><p id="overWhy"></p>
+  over.innerHTML = `<div class="goart" id="overArt"></div>
+<div class="gotext"><div class="gotag" id="overTag"></div><h2>작전 실패</h2><p id="overWhy"></p></div>
 <button id="overNew" class="firebtn"><span class="ftext">새 런 시작</span><i class="fglow"></i></button>`
   document.body.appendChild(over)
   over.querySelector('#overNew').onclick = () => { location.href = location.pathname + '?seed=' + ((Math.random() * 1e9) | 0) }
@@ -305,6 +307,10 @@ const FAIL_WHY = {
   EARTH_LASER: `조르그 레이저가 지구를 관통했다. ${CFG.LASER_CHARGE}초의 조준 시간 안에 선을 끊었어야 했다.`,
 }
 
+// 패배 화면을 올리기까지 기다리는 실시간(ms). 지구 화구가 피었다 잦아드는
+// 시간이다 — 이보다 짧으면 자기가 어떻게 죽었는지 못 보고 패널만 본다.
+const OVER_DELAY = 2200
+
 const CTRL_IDS = ['#fire', '#findPrev', '#findNext']
 
 export function updateHud(el, game) {
@@ -346,19 +352,25 @@ export function updateHud(el, game) {
     el.classList.toggle('locked', !aimable)
   }
 
+  // ── 패배 화면 ──────────────────────────────────────────────
+  // **바로 띄우지 않는다.** 지구가 터지는 순간에 패널이 덮어 버리면 플레이어는
+  // 자기가 어떻게 죽었는지를 못 본다. 폭발이 피고 화구가 사그라들 시간을 준 뒤에
+  // 올린다(OVER_DELAY). 그동안 판은 이미 멈춰 있고 파티클만 실시간으로 돈다.
   const over = el._over
-  if (over.hidden === game.runOver) {
-    over.hidden = !game.runOver
-    if (game.runOver) {
-      // 시한 종료는 제목부터 다르다 — 설명 없이 그 한 줄만 남긴다.
-      const doom = game.failReason === 'TIME_UP'
-      over.querySelector('h2').textContent = doom ? '그들이 왔다…' : '작전 실패'
-      over.classList.toggle('doom', doom)
-      const why = FAIL_WHY[game.failReason] ?? game.message
-      over.querySelector('#overWhy').textContent =
-        why ? `${why}  ·  최종 점수 ${game.runScore + game.score}` : `최종 점수 ${game.runScore + game.score}`
-      el.querySelector('#wait').disabled = true
-    }
+  if (game.runOver && el._overAt === undefined) el._overAt = performance.now()
+  if (!game.runOver) { el._overAt = undefined; over.hidden = true }
+  else if (over.hidden && performance.now() - el._overAt >= OVER_DELAY) {
+    over.hidden = false
+    // 시한 종료는 제목부터 다르다 — 설명 없이 그 한 줄만 남긴다.
+    const doom = game.failReason === 'TIME_UP'
+    over.querySelector('h2').textContent = doom ? '그들이 왔다…' : '작전 실패'
+    over.classList.toggle('doom', doom)
+    over.querySelector('#overArt').innerHTML = defeatArt(game.failReason)
+    over.querySelector('#overTag').textContent = defeatTag(game.failReason)
+    const why = FAIL_WHY[game.failReason] ?? game.message
+    over.querySelector('#overWhy').textContent =
+      why ? `${why}  ·  최종 점수 ${game.runScore + game.score}` : `최종 점수 ${game.runScore + game.score}`
+    el.querySelector('#wait').disabled = true
   }
 
   const t = game.target, e = game.earth, g = game.goal
