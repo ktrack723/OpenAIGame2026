@@ -78,7 +78,7 @@ export class Inspector {
     const hp = b.hp ?? CFG.PLANET_HP, hpMax = b.hpMax ?? CFG.PLANET_HP
     const pips = '◆'.repeat(Math.max(0, hp)) + '◇'.repeat(Math.max(0, hpMax - hp))
     const out = []
-    // 태그 줄 — 넷 중 붙은 것만. 하나도 없으면 "일반 행성"이라고 못 박는다.
+    // 태그 줄 — 다섯 중 붙은 것만. 하나도 없으면 "일반 행성"이라고 못 박는다.
     const tags = []
     if (hostile) tags.push(['foe', `${HOSTILE.icon} 조르그 요새`])
     for (const key of [b.role, ...modsOf(b)]) {

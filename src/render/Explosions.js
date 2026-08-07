@@ -151,15 +151,6 @@ export class Explosions {
     const R = base * (0.85 + 2.4 * k)
     const P = this.parts
 
-    if (e.shield) {   // 방어막에 삼켜짐 — 소리만 요란하고 아무 일도 안 난다
-      P.puff(e.x, e.y, { r0: 3, r1: R * 0.55, ttl: 0.45, color: 0x67e8f9, alpha: 0.85 })
-      P.shock(e.x, e.y, R, 0x22d3ee, 0.55, { thin: true, to: 1.6 })
-      P.burst(e.x, e.y, { n: 40, color: 0x67e8f9, speed: 150, size: 8, ttl: 0.5 })
-      this.rig.hit(6)
-      this.flash(0.12, '#a5f3fc')
-      return
-    }
-
     // ① 흰 섬광 — 프레임 하나를 통째로 태운다
     P.puff(e.x, e.y, { r0: R * 0.25, r1: R * 1.15, ttl: 0.18, color: 0xffffff, alpha: 1 })
     this.flash(e.earth ? 1 : 0.35 + 0.6 * k, e.earth ? '#fff5f5' : '#fff8e6')

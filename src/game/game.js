@@ -45,7 +45,8 @@ export class Game {
 
   // ─── 작전 시한 (인게임 시간) ───
   // this.time은 step()에서만 누적되고, step()은 effTimeScale()>0일 때만 돈다.
-  // → 조준만 하고 있으면 시계가 멈춰 있고, 관측(4×)하거나 미사일이 날 때만 줄어든다.
+  // → 조준만 하고 있으면 시계가 멈춰 있고, 관측하거나(플레이어가 고른 배속)
+  //   조준 중에 시간 진행 버튼을 누르고 있을 때만 줄어든다.
   get stageTime() { return CFG.TIME_BASE + CFG.TIME_PER_ANTE * Math.min(this.ante - 1, 5) }
   get timeLeft() { return Math.max(0, this.stageTime - this.time) }
   get timeBonus() { return Math.round(this.timeLeft * CFG.TIME_BONUS) }
@@ -141,8 +142,6 @@ export class Game {
       this.setToast(`발사 속도 부족 — 지구 탈출속도 ${this.launchEscape.toFixed(1)} 초과 필요`)
       return
     }
-    // 연속 발사 허용 — 두 탄을 원하는 지점에서 만나게 하는 게 정식 전술이다.
-    // (미사일이 날고 있는 동안에도 시계는 1×로 흐르므로 공짜는 아니다.)
     const p = this.launchPos(), v = fromAngle(this.aim, this.power)
     this.missiles.push({
       pos: { ...p }, vel: v, yld: this.yieldMt, alive: true, chain: 0, nearMiss: 0, age: 0,
@@ -166,7 +165,8 @@ export class Game {
   //   다만 **조준 모드에서도 시간을 흘릴 수 있다**(advance) — 조준선을 고정한 채
   //   판이 어떻게 굴러가는지 조금씩 보내 보는 게 이 게임의 핵심 조작이다.
   // **관측 모드** — 판이 흐른다. UI는 전부 사라지고 화면만 남는다.
-  //   미사일이 날 때는 1×(제대로 보라고), 아니면 3×로 빨리 감는다.
+  //   배속은 플레이어가 고른다(1·2·4·8×). 미사일이 날고 있는 동안에는
+  //   제대로 보라고 한 단계 낮춰 준다.
   setMode(m) {
     if (m !== 'aim' && m !== 'observe') return
     if (this.mode === m) return
@@ -267,8 +267,8 @@ export class Game {
     const x = (a.pos.x + b.pos.x) / 2, y = (a.pos.y + b.pos.y) / 2
     const yld = a.yld + b.yld               // 작약량은 합쳐진다 — 폭풍이 그만큼 넓다
     const wave = blastWave(this.bodies, x, y, yld, null)
-    // 연출 크기는 탄두 크기 기준으로 넘긴다. 신관 반경(90 GU)을 그대로 넘기면
-    // 화구 반경이 행성 직격의 4.5배가 되어 성계를 통째로 덮는다.
+    // 연출 크기는 탄두 크기 기준으로 넘긴다. 접촉 거리(2×MISSILE_HIT_R = 90 GU)를
+    // 그대로 넘기면 화구 반경이 행성 직격의 4.5배가 되어 성계를 통째로 덮는다.
     this.addFx({ kind: 'nuke', x, y, yld, r: 22, wave: wave.radius, intercept: true })
     const gained = (a.hostile !== b.hostile) ? CFG.INTERCEPT_SCORE : 0   // 반격탄을 잡았을 때만 가산
     this.score += gained
@@ -463,9 +463,10 @@ export class Game {
   }
 
   // ─── 행성끼리의 충돌 = 당구 + 체력 ────────────────────────────
-  // 규칙: 부딪히면 **당구공처럼 튕긴다**(운동량 보존). 그리고 체력이 1 닳는다.
-  // 세 번 박아야 박살난다 — 그래서 "한 번 맞히기"가 아니라 "같은 공을 계속
-  // 몰아붙이기"가 게임이 된다. 자연스러운 공전 중의 느린 스침(상대속도 < COLLIDE_DMG_V)은
+  // 규칙: 부딪히면 **당구공처럼 튕긴다**(운동량 보존). 그리고 체력이 닳는다
+  // (상대속도가 빠를수록 1~3). 중립 행성은 체력 3이라 "같은 공을 계속 몰아붙이기"가
+  // 되고, 조르그 요새는 1이라 한 번 제대로 처박으면 끝난다.
+  // 자연스러운 공전 중의 느린 스침(상대속도 < COLLIDE_DMG_V)은
   // 데미지가 없다: 판이 저 혼자 정리되면 플레이어가 할 일이 사라진다.
   // 반환값 'destroyed' 는 배열이 변했다는 신호(파편 생성) — physics가 그 스텝을 끝낸다.
   onPlanetCollision(a, b) {
@@ -549,7 +550,8 @@ export class Game {
     this.recordKill(b, cause)
   }
 
-  // 파괴 사유는 이제 아무 상관이 없다 — 요새가 없어졌으면 그걸로 끝이다.
+  // 목표 판정에는 파괴 사유가 상관없다 — 요새가 없어졌으면 그걸로 끝이다.
+  // 사유는 점수(KILL_SCORE)와 로그 문구에만 쓴다.
   recordKill(b, cause) {
     if (b.type === 'debris') return
     const wasFort = b.role === 'battery'

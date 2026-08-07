@@ -65,10 +65,9 @@ export function massClass(b) {
   if (dv >= 10) return { key: 'medium', label: '보통', hint: '큰 작약이면 궤도가 바뀐다', color: '#cbd5e1' }
   return { key: 'heavy', label: '무거움', hint: '핵으로는 거의 못 민다 — 다른 공을 던져라', color: '#f5b544' }
 }
-// 이 천체에 붙는 태그 하나(없으면 null). 조르그 요새가 최우선 —
-// 금속으로 만든 요새라도 플레이어에게 먼저 읽혀야 하는 건 "표적"이다.
-export const tagOf = (b) => (b && b.role) ? b.role : null
-
+// 이 천체에 붙은 주 태그의 정의(없으면 null). 조르그 요새가 최우선 —
+// 금속으로 만든 요새라도 플레이어에게 먼저 읽혀야 하는 건 "표적"이라
+// 요새는 role이 battery이고 금속 성질은 mods로 겹쳐 얹는다.
 export const roleOf = (b) => (b && b.role) ? ROLES[b.role] : null
 
 // 요새 위에 금속(장갑) 성질을 겹쳐 얹을 수 있다. 주 태그는 role, 덧붙은 건 mods.

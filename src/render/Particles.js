@@ -110,7 +110,7 @@ export class Particles {
     this.alpha[i] = 1; this.life[i] = ttl; this.ttl[i] = ttl; this.drag[i] = drag
   }
 
-  // 미사일 분사 — 지난 위치와 현 위치 사이를 메워 4× 관측에서도 끊기지 않게.
+  // 미사일 분사 — 지난 위치와 현 위치 사이를 메워 관측 배속에서도 끊기지 않게.
   // (backX, backY)는 진행 반대 방향 단위벡터: 불꽃이 꼬리로 흘러야 속도가 읽힌다.
   thrust(ax, ay, bx, by, backX, backY, n = 6) {
     const c = _c1, hot = _c2

@@ -22,7 +22,7 @@
         window.addEventListener('unhandledrejection', (e) => fail((e.reason && e.reason.message) || String(e.reason)))
         setTimeout(() => {
           const boot = document.querySelector('.boot')
-          if (boot && !boot.dataset.err) boot.textContent = '아직 로딩 중… 네트워크에서 Three.js(esm.sh)를 받지 못하고 있을 수 있습니다. 로컬 서버(npm run serve)로 열었는지 확인하세요.'
+          if (boot && !boot.dataset.err) boot.textContent = '아직 로딩 중… three.js는 로컬 번들(src/vendor/three.module.js)이라 네트워크는 필요 없습니다. file:// 로 열면 ES 모듈이 막히니 로컬 서버(npm run serve → http://localhost:4173)로 열었는지 확인하세요.'
         }, 8000)
       })()
     </script>

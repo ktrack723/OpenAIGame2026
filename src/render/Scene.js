@@ -331,8 +331,8 @@ export class SceneView {
     }))
     trueRing.renderOrder = 13
     // ── 체력 게이지 ──
-    // 공은 이제 세 번 박아야 부서진다. "몇 번 남았나"가 판을 읽는 1순위 정보라
-    // 공 둘레에 남은 체력만큼 호(arc)를 그린다. 3/3이면 아예 안 그린다 —
+    // 공은 이제 체력이 다 닳아야 부서진다. "몇 번 남았나"가 판을 읽는 1순위 정보라
+    // 공 둘레에 남은 체력만큼 호(arc)를 그린다. 상처 없는 공(hp = hpMax)은 안 그린다 —
     // 스무 개가 전부 완전한 링을 두르면 그게 곧 노이즈이므로, 다친 공만 표시한다.
     const hpArc = new THREE.Mesh(new THREE.RingGeometry(1.30, 1.46, 40, 1, Math.PI / 2, Math.PI * 2), new THREE.MeshBasicMaterial({
       color: 0x4ade80, transparent: true, opacity: 0.95, depthWrite: false, depthTest: false, side: THREE.DoubleSide,
