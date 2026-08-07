@@ -53,14 +53,20 @@ export class Game {
   loadStage() {
     this.aMax = aMaxOf(this.ante)
     this.fx = []   // 렌더러가 매 프레임 비워가는 연출 이벤트 큐 (§14.5)
-    // 판 사이에 잔해는 치운다 — 안 치우면 판을 거듭할수록 파편만 쌓인다
-    this.bodies = this.bodies.filter(b => b.alive && b.type !== 'debris')
-    // 조르그 증원 — 지금 성계에 남은 것을 보고 그만큼만 보낸다
+    // 잔해만 **제자리에서** 걷어낸다. 배열을 새로 만들면 렌더러가 성계를 통째로
+    // 다시 짓고 카메라가 튀어서 판 사이에 화면이 끊긴다 — 이 게임은 성계가
+    // 런 내내 하나로 이어지는 게 전제이므로 그 끊김이 거짓말이 된다.
+    for (let i = this.bodies.length - 1; i >= 0; i--) {
+      const b = this.bodies[i]
+      if (!b.alive || b.type === 'debris') this.bodies.splice(i, 1)
+    }
+    // 조르그 증원 — 지금 성계에 남은 것을 보고 그만큼만 보낸다.
+    // 한꺼번에 뿅 나타나지 않고 **순서대로** 워프해 들어온다(stepWarpIns).
     const { added, fortresses } = reinforce(this.rng, this.bodies, this.earth, this.ante, this.stageIdx)
-    for (const b of added) this.addFx({ kind: 'warp', x: b.pos.x, y: b.pos.y, r: hitRadiusOf(b), fort: b.role === 'battery' })
+    added.forEach((b, i) => { b.alive = false; b.warp = 1; b.warpIn = CFG.WARP_LEAD + i * CFG.WARP_STAGGER })
     this.targets = fortresses
     this.goal = makeGoal(fortresses)
-    this.homeworld = pickHomeworld(this.bodies)
+    this.homeworld = pickHomeworld(this.bodies)   // 증원이 도착하면 stepWarpIns가 다시 고른다
     // 레이저는 판이 바뀌어도 이어진다. 다만 새 판 시작 직후 바로 쏘진 않는다.
     this.laser.state = 'idle'; this.laser.t = 0; this.laser.nextAt = CFG.LASER_FIRST
 
@@ -120,7 +126,7 @@ export class Game {
 
   // 지구 발사점에서의 κ증폭 탈출속도. 이 아래로 쏘면 탄이 지구 중력에
   // 붙잡혀 되떨어진다 = 자기 지구에 핵을 박는다. 반격탄과 같은 검사다.
-  get launchEscape() { return escapeSpeed(CFG.EARTH_MU, CFG.LAUNCH_OFFSET) }
+  get launchEscape() { return escapeSpeed(this.earth.mu, CFG.LAUNCH_OFFSET) }
 
   // 비행 중인 아군 탄이 있으면 다음 탄을 못 쏜다 — 탄약이 아니라 **차례**가 자원이다.
   get inFlight() { return this.missiles.some(m => m.alive && !m.hostile) }
@@ -190,8 +196,26 @@ export class Game {
   }
   get obsSpeedLabel() { return `${OBS_SPEEDS[this.obsSpeed]}×` }
 
+  // 순차 워프인 — 실시간으로 돈다. 조준 모드라 판이 멈춰 있어도
+  // "조르그가 하나씩 도착하는" 연출은 흘러야 한다.
+  get warpPending() { return this.bodies.some(b => (b.warpIn ?? 0) > 0) }
+  stepWarpIns(dtReal) {
+    for (const b of this.bodies) {
+      if (!(b.warpIn > 0)) continue
+      b.warpIn -= dtReal
+      if (b.warpIn > 0) continue
+      b.warpIn = 0; b.alive = true; b.warp = 1
+      this.addFx({ kind: 'warp', x: b.pos.x, y: b.pos.y, r: hitRadiusOf(b), fort: b.role === 'battery' })
+      // 본성은 요새가 실제로 **도착한 뒤에** 정해진다. 예전엔 loadStage에서
+      // 미리 골랐는데, 순차 워프인이 생기면서 그 시점엔 살아 있는 요새가 0이라
+      // 본성이 영영 null로 남고 레이저가 한 번도 안 나갔다(계측: 420초 무발사).
+      if (b.role === 'battery' && !this.homeworld) this.homeworld = pickHomeworld(this.bodies)
+    }
+  }
+
   tick(dtFrame) {
     if (this.toastT > 0) this.toastT -= dtFrame
+    this.stepWarpIns(dtFrame)
     let acc = Math.min(0.1, dtFrame) * this.effTimeScale()
     while (acc >= CFG.DT) { this.step(CFG.DT); acc -= CFG.DT }
   }
@@ -517,6 +541,7 @@ export class Game {
   }
 
   killBody(b, cause, { fx = true, shatterIt = cause === 'collision' } = {}) {
+    if (b.trail) b.trail.length = 0   // 죽은 공의 잔여 트레일은 즉시 지운다
     if (!b.alive) return
     b.alive = false
     if (fx && b.type !== 'debris') this.addFx({ kind: cause === 'sun' ? 'sun' : 'destroy', x: b.pos.x, y: b.pos.y, r: b.radius })
@@ -613,6 +638,9 @@ export class Game {
   }
 
   checkEnd() {
+    // 증원이 아직 워프 중이면 판정을 미룬다 — 안 그러면 "요새 0기"로
+    // 도착하기도 전에 클리어가 나 버린다.
+    if (this.warpPending) return
     this.goal.update(this.aliveFortresses)
     if (this.won && !this.winBanked) {   // 클리어 시점의 남은 시간을 보너스로 정산
       this.winBanked = true

@@ -32,6 +32,7 @@ const ROLE_RING = {
   battery: { n: 3, gap: 0.55, r0: 1.34, r1: 1.74, spin: -0.7 },
   void: { n: 40, gap: 0.06, r0: 1.20, r1: 1.34, spin: 1.5 },
   volatile: { n: 5, gap: 0.42, r0: 1.30, r1: 1.66, spin: 0.5 },
+  light: { n: 12, gap: 0.5, r0: 1.22, r1: 1.36, spin: 0.9 },
 }
 const colorOf = (t) => (MATS[t] ?? MATS.rock).c
 
@@ -406,8 +407,22 @@ export class SceneView {
     }
   }
 
+  // 성계에서 완전히 빠진 천체(잔해 정리 등)의 연출물을 걷어낸다.
+  // 예전에는 판이 바뀔 때 배열째 갈아치우며 통째로 재생성했지만, 이제
+  // 성계가 런 내내 이어지므로 사라진 것만 골라 치워야 한다.
+  reapMissing() {
+    if (this.bodyFx.size <= this.game.bodies.length) return
+    const live = new Set(this.game.bodies.map(b => b.id))
+    for (const [id, fx] of this.bodyFx) {
+      if (live.has(id)) continue
+      this.disposeBodyFx(fx)
+      this.bodyFx.delete(id)
+    }
+  }
+
   syncBodies(dt) {
     const g = this.game
+    this.reapMissing()
     // 조준 중이면 "지금 화면의 어느 공을 치는가"도 같이 켠다 —
     // 락온은 미래 위치에 찍히므로, 현재 위치의 그 공도 물어 줘야 눈이 이어진다.
     const aimHit = g.canAim ? g.predictPath().hit : null
@@ -426,9 +441,11 @@ export class SceneView {
       }
       const r = this.renderRadius(b)
       const solid = b.type !== 'debris'
-      fx.mesh.visible = b.alive
-      fx.halo.visible = b.alive && solid
-      fx.ring.visible = b.alive && solid
+      // 아직 워프해 들어오지 않은 증원은 존재하지 않는 것처럼 취급한다
+      const waiting = (b.warpIn ?? 0) > 0
+      fx.mesh.visible = b.alive && !waiting
+      fx.halo.visible = b.alive && solid && !waiting
+      fx.ring.visible = b.alive && solid && !waiting
       fx.trueRing.visible = b.alive && solid && r > hitRadiusOf(b) * VIS.TRUE_R_HINT
       if (fx.mod) {
         fx.mod.grp.visible = b.alive
@@ -630,6 +647,7 @@ export class SceneView {
 
     // 궤도 트레일 — 플레이어 임펄스 직후 강조 (P4, §14.2). 공 뒤로 지나간다.
     for (const b of g.bodies) {
+      if (!b.alive) continue              // 죽은 행성의 잔상은 남기지 않는다 — 판이 지저분해진다
       if (!b.trail || b.trail.length < 2) continue
       if (b.type === 'debris') continue   // 충돌 한 번에 8~10개가 생긴다 — 궤적까지 그리면 판이 안 보인다
       const hot = b.trailFlash > 0

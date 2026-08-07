@@ -109,7 +109,6 @@ export function makeHud(game, view) {
   <div class="btnrow">
     <button id="wait" class="ghost wide" title="누르고 있는 동안만 시간이 흐른다">시간 진행 ▶▶ (SHIFT)</button>
     <button id="toObs" class="ghost wide obs" title="관측 모드 — UI가 사라지고 판이 흐른다">관측 모드 ▶ (TAB)</button>
-    <button id="next" class="go" hidden>다음 스테이지 ▶</button>
   </div>
 </section>
 
@@ -196,7 +195,6 @@ export function makeHud(game, view) {
   qs('#findNext').onclick = () => { game.scanContact(1); el._sync() }
   qs('#findPrev').onclick = () => { game.scanContact(-1); el._sync() }
   qs('#toObs').onclick = () => game.setMode('observe')
-  qs('#next').onclick = () => game.nextStage()
   qs('#new').onclick = () => { location.href = location.pathname + '?seed=' + ((Math.random() * 1e9) | 0) }
   qs('#fold').onclick = () => {
     el.classList.toggle('folded')
@@ -248,9 +246,30 @@ export function makeHud(game, view) {
   return el
 }
 
-// ─── LCD 문구 ───────────────────────────────────────────────────
-// 예측 = "어느 살을 치는가"까지. 그 뒤 판이 어떻게 굴러갈지는 안 알려준다.
-// [등급, 태그, 본문, 부가] — 태그는 LCD 왼쪽에 박히는 짧은 상태어.
+// ─── LCD 문구 — 예측이 무엇을 말해 주는가 ────────────────────────
+//
+// 규칙은 한 줄이다: **"이 한 발이 어디에 닿고, 그 결과 공이 어디로
+// 출발하는가"까지만 말한다.** 그 뒤 판이 어떻게 굴러갈지는 절대 말하지 않는다.
+// 그게 이 게임의 문제이기 때문이다.
+//
+// 그래서 문구는 세 층으로만 나뉜다:
+//
+//  [1층 · 접촉]   무엇에 닿는가. 항상 표시된다. LCD 태그(TARGET/CUE/VOID…)와
+//                 본문이 이 층이다. 아무것에도 안 닿으면 NO CTC.
+//  [2층 · 직접 결과] 그 접촉이 **그 공에** 즉시 일으키는 일. 충격 방향(°),
+//                 Δv, 남은 체력. 화면에는 같은 값이 노란/흰 화살표 + 수치
+//                 라벨로도 나온다(AimHelper). 계산으로 확정되는 값만 넣는다.
+//  [3층 · 경고]   플레이어가 **의도하지 않았을 가능성이 높은 부작용**만.
+//                 지구가 폭풍 반경에 들어간다, 반격탄이 나온다, 벨트까지 날아간다.
+//                 조건은 전부 "지금 이 한 발에서 확정적으로 참"인 것들이라
+//                 추측이나 확률은 한 줄도 넣지 않는다.
+//
+// 넣지 않는 것(의도적):
+//   · 2차 충돌 — "이 공이 저 공에 맞는다"는 절대 안 알려준다. 그걸 읽는 게 게임이다.
+//   · 판의 승패 예측, 점수 예상, 최적 각도 추천.
+//   · 확률·추정치. LCD에 뜨는 숫자는 전부 결정론적 계산 결과다.
+const predLineDoc = null   // (위 주석이 곧 명세다)
+
 function predLine(game, p) {
   const h = p.hit
   const role = h && h.role ? ROLES[h.role] : null
@@ -267,17 +286,21 @@ function predLine(game, p) {
     case 'target':
     case 'neutral': {
       const tag = p.outcome === 'target' ? 'TARGET' : 'CUE'
-      const sub = [
+      // [2층] 이 접촉이 그 공에 즉시 일으키는 것 — 충격 방향/세기, 진로, 체력.
+      const direct = [
+        `충격 ${dirOf(h.dx, h.dy)}° Δv ${h.dv.toFixed(1)}`,
+        `진로 ${dirOf(h.vx, h.vy)}° ${Math.hypot(h.vx, h.vy).toFixed(0)}GU/s`,
         `체력 ${h.hp}/${h.hpMax}`,
-        // 반격탄 속도가 그 요새의 탈출속도를 넘는지 — 안 넘으면 되떨어진다
-        h.counter ? `반격탄 ${h.counterSpeed.toFixed(0)}>탈출 ${h.counterEsc.toFixed(0)} — 때린 쪽으로 나온다` : '',
-        h.role === 'armor' ? '장갑 — 거의 안 밀린다' : '',
-        h.earthInBlast ? '⚠ 폭풍이 지구를 훑는다' : '',
-        // 성계 이탈은 이제 없다 — 벨트가 튕겨 되돌려 보낸다
-        h.willEject ? `↩ 벨트까지 날아간다 (${h.vAfter.toFixed(0)}>${h.vEsc.toFixed(0)})` : '',
+      ].join(' · ')
+      // [3층] 의도하지 않았을 부작용만. 전부 이 한 발에서 확정적으로 참인 것.
+      const warn = [
+        h.earthInBlast ? '⚠ 폭풍 반경에 지구가 들어간다' : '',
+        h.counter ? `⚠ 반격탄이 되날아온다 (${h.counterSpeed.toFixed(0)} GU/s, 때린 쪽)` : '',
+        h.role === 'armor' ? `무겁다 — 임펄스 ${(CFG.ARMOR_DV * 100).toFixed(0)}%만 먹었다` : '',
+        h.willEject ? `↩ 벨트까지 날아갔다 되돌아온다 (${h.vAfter.toFixed(0)}>${h.vEsc.toFixed(0)})` : '',
       ].filter(Boolean).join(' · ')
       return [h.earthInBlast ? 'warn' : 'hit', tag,
-        `${h.name}${badge} — ${dirOf(h.dx, h.dy)}° Δv ${h.dv.toFixed(1)}`, sub]
+        `${h.name}${badge} — ${direct}`, warn]
     }
     default: return ['warn', '—', '—', '']
   }
@@ -293,7 +316,6 @@ const CTRL_IDS = ['#fire', '#findPrev', '#findNext']
 
 export function updateHud(el, game) {
   if (el._stageIdx !== game.stageIdx) { el._stageIdx = game.stageIdx; el._sync() }
-  el.querySelector('#next').hidden = !(game.won && !game.runOver)
 
   // ── 모드 전환 — 관측 중에는 패널을 통째로 감추고 버튼 하나만 남긴다 ──
   const observing = game.mode === 'observe' && !game.runOver
@@ -360,8 +382,9 @@ export function updateHud(el, game) {
     lm.hidden = false
     el.querySelector('#laserT').textContent = `T-${game.laserLeft.toFixed(1)}s`
     el.querySelector('#laserWhy').textContent =
-      `${game.homeworld ? game.homeworld.name : '본성'} 조준선 고정 — 지구 예상 위치를 겨눈다. `
-      + '행성을 선 위로 밀어 막거나, 폭풍으로 지구를 비켜라. 본성을 부숴도 취소된다.'
+      `${game.homeworld ? game.homeworld.name : '본성'}이 지구의 예상 위치를 계산해 발사 "방향"을 고정했다. `
+      + '대응 넷: ① 행성을 선 위로 밀어 막는다 ② 폭풍으로 지구를 비킨다 '
+      + '③ 본성을 옆으로 민다(총구가 밀리면 광선이 통째로 평행이동해 빗나간다) ④ 본성을 부순다.'
   } else lm.hidden = true
 
   const rig = el._rig

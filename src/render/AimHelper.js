@@ -1,5 +1,44 @@
 import * as THREE from 'three'
 import { makeArrow, setArrow } from './Arrow.js'
+import { bearing } from '../core/angle.js'
+
+// ─── 화살표 옆에 붙는 작은 수치 ─────────────────────────────────
+// 화살표만 그리면 "어느 쪽"까지는 읽히는데 "몇 도"가 안 읽힌다. 두 방향
+// (충격 방향 / 타격 직후 진로)은 이 게임의 조준 그 자체이므로 숫자로도 박아 둔다.
+// 캔버스 스프라이트라 화면 크기 고정 — 줌과 무관하게 같은 크기로 읽힌다.
+function tagSprite() {
+  const c = document.createElement('canvas')
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: new THREE.CanvasTexture(c), transparent: true, depthTest: false, depthWrite: false,
+  }))
+  sp.renderOrder = 18
+  sp.userData.c = c
+  sp.userData.text = null
+  return sp
+}
+function drawTag(sp, text, color) {
+  if (sp.userData.text === text) return
+  sp.userData.text = text
+  const dpr = 2, fs = 22, pad = 8
+  const c = sp.userData.c, g = c.getContext('2d')
+  g.font = `800 ${fs}px ui-monospace, SFMono-Regular, Menlo, monospace`
+  const w = Math.ceil(g.measureText(text).width) + pad * 2, h = fs + pad
+  c.width = w * dpr; c.height = h * dpr
+  g.scale(dpr, dpr)
+  g.font = `800 ${fs}px ui-monospace, SFMono-Regular, Menlo, monospace`
+  g.textBaseline = 'middle'
+  g.fillStyle = 'rgba(3,8,14,.82)'
+  g.beginPath(); g.roundRect(0, 0, w, h, 5); g.fill()
+  g.fillStyle = color
+  g.fillText(text, pad, h / 2 + 1)
+  sp.material.map.dispose()
+  const t = new THREE.CanvasTexture(c)
+  t.colorSpace = THREE.SRGBColorSpace
+  t.minFilter = THREE.LinearFilter
+  sp.material.map = t
+  sp.material.needsUpdate = true
+  sp.userData.px = { w, h }
+}
 
 // 경로·락온 색 = 무엇에 닿는가 (결과가 아니라 접촉 대상)
 export const PRED_TONE = {
@@ -59,7 +98,10 @@ export class AimHelper {
     }))
     this.blastRing.renderOrder = 11
     this.blastRing.visible = false
-    this.scene.add(this.pushArrow, this.courseArrow, this.blastRing)
+    // 화살표 옆 수치 — 충격 방향(노랑) / 타격 직후 진로(흰색)
+    this.pushTag = tagSprite(); this.courseTag = tagSprite()
+    this.pushTag.visible = false; this.courseTag.visible = false
+    this.scene.add(this.pushArrow, this.courseArrow, this.blastRing, this.pushTag, this.courseTag)
   }
 
   tick(dt) { this.t += dt }
@@ -123,6 +165,8 @@ export class AimHelper {
     const push = h && h.dv > 0
     this.pushArrow.visible = !!push
     this.courseArrow.visible = !!push
+    this.pushTag.visible = !!push
+    this.courseTag.visible = !!push
     this.counterArrow.visible = !!(h && h.counter)
     this.blastRing.visible = !!h
     if (h) {
@@ -150,6 +194,21 @@ export class AimHelper {
       const cl = Math.max(60 * ppw, sp * 3)
       setArrow(this.courseArrow, h.x + Math.cos(ca) * R, h.y + Math.sin(ca) * R, ca,
         cl, Math.max(3.5 * ppw, cl * 0.07), 7)
+
+      // ── 수치 라벨 ──
+      // 충격: 핵이 공을 미는 방향 · 진로: 그 결과 공이 실제로 출발하는 방향+속력.
+      // 둘이 다른 이유(원래 궤도 속도와 합쳐지기 때문)가 이 게임의 핵심이라
+      // 두 값을 나란히 보여 준다.
+      const pa = Math.atan2(h.dy, h.dx)
+      drawTag(this.pushTag, `충격 ${bearing(h.dx, h.dy).toFixed(0)}° Δv${h.dv.toFixed(1)}`, '#fbbf24')
+      drawTag(this.courseTag, `진로 ${bearing(h.vx, h.vy).toFixed(0)}° ${sp.toFixed(0)}GU/s`, '#ffffff')
+      const place = (tag, ax, ay, ang, dist) => {
+        const px = tag.userData.px
+        tag.scale.set(px.w * ppw, px.h * ppw, 1)
+        tag.position.set(ax + Math.cos(ang) * dist, ay + Math.sin(ang) * dist + px.h * ppw * 0.9, 9)
+      }
+      place(this.pushTag, h.px, h.py, pa, Math.max(26 * ppw, R * 0.9 + h.dv * 2.5) * 0.62)
+      place(this.courseTag, h.x, h.y, ca, R + cl * 0.55)
     }
   }
 
@@ -161,5 +220,7 @@ export class AimHelper {
     this.courseArrow.visible = false
     this.counterArrow.visible = false
     this.blastRing.visible = false
+    this.pushTag.visible = false
+    this.courseTag.visible = false
   }
 }

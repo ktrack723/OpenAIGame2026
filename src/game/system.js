@@ -147,7 +147,7 @@ const fortBand = (earth) => {
 
 function warpBody(rng, bodies, aMax, spec) {
   const type = spec.type ?? pickBiome(rng, 0.5)
-  const mu = spec.mu * (TYPE_MU_MUL[type] ?? 1)   // 얼음은 가볍다
+  const mu = spec.mu * (TYPE_MU_MUL[type] ?? 1) * CFG.MU_SCALE   // 얼음은 가볍다 + 전역 배율
   // 요새는 ① 지구 궤도 대역 안에서 ② 밀 수 있는 공 옆자리에 놓는다.
   // 못 찾으면 제약을 하나씩 풀어 재시도 — 요새를 아예 안 보내는 것보다는 낫다.
   const orb = (spec.role === 'battery'
@@ -191,7 +191,11 @@ export function reinforce(rng, bodies, earth, ante, stageIdx) {
   // 남은 공이 적으면 큐볼로 쓸 중립도 같이 보낸다(조르그 입장에선 소모품이다)
   const cueBalls = live.filter(b => !b.isEarth && !b.zorg).length
   let neutral = Math.min(CFG.REINF_NEUTRAL, Math.max(0, room - fort), cueBalls < 2 ? 2 : 1)
-  if (room <= fort) neutral = 0
+  // 중립은 최소 1기는 보장한다. 예전엔 요새로 자리가 차면 0이 됐는데,
+  // 특이점·얼음 같은 태그는 **중립으로만** 굴러오므로 그러면 다섯 태그 중
+  // 둘을 끝까지 못 보게 된다(계측: 8스테이지까지 특이점 0회 등장).
+  if (room <= fort) neutral = Math.min(1, Math.max(0, room))
+  neutral = Math.max(neutral, room > fort ? 1 : 0)
 
   const added = []
   const band = fortBand(earth)   // 요새는 지구 궤도 언저리에만 온다(사거리 문제)
@@ -220,9 +224,12 @@ export function reinforce(rng, bodies, earth, ante, stageIdx) {
     added.push(b)
   }
   for (let i = 0; i < neutral; i++) {
-    // 특이점은 안테 6부터만 굴러온다 — 부술 수 없는 공은 늦게 가르친다
+    // 특이점은 **3스테이지에 반드시 한 번** 등장시킨다. 추첨에만 맡기면
+    // 다섯 태그 중 하나를 끝까지 못 보고 런이 끝난다(계측: 9스테이지까지 0회).
+    // 그 전에는 안 나오고, 그 뒤로는 추첨에 맡긴다.
     let type = NEUTRAL_TYPES[rng.int(0, NEUTRAL_TYPES.length - 1)]
-    if (type === 'void' && stageIdx < 6) type = 'rock'
+    if (stageIdx === 2 && i === 0) type = 'void'
+    else if (type === 'void' && stageIdx < 2) type = 'ice'
     const b = warpBody(rng, bodies.concat(added), aMax, {
       mu: muFor(), name: `${ZORG_NAMES[rng.int(0, ZORG_NAMES.length - 1)]}-${stageIdx + 1}x${i}`, type,
     })

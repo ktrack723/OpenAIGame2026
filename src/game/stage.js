@@ -90,8 +90,10 @@ export function buildSolarSystem(rng, A = 1) {
     a: aEarth * Math.pow(s.au, SOLAR_P),
     // 얼음은 가볍다 — 분류가 곧 질량이다(TYPE_MU_MUL). 반경은 실제 비율 그대로라
     // "덩치는 큰데 잘 밀리는 공"이 자연스럽게 생긴다.
-    mu: s.isEarth ? CFG.EARTH_MU
-      : Math.max(10, CFG.EARTH_MU * Math.pow(s.m, SOLAR_Q) * (TYPE_MU_MUL[s.type] ?? 1)),
+    // MU_SCALE — 판 전체를 가볍게. 핵 한 방에 궤도가 눈에 띄게 바뀌어야
+    // "쳤다"는 감각이 생긴다(당구처럼 쾅쾅). 반경은 별개라 그림은 그대로다.
+    mu: Math.max(8, CFG.EARTH_MU * (s.isEarth ? 1 : Math.pow(s.m, SOLAR_Q))
+      * (TYPE_MU_MUL[s.type] ?? 1) * CFG.MU_SCALE),
     radius: s.isEarth ? CFG.EARTH_R : Math.max(2.2, CFG.EARTH_R * Math.pow(s.r, SOLAR_S)),
     ecc: Math.min(SOLAR_E_MAX, s.e * SOLAR_E),
     idx: i,

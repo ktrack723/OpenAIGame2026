@@ -160,6 +160,53 @@ button:disabled{opacity:.32;cursor:not-allowed;box-shadow:none}
 .zoomv{color:var(--cy);font-size:10.5px;font-weight:700;font-variant-numeric:tabular-nums;font-family:var(--mono)}
 pre{white-space:pre-wrap;line-height:1.55;color:#9fd0c4;margin:0;font-size:11px;font-family:var(--mono)}
 
+/* ── 승리 화면 ──
+   판을 이겼다는 건 인류가 한 번 더 살아남았다는 뜻이다. 버튼 라벨이 아니라
+   그림으로 보여 준다. 페이드 인만 쓰고 판(3D) 자체는 계속 보이게 둔다. */
+.victory{position:fixed;inset:0;z-index:8;display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(120% 90% at 50% 45%,rgba(6,20,32,.86) 0%,rgba(2,5,10,.94) 70%);
+  animation:vicin .45s ease-out}
+.victory[hidden]{display:none}
+.victory.out{opacity:0;transition:opacity .38s ease;pointer-events:none}
+@keyframes vicin{from{opacity:0}to{opacity:1}}
+.vicbox{width:min(560px,calc(100vw - 32px));padding:0 0 16px;background:var(--panel);
+  border:1px solid #1d7a4c;backdrop-filter:blur(12px);
+  box-shadow:0 26px 90px #000d,inset 0 0 70px #0a2a1c55;
+  clip-path:polygon(0 16px,16px 0,100% 0,100% calc(100% - 16px),calc(100% - 16px) 100%,0 100%);
+  animation:vicpop .5s cubic-bezier(.2,1.5,.4,1)}
+@keyframes vicpop{0%{transform:scale(.94) translateY(10px)}100%{transform:none}}
+.vicart{border-bottom:1px solid #123b2c;background:#050d18}
+.vicart svg{display:block;width:100%;height:auto}
+.victext{padding:12px 18px 4px}
+.victag{color:var(--gr);font-size:10px;font-weight:800;letter-spacing:.22em;margin-bottom:4px}
+.victext h2{margin:0 0 6px;color:#eaf7ff;font-size:21px;font-weight:900;letter-spacing:.06em}
+.victext p{margin:0 0 10px;color:#a9c8d8;font-size:12.5px;line-height:1.6}
+.vicstats{display:grid;gap:2px;margin-bottom:4px}
+.vicrow{display:flex;justify-content:space-between;gap:12px;font-size:11.5px;line-height:1.8;
+  font-family:var(--mono);border-top:1px solid #0d1c28}
+.vicrow span{color:var(--dim)}
+.vicrow b{color:#9df5c6;font-weight:700;font-variant-numeric:tabular-nums}
+.vicbtn{display:flex;flex-direction:column;align-items:center;gap:3px;width:calc(100% - 36px);
+  margin:12px 18px 0;padding:14px 12px;border:1px solid #1d7a4c;border-radius:0;cursor:pointer;
+  background:linear-gradient(180deg,#0c2b1d,#061710);color:#9df5c6;font-family:inherit;
+  clip-path:polygon(0 0,calc(100% - 14px) 0,100% 14px,100% 100%,14px 100%,0 calc(100% - 14px));
+  transition:background .12s,box-shadow .12s}
+.vicbtn:hover,.vicbtn:focus-visible{background:linear-gradient(180deg,#155e3c,#0a3323);color:#fff;
+  box-shadow:0 0 26px #5ef2a455}
+.vicbtnt{font-size:15px;font-weight:900;letter-spacing:.1em}
+.vicbtns{font-size:10px;letter-spacing:.14em;color:#4f9c78;font-family:var(--mono)}
+/* 과학자들이 각자 다른 박으로 뛴다 */
+.vsci{animation:vjump 1.05s ease-in-out infinite}
+.vsci.b{animation-duration:.86s;animation-delay:.16s}
+.vsci.c{animation-duration:1.18s;animation-delay:.32s}
+@keyframes vjump{0%,100%{transform:translateY(0)}45%{transform:translateY(-7px)}}
+.vconfetti rect{animation:vfall 1.9s linear infinite}
+@keyframes vfall{0%{transform:translateY(-26px);opacity:0}12%{opacity:1}100%{transform:translateY(64px);opacity:0}}
+.vpulse{animation:vring 2.2s ease-out infinite}
+@keyframes vring{0%{transform-origin:300px 66px;transform:scale(.7);opacity:.9}100%{transform-origin:300px 66px;transform:scale(1.5);opacity:0}}
+.vdrift{animation:vaway 6s linear infinite}
+@keyframes vaway{0%{transform:translateX(0);opacity:.65}100%{transform:translateX(-46px);opacity:0}}
+
 /* ── 오프닝 컷신 (동화책 × 리듬 게임) ──
    박에 맞춰 컷이 딱 끊어져 넘어가야 하므로 전환은 전부 짧고 과장되게.
    ease-out 오버슈트 한 번이면 "탁" 하고 꽂히는 느낌이 난다. */
