@@ -9,54 +9,38 @@ const dirOf = (x, y) => bearing(x, y).toFixed(0)
 
 // ─── 스테퍼 ─────────────────────────────────────────────────────
 // 슬라이더는 모바일에서 정밀 조작이 안 된다(트랙 1px이 0.5°가 넘는다).
-// 굵은 버튼 넷으로 굵게/미세하게 나누고, 누르고 있으면 가속 반복시킨다.
-function stepper(id, label, unit) {
+// 그래서 버튼이다. **한 번 누르면 한 칸** — 누른 만큼만 정확히 움직이는 게
+// 조준에서는 연속 이동보다 낫다(원하는 각을 지나치지 않는다).
+// 누르고 있으면 같은 칸이 가속 반복된다.
+//
+// 칸은 방향마다 셋이다: 미세 / 보통 / 큼. 각도는 0.1° / 1° / 10° —
+// 0.1°는 2000 GU 밖에서 3.5 GU를 옮기는 값이라 이 판의 실질 최소 단위다.
+function stepper(id, label, unit, steps) {
+  const [fine, mid, big] = steps
+  const btn = (d, cls, txt, amt) =>
+    `<button class="stepbtn ${cls}" data-d="${d}" title="${label} ${d > 0 ? '+' : '−'}${amt}${unit}"
+      aria-label="${label} ${d > 0 ? '증가' : '감소'} ${amt}">${txt}</button>`
   return `<div class="step" id="${id}">
   <span class="steplabel">${label}</span>
-  <button class="stepbtn big" data-d="-2" aria-label="${label} 크게 감소">◀◀</button>
-  <button class="stepbtn" data-d="-1" aria-label="${label} 감소">◀</button>
+  ${btn(-3, 'big', '◀◀', big)}${btn(-2, 'mid', '◀', mid)}${btn(-1, 'fine', '‹', fine)}
   <span class="stepval" id="${id}V">—</span>
-  <button class="stepbtn" data-d="1" aria-label="${label} 증가">▶</button>
-  <button class="stepbtn big" data-d="2" aria-label="${label} 크게 증가">▶▶</button>
+  ${btn(1, 'fine', '›', fine)}${btn(2, 'mid', '▶', mid)}${btn(3, 'big', '▶▶', big)}
   <span class="stepunit">${unit}</span>
 </div>`
 }
 
-// ─── 누르고 있으면 흐르는 조작 ──────────────────────────────────
-// 예전엔 한 번 누르면 1°씩 딱딱 끊어 움직였다(가속 반복). 각도를 30° 옮기려면
-// 서른 번을 눌러야 했고, 누르고 있어도 "톡 톡 톡" 계단처럼 움직여서
-// 원하는 각을 지나치기 일쑤였다.
-//
-// 이제 **시간 진행 버튼과 같은 방식**이다: 누르고 있는 동안 값이 연속으로
-// 흐르고, 오래 누를수록 빨라진다. 처음 0.35초는 느리게(정밀 조정) 가다가
-// 최대 속도까지 매끄럽게 올라간다. 짧게 톡 누르면 최소 단위 한 칸만 움직인다.
-//
-// rate: [시작 속도, 최대 속도] (초당 단위). ramp: 최대까지 걸리는 시간(초).
-function holdRamp(btn, apply, { slow, fast, ramp = 1.1, tap }) {
-  let raf = null, t0 = 0, last = 0, moved = 0
-  const stop = () => {
-    if (raf) cancelAnimationFrame(raf)
-    raf = null
-    // 거의 안 움직였으면 "톡 누른 것"으로 보고 한 칸을 확실히 준다
-    if (moved < tap * 0.75) apply(tap - moved)
-    moved = 0
-  }
-  const frame = (now) => {
-    const dt = Math.min(0.05, (now - last) / 1000); last = now
-    const held = (now - t0) / 1000
-    // 부드러운 가속 — ease-in 이라 처음엔 정밀하고 나중엔 시원하다
-    const k = Math.min(1, held / ramp)
-    const rate = slow + (fast - slow) * k * k
-    const d = rate * dt
-    apply(d); moved += d
-    raf = requestAnimationFrame(frame)
-  }
+// 누르고 있으면 같은 칸이 가속 반복된다(첫 반복 340ms → 최소 45ms).
+// 한 번 톡 누르면 정확히 한 칸만 움직인다 — 조준은 그게 맞다.
+function holdRepeat(btn, fn) {
+  let timer = null, delay = 340
+  const stop = () => { clearTimeout(timer); timer = null; delay = 340 }
+  const tick = () => { fn(); delay = Math.max(45, delay * 0.72); timer = setTimeout(tick, delay) }
   btn.addEventListener('pointerdown', (e) => {
     if (btn.disabled) return
     e.preventDefault()
+    // 포인터 캡처는 있으면 좋고 없어도 그만 — 실패가 반복 시작을 막으면 안 된다
     try { btn.setPointerCapture?.(e.pointerId) } catch { /* 무시 */ }
-    t0 = last = performance.now(); moved = 0
-    raf = requestAnimationFrame(frame)
+    fn(); timer = setTimeout(tick, delay)
   })
   for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) btn.addEventListener(ev, stop)
 }
@@ -92,9 +76,9 @@ export function makeHud(game, view) {
 
 <section class="mod firectl">
   <div class="modhead"><span class="tick"></span><span>FIRE CONTROL</span></div>
-  ${stepper('angle', '각도', '°')}
-  ${stepper('power', '속도', 'GU/s')}
-  ${stepper('yield', '작약', 'Mt')}
+  ${stepper('angle', '각도', '°', [0.1, 1, 10])}
+  ${stepper('power', '속도', 'GU/s', [1, 5, 10])}
+  ${stepper('yield', '작약', 'Mt', [1, 3, 6])}
   <div class="assist">
     <span class="asslabel">탐색</span>
     <button id="findPrev" class="ghost" title="닿는 각도를 반시계로">◀ 접촉각</button>
@@ -121,7 +105,7 @@ export function makeHud(game, view) {
     <button id="zfull" class="ghost" title="성계 전체 ( 9 )">전체</button>
     <button id="new" class="ghost">새 런</button>
   </div>
-  <div class="hint">TAB 조준/관측 전환 · SHIFT 시간 진행 · S 관측 배속 · ← → 각도 · ↑ ↓ 속도 · [ ] 작약 · F 접촉각<br>
+  <div class="hint">TAB 조준/관측 전환 · SHIFT 시간 진행 · S 관측 배속 · ← → 각도 1°(SHIFT 0.1°) · ↑ ↓ 속도 · [ ] 작약 · F 접촉각<br>
   조준 모드에서는 미사일이 날아가는 중에도 판이 멈춘다 · 행성에 마우스를 올리면(터치는 짚으면) 제원이 뜬다</div>
 </section>
 
@@ -168,25 +152,36 @@ export function makeHud(game, view) {
 
   // ── 스테퍼 배선 ────────────────────────────────────────────
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
-  // slow/fast = 누르기 시작할 때와 최대로 빨라졌을 때의 **초당** 변화량.
-  // 각도는 처음 2°/s로 기어가다 60°/s까지 붙는다 — 정밀 조정과 큰 이동이
-  // 같은 버튼 하나에 들어간다. ◀◀/▶▶ 는 그 두 배로 시작한다.
+  // 칸 크기는 stepper() 마크업과 같은 값을 쓴다(data-d 1/2/3 = 미세/보통/큼).
+  // 각도만 0.1° 단위로 스냅한다 — 눈금이 어긋나면 미세 조정이 의미를 잃는다.
+  const snap = (v, q) => Math.round(v / q) * q
   const CTL = {
-    angle: { tap: 0.5, slow: 2, fast: 60, big: 3, get: () => toDeg180(game.aim), set: (v) => { game.aim = v * Math.PI / 180 }, fmt: (v) => v.toFixed(1) },
-    power: { tap: 1, slow: 3, fast: 26, big: 2.5, get: () => game.power, set: (v) => { game.power = clamp(v, CFG.LAUNCH_MIN, CFG.LAUNCH_MAX) }, fmt: (v) => v.toFixed(0) },
-    yield: { tap: 1, slow: 2, fast: 9, big: 2, get: () => game.yieldMt, set: (v) => { game.yieldMt = clamp(v, CFG.YIELD_MIN, CFG.YIELD_MAX) }, fmt: (v) => v.toFixed(0) },
+    angle: {
+      steps: [0.1, 1, 10],
+      get: () => toDeg180(game.aim),
+      set: (v) => { game.aim = snap(v, 0.1) * Math.PI / 180 },
+      fmt: (v) => v.toFixed(1),
+    },
+    power: {
+      steps: [1, 5, 10],
+      get: () => game.power,
+      set: (v) => { game.power = clamp(Math.round(v), CFG.LAUNCH_MIN, CFG.LAUNCH_MAX) },
+      fmt: (v) => v.toFixed(0),
+    },
+    yield: {
+      steps: [1, 3, 6],
+      get: () => game.yieldMt,
+      set: (v) => { game.yieldMt = clamp(Math.round(v), CFG.YIELD_MIN, CFG.YIELD_MAX) },
+      fmt: (v) => v.toFixed(0),
+    },
   }
   el._sync = () => { for (const k in CTL) qs(`#${k}V`).textContent = CTL[k].fmt(CTL[k].get()) }
   for (const k in CTL) {
     const c = CTL[k]
     for (const btn of qs(`#${k}`).querySelectorAll('.stepbtn')) {
       const d = +btn.dataset.d
-      const sign = Math.sign(d), mul = Math.abs(d) === 2 ? c.big : 1
-      holdRamp(btn, (amount) => {
-        if (!game.canAim) return
-        c.set(c.get() + amount * sign * mul)
-        el._sync()
-      }, { slow: c.slow, fast: c.fast, tap: c.tap })
+      const amount = c.steps[Math.abs(d) - 1] * Math.sign(d)
+      holdRepeat(btn, () => { if (!game.canAim) return; c.set(c.get() + amount); el._sync() })
     }
   }
   el._sync()
@@ -234,8 +229,8 @@ export function makeHud(game, view) {
     if (!game.canAim) return
     const step = (k, n) => { CTL[k].set(CTL[k].get() + n); el._sync() }
     const fine = e.shiftKey
-    if (e.key === 'ArrowLeft') { e.preventDefault(); step('angle', fine ? -0.5 : -2) }
-    if (e.key === 'ArrowRight') { e.preventDefault(); step('angle', fine ? 0.5 : 2) }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); step('angle', fine ? -0.1 : -1) }
+    if (e.key === 'ArrowRight') { e.preventDefault(); step('angle', fine ? 0.1 : 1) }
     if (e.key === 'ArrowUp') { e.preventDefault(); step('power', 1) }
     if (e.key === 'ArrowDown') { e.preventDefault(); step('power', -1) }
     if (e.key === '[') step('yield', -1)
@@ -260,7 +255,7 @@ export function makeHud(game, view) {
 //                 Δv, 남은 체력. 화면에는 같은 값이 노란/흰 화살표 + 수치
 //                 라벨로도 나온다(AimHelper). 계산으로 확정되는 값만 넣는다.
 //  [3층 · 경고]   플레이어가 **의도하지 않았을 가능성이 높은 부작용**만.
-//                 지구가 폭풍 반경에 들어간다, 반격탄이 나온다, 벨트까지 날아간다.
+//                 지구가 폭풍 반경에 들어간다, 맞은 공이 벨트까지 날아갔다 돌아온다.
 //                 조건은 전부 "지금 이 한 발에서 확정적으로 참"인 것들이라
 //                 추측이나 확률은 한 줄도 넣지 않는다.
 //
@@ -268,8 +263,6 @@ export function makeHud(game, view) {
 //   · 2차 충돌 — "이 공이 저 공에 맞는다"는 절대 안 알려준다. 그걸 읽는 게 게임이다.
 //   · 판의 승패 예측, 점수 예상, 최적 각도 추천.
 //   · 확률·추정치. LCD에 뜨는 숫자는 전부 결정론적 계산 결과다.
-const predLineDoc = null   // (위 주석이 곧 명세다)
-
 function predLine(game, p) {
   const h = p.hit
   const role = h && h.role ? ROLES[h.role] : null
@@ -278,10 +271,9 @@ function predLine(game, p) {
     case 'earth': return ['bad', 'ABORT', '지구 직격 — 즉시 게임 오버', '각도를 바꿔라']
     case 'void': return ['warn', 'VOID', `${h.name}${badge}`, role.aim]
     case 'volatile': return ['hit', 'CHAIN', `${h.name}${badge}`, `${role.aim} · 반경 ${h.volatileR.toFixed(0)} GU`]
-    case 'intercept': return ['hit', 'INTCP', `공중 요격 — ${h.yld}Mt 동시 기폭`, `폭풍 반경 ${h.blast.toFixed(0)} GU`]
     case 'debris': return ['warn', 'DEBRIS', '파편에 조기 폭발', '']
     case 'sun': return ['warn', 'SOLAR', '태양 소멸', '근일점이 너무 낮다']
-    case 'lost': return ['warn', 'LOST', '성계 이탈 — 유실', '발사 속도 과다']
+    // '성계 이탈(유실)'은 없다 — 카이퍼 벨트가 튕겨 되돌려 보낸다.
     case 'timeout': return ['warn', 'NO CTC', `${CFG.MISSILE_TTL}초 내 접촉 없음`, '자폭']
     case 'target':
     case 'neutral': {
@@ -295,7 +287,6 @@ function predLine(game, p) {
       // [3층] 의도하지 않았을 부작용만. 전부 이 한 발에서 확정적으로 참인 것.
       const warn = [
         h.earthInBlast ? '⚠ 폭풍 반경에 지구가 들어간다' : '',
-        h.counter ? `⚠ 반격탄이 되날아온다 (${h.counterSpeed.toFixed(0)} GU/s, 때린 쪽)` : '',
         h.role === 'armor' ? `무겁다 — 임펄스 ${(CFG.ARMOR_DV * 100).toFixed(0)}%만 먹었다` : '',
         h.willEject ? `↩ 벨트까지 날아갔다 되돌아온다 (${h.vAfter.toFixed(0)}>${h.vEsc.toFixed(0)})` : '',
       ].filter(Boolean).join(' · ')

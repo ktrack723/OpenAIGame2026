@@ -331,8 +331,8 @@ export class SceneView {
     }))
     trueRing.renderOrder = 13
     // ── 체력 게이지 ──
-    // 공은 이제 세 번 박아야 부서진다. "몇 번 남았나"가 판을 읽는 1순위 정보라
-    // 공 둘레에 남은 체력만큼 호(arc)를 그린다. 3/3이면 아예 안 그린다 —
+    // 공은 이제 체력이 다 닳아야 부서진다. "몇 번 남았나"가 판을 읽는 1순위 정보라
+    // 공 둘레에 남은 체력만큼 호(arc)를 그린다. 상처 없는 공(hp = hpMax)은 안 그린다 —
     // 스무 개가 전부 완전한 링을 두르면 그게 곧 노이즈이므로, 다친 공만 표시한다.
     const hpArc = new THREE.Mesh(new THREE.RingGeometry(1.30, 1.46, 40, 1, Math.PI / 2, Math.PI * 2), new THREE.MeshBasicMaterial({
       color: 0x4ade80, transparent: true, opacity: 0.95, depthWrite: false, depthTest: false, side: THREE.DoubleSide,
@@ -447,6 +447,10 @@ export class SceneView {
       fx.halo.visible = b.alive && solid && !waiting
       fx.ring.visible = b.alive && solid && !waiting
       fx.trueRing.visible = b.alive && solid && r > hitRadiusOf(b) * VIS.TRUE_R_HINT
+      // 체력 링은 **여기서** 끈다. 아래 체력 블록은 `if (!b.alive) continue` 뒤에
+      // 있어서 죽은 공에는 아예 도달하지 않는다 — 그 탓에 부서진 공의 체력 링만
+      // 궤도에 유령처럼 남아 돌고 있었다. 켜는 건 아래, 끄는 건 여기다.
+      if (!b.alive || waiting) fx.hpArc.visible = false
       if (fx.mod) {
         fx.mod.grp.visible = b.alive
         if (b.alive) {
@@ -526,6 +530,7 @@ export class SceneView {
       }
 
       // ── 체력 호 — 다친 공만. 남은 칸이 줄면 호가 짧아지고 색이 식는다 ──
+      // (여기는 살아 있는 공만 도달한다 — 죽은 공은 위에서 이미 껐다.)
       const hpMax = b.hpMax ?? CFG.PLANET_HP, hp = b.hp ?? hpMax
       const hurt = solid && hp < hpMax
       fx.hpArc.visible = hurt
@@ -551,14 +556,14 @@ export class SceneView {
       if (!fx) {
         // 미사일은 커서다 — 행성 뒤로 숨으면 안 되므로 깊이 테스트를 끄고 항상 위에 그린다.
         // (깊이를 쓰지 않으니 트레일을 가리지도 않는다.)
-        const tone = m.hostile ? 0xff9aa6 : 0xf1f5f9
+        const tone = 0xf1f5f9
         const mat = (c) => new THREE.MeshBasicMaterial({
           color: c, transparent: true, depthTest: false, depthWrite: false, side: THREE.DoubleSide,
         })
         const mesh = new THREE.Group()
         const body = new THREE.Mesh(this.missileGeo.body, mat(tone))
-        const nose = new THREE.Mesh(this.missileGeo.nose, mat(m.hostile ? 0xdc2626 : 0xf87171))
-        const fin = new THREE.Mesh(this.missileGeo.fin, mat(m.hostile ? 0xb91c1c : 0x94a3b8))
+        const nose = new THREE.Mesh(this.missileGeo.nose, mat(0xf87171))
+        const fin = new THREE.Mesh(this.missileGeo.fin, mat(0x94a3b8))
         for (const o of [body, nose, fin]) o.renderOrder = 9
         mesh.add(body, nose, fin)
         mesh.renderOrder = 9
@@ -573,7 +578,7 @@ export class SceneView {
       if (!m.alive) { fx.mesh.visible = false; fx.glow.visible = false; continue }
       // 화면상 크기 고정 — 줌아웃해도 형상이 읽히게. 다만 예전(11px 기준)에는
       // 미사일이 행성만 하게 그려져서 판을 가렸다. **그림만** 줄인다:
-      // 명중 반경(hitRadiusOf)도 근접 신관(MISSILE_HIT_R)도 그대로다.
+      // 명중 반경(hitRadiusOf)은 그대로다.
       const r = Math.max(2.4, 6.5 * this.rig.worldPerPx)
       const v = Math.hypot(m.vel.x, m.vel.y) || 1
       fx.mesh.visible = true; fx.glow.visible = true
@@ -657,8 +662,7 @@ export class SceneView {
     // 미사일 궤적 — 빗나간 샷은 흐리게 스테이지 끝까지 남긴다 (§14.4)
     for (const m of g.missiles) {
       if (m.path.length < 2) continue
-      const live = m.hostile ? 0xff8fa3 : 0xffffff
-      this.ribbon(m.path, m.alive ? 3.6 : 2.2, m.alive ? live : (m.hostile ? 0x9f5f6b : 0x7c8798),
+      this.ribbon(m.path, m.alive ? 3.6 : 2.2, m.alive ? 0xffffff : 0x7c8798,
         { opacity: m.alive ? 0.95 : 0.36, z: 1, depth: true })
     }
 

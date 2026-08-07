@@ -18,10 +18,9 @@ export class Explosions {
     if (!q || !q.length) return
     for (const e of q) {
       if (e.kind === 'launch') {
-        const c = e.hostile ? 0xfb7185 : 0xbfdbfe
+        const c = 0xbfdbfe
         this.parts.burst(e.x, e.y, { n: 40, color: c, speed: 90, size: 8, ttl: 0.5, spread: 1.4, dir: e.a })
         this.parts.shock(e.x, e.y, 26, c, 0.4)
-        if (e.hostile) { this.rig.hit(6); this.flash(0.12, '#ffe4e6') }
       } else if (e.kind === 'warp') this.warp(e)
       else if (e.kind === 'laserCharge') this.laserCharge(e)
       else if (e.kind === 'laserFire') this.laserFire(e)
@@ -150,15 +149,6 @@ export class Explosions {
     const base = Math.max(44, (e.r ?? 20) * 2.4)     // 표적 크기에 비례한 최소 부피
     const R = base * (0.85 + 2.4 * k)
     const P = this.parts
-
-    if (e.shield) {   // 방어막에 삼켜짐 — 소리만 요란하고 아무 일도 안 난다
-      P.puff(e.x, e.y, { r0: 3, r1: R * 0.55, ttl: 0.45, color: 0x67e8f9, alpha: 0.85 })
-      P.shock(e.x, e.y, R, 0x22d3ee, 0.55, { thin: true, to: 1.6 })
-      P.burst(e.x, e.y, { n: 40, color: 0x67e8f9, speed: 150, size: 8, ttl: 0.5 })
-      this.rig.hit(6)
-      this.flash(0.12, '#a5f3fc')
-      return
-    }
 
     // ① 흰 섬광 — 프레임 하나를 통째로 태운다
     P.puff(e.x, e.y, { r0: R * 0.25, r1: R * 1.15, ttl: 0.18, color: 0xffffff, alpha: 1 })

@@ -72,8 +72,11 @@ h1{margin:0;color:var(--cy);letter-spacing:.34em;font-size:15px;font-weight:800;
 .alarmtext{color:#ffc9cf;font-size:11px;line-height:1.5}
 @keyframes alarmpulse{0%,100%{box-shadow:0 0 0 #0000}50%{box-shadow:0 0 22px #ff5c6a55,inset 0 0 22px #ff5c6a22}}
 
-/* ── 스테퍼 — 모바일에서 슬라이더는 정밀 조작이 안 된다 ── */
-.step{display:grid;grid-template-columns:34px auto auto 1fr auto auto 30px;align-items:center;gap:4px;margin:5px 0}
+/* ── 스테퍼 — 모바일에서 슬라이더는 정밀 조작이 안 된다 ──
+   방향마다 버튼이 셋이다: ‹ 미세 / ◀ 보통 / ◀◀ 큼. 버튼 크기가 곧 걸음
+   크기라서 라벨을 읽지 않아도 손이 먼저 안다(큰 걸음일수록 버튼이 크고 밝다). */
+.step{display:grid;grid-template-columns:32px auto auto auto 1fr auto auto auto 26px;
+  align-items:center;gap:3px;margin:5px 0}
 .steplabel{color:var(--dim);font-size:10px;font-weight:800;letter-spacing:.1em}
 .stepval{text-align:center;color:#eaf7ff;font-size:15px;font-weight:800;font-family:var(--mono);
   font-variant-numeric:tabular-nums;text-shadow:0 0 10px #4fd6f755}
@@ -81,7 +84,9 @@ h1{margin:0;color:var(--cy);letter-spacing:.34em;font-size:15px;font-weight:800;
 .stepbtn{margin:0;padding:7px 0;min-width:30px;border:1px solid var(--line);border-radius:0;
   background:#0d1c2b;color:var(--cy);font-size:11px;font-weight:800;line-height:1;cursor:pointer;
   touch-action:manipulation;transition:background .1s,box-shadow .1s}
-.stepbtn.big{min-width:34px;color:#9fe8ff}
+.stepbtn.fine{min-width:22px;padding:6px 0;font-size:12px;color:#6f9fb8;border-color:#173247}
+.stepbtn.mid{min-width:27px;color:var(--cy)}
+.stepbtn.big{min-width:33px;color:#9fe8ff;background:#102438}
 .stepbtn:hover:not(:disabled),.stepbtn:focus-visible{background:#16334a;box-shadow:0 0 12px #4fd6f744}
 .stepbtn:active:not(:disabled){background:var(--cy);color:#04121c}
 
@@ -147,11 +152,6 @@ button{font-family:inherit}
 .ghost:hover:not(:disabled),.ghost:focus-visible{background:#16334a;color:#eaf7ff;box-shadow:0 0 12px #4fd6f733}
 .ghost.wide{flex:1}
 .ghost.on{background:var(--cy);color:#03202a;border-color:var(--cy)}
-.ghost.intercept{border-color:#8e2a6b;color:#f9c9ec;background:#2a0a22}
-.ghost.intercept:hover:not(:disabled){background:#5c1846;color:#fff;box-shadow:0 0 12px #ff5cc766}
-.go{margin:0;padding:9px 13px;border:1px solid #1d7a4c;border-radius:0;background:#0c2b1d;color:#9df5c6;
-  font-weight:800;font-size:12px;letter-spacing:.08em;cursor:pointer}
-.go:hover,.go:focus-visible{background:#155e3c;color:#fff;box-shadow:0 0 16px #5ef2a455}
 #fold{padding:2px 9px;font-size:12px;line-height:1.4}
 button:disabled{opacity:.32;cursor:not-allowed;box-shadow:none}
 .hud.locked .step,.hud.locked .assist{opacity:.42}
@@ -361,9 +361,11 @@ pre{white-space:pre-wrap;line-height:1.55;color:#9fd0c4;margin:0;font-size:11px;
   .hud{left:max(8px,env(safe-area-inset-left));right:max(8px,env(safe-area-inset-right));top:auto;
     bottom:max(8px,env(safe-area-inset-bottom));width:auto;max-height:56dvh;padding:9px 10px 10px}
   h1{font-size:13px;letter-spacing:.26em}
-  .stepbtn{padding:10px 0;min-width:38px;font-size:12px}
-  .stepbtn.big{min-width:42px}
-  .step{grid-template-columns:32px auto auto 1fr auto auto 28px;gap:5px}
+  .stepbtn{padding:11px 0;min-width:32px;font-size:12px}
+  .stepbtn.fine{min-width:26px;padding:10px 0}
+  .stepbtn.mid{min-width:30px}
+  .stepbtn.big{min-width:36px}
+  .step{grid-template-columns:30px auto auto auto 1fr auto auto auto 24px;gap:4px}
   .stepval{font-size:17px}
   .firebtn{padding:16px 12px;font-size:17px}
   .ghost{padding:10px 12px}

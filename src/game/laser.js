@@ -2,13 +2,22 @@ import { CFG, hitRadiusOf } from './config.js'
 import { cloneBodies, segHitsCircle, stepBodies } from './physics.js'
 
 // ─── 조르그 레이저 ──────────────────────────────────────────────
-// 본성이 지구의 **미래 위치**를 계산해 조준선을 고정한 뒤 충전하고 쏜다.
+// 본성은 "지금 지구가 있는 자리"를 겨누지 않는다. **충전 시간(LASER_CHARGE초)
+// 뒤에 지구가 도달할 자리**를 미리 계산해 그 한 점에 조준을 박아 두고 쏜다.
 //
-// 핵심은 "조준선이 충전 시작에 고정된다"는 것이다. 계속 추적하면 회피가
-// 불가능하고, 발사 순간에 정하면 예고가 무의미하다. 고정해 두면 대응이 둘 생긴다:
-//   ① 다른 행성을 조준선 위로 밀어 넣어 막는다 (그 행성이 대신 얻어맞고 밀려난다)
-//   ② 핵 폭풍으로 지구를 밀어 조준점에서 비켜난다 (지구는 직격하면 안 되니
+// 고정되는 것은 **조준점**이다(L.ax, L.ay — 월드 좌표의 한 점).
+//   · 계속 추적하면(지구를 매 순간 다시 겨누면) 회피가 원천적으로 불가능하다.
+//   · 발사 순간에 정하면 예고가 무의미하다.
+//   · 지금 위치로 직선을 그으면 그건 조준이 아니라 그냥 선이다 — 지구는
+//     그 사이에 공전해서 이미 거기 없다.
+// 그래서 "리드 사격 후 고정". 총구(본성)는 공전하며 움직이고 광선은 그 점을
+// 계속 겨누므로, 화면에 뜨는 회랑은 언제나 **그 한 점으로 수렴한다**.
+//
+// 대응은 셋이다:
+//   ① 핵 폭풍으로 지구를 밀어 그 점을 비켜 가게 한다 (지구는 직격하면 안 되니
 //      폭풍의 2차 압력을 쓰는 것 — 기존 blastWave가 그대로 대응 수단이 된다)
+//   ② 다른 행성을 회랑 위로 밀어 넣어 막는다 (그 행성이 대신 얻어맞고 밀려난다)
+//   ③ 충전이 끝나기 전에 본성을 부순다 (발사 취소)
 //
 // 지구에 맞으면 게임 오버다.
 
@@ -23,8 +32,9 @@ export function makeLaser(rng) {
     nextAt: CFG.LASER_FIRST,
     from: null,        // 발사한 본성 (조준 고정 시점의 좌표를 따로 들고 있는다)
     ox: 0, oy: 0,      // 발사점
-    ax: 0, ay: 0,      // 조준 목표점 (지구의 미래 위치)
-    ux: 0, uy: 0,      // 단위 방향
+    ax: 0, ay: 0,      // 조준 목표점 — 충전 시간 뒤 지구의 위치. 충전 내내 고정
+    ux: 0, uy: 0,      // 총구 → 조준점 단위 방향 (총구가 움직이면 다시 푼다)
+    aimDist: 0,        // 총구에서 조준점까지의 거리
     range: 0,
     result: null,      // 'earth' | { body } | null
     rng,
@@ -32,7 +42,8 @@ export function makeLaser(rng) {
 }
 
 // 지구를 태양 중력만으로 dt초 뒤까지 굴린다. 행성 섭동은 무시 —
-// 9초 앞을 보는 데 필요한 정밀도는 이걸로 충분하고, 무엇보다 싸다.
+// 충전 시간(LASER_CHARGE초) 앞을 보는 데 필요한 정밀도는 이걸로 충분하고,
+// 무엇보다 싸다. 어차피 그 사이에 플레이어가 지구를 밀어 어긋내는 게 목적이다.
 function earthAfter(earth, seconds) {
   const sim = cloneBodies([earth])
   const dt = 1 / 40, n = Math.round(seconds / dt)
@@ -69,30 +80,24 @@ export function stepLaser(L, game, dt) {
     if (L.t < L.nextAt) return null
     const src = game.homeworld
     if (!src || !src.alive) { L.nextAt = L.t + 20; return null }   // 본성이 없으면 조용하다
-    // ── 조준: 지구의 미래 위치를 예측해 **방향을 고정한다** ──
-    // 예전엔 "고정된 한 점"을 겨눴다. 그러면 본성이 밀려나도 총구가 그 점을
-    // 다시 겨눠서(발사점만 옮겨지고 조준점은 그대로) 회피가 안 됐다 —
-    // 본성을 미는 대응이 원천적으로 무의미했다.
-    // 이제 고정되는 건 **방향(ux, uy)**이다. 총구가 옆으로 밀리면 광선 전체가
-    // 그만큼 평행이동하므로, 본성을 밀어내는 것만으로 빗나가게 만들 수 있다.
+    // ── 조준: 충전 시간 뒤에 지구가 도달할 자리를 계산해 **그 점을 고정한다** ──
     const aim = earthAfter(game.earth, CFG.LASER_CHARGE)
-    const dx = aim.x - src.pos.x, dy = aim.y - src.pos.y
-    const d = Math.hypot(dx, dy) || 1
     L.state = LASER_CHARGE; L.t = 0
     L.from = src; L.ox = src.pos.x; L.oy = src.pos.y
-    L.ax = aim.x; L.ay = aim.y            // 예측 지점(연출·경보 문구용)
-    L.ux = dx / d; L.uy = dy / d          // ★ 이게 고정되는 값이다
+    L.ax = aim.x; L.ay = aim.y            // ★ 이게 고정되는 값이다 (조준점)
     L.range = game.aMax * CFG.LASER_RANGE_MUL
     L.result = null
+    aimAt(L)
     return { kind: 'charge', src }
   }
 
   if (L.state === LASER_CHARGE) {
     // 본성이 충전 중에 파괴되면 발사가 취소된다 — 선제 격파가 정당한 대응이 된다
     if (!L.from.alive) { L.state = LASER_IDLE; L.t = 0; L.nextAt = nextPeriod(L); return { kind: 'abort' } }
-    // 총구는 본성을 따라간다(본성도 공전하고, 밀리면 밀린 대로).
-    // **방향은 건드리지 않는다** — 그래서 본성이 옆으로 밀리면 광선도 통째로 옆으로 간다.
+    // 총구는 본성을 따라간다(본성도 공전하고, 밀리면 밀린 대로). 조준점은
+    // 그대로이므로 방향만 다시 푼다 — 회랑은 언제나 그 한 점으로 수렴한다.
     L.ox = L.from.pos.x; L.oy = L.from.pos.y
+    aimAt(L)
     if (L.t < CFG.LASER_CHARGE) return null
     // ── 발사 ──
     L.state = LASER_FLASH; L.t = 0
@@ -105,6 +110,14 @@ export function stepLaser(L, game, dt) {
     L.state = LASER_IDLE; L.t = 0; L.nextAt = nextPeriod(L)
   }
   return null
+}
+
+// 총구 → 고정 조준점의 단위 방향. 조준점은 그대로 두고 이것만 다시 푼다.
+function aimAt(L) {
+  const dx = L.ax - L.ox, dy = L.ay - L.oy
+  const d = Math.hypot(dx, dy) || 1
+  L.ux = dx / d; L.uy = dy / d
+  L.aimDist = d               // 총구에서 조준점까지 — 회랑 연출(LaserView)이 쓴다
 }
 
 function nextPeriod(L) {

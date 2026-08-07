@@ -6,6 +6,11 @@ import { bearing } from '../core/angle.js'
 // 화살표만 그리면 "어느 쪽"까지는 읽히는데 "몇 도"가 안 읽힌다. 두 방향
 // (충격 방향 / 타격 직후 진로)은 이 게임의 조준 그 자체이므로 숫자로도 박아 둔다.
 // 캔버스 스프라이트라 화면 크기 고정 — 줌과 무관하게 같은 크기로 읽힌다.
+//
+// **작게 그린다.** 이 라벨은 충돌 지점 위에 얹히는데, 크면 정작 봐야 할 것
+// (락온 반달 = 어느 살을 치는가, 폭풍 반경 원)을 가려 버린다. 같은 값이
+// LCD에도 큰 글씨로 나오므로 여기서는 "곁눈으로 확인되는" 크기면 충분하다.
+// 대신 DPR을 3으로 올려 굽는다 — 작아도 흐릿하면 못 읽는다.
 function tagSprite() {
   const c = document.createElement('canvas')
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({
@@ -19,18 +24,18 @@ function tagSprite() {
 function drawTag(sp, text, color) {
   if (sp.userData.text === text) return
   sp.userData.text = text
-  const dpr = 2, fs = 22, pad = 8
+  const dpr = 3, fs = 9, pad = 3
   const c = sp.userData.c, g = c.getContext('2d')
-  g.font = `800 ${fs}px ui-monospace, SFMono-Regular, Menlo, monospace`
-  const w = Math.ceil(g.measureText(text).width) + pad * 2, h = fs + pad
-  c.width = w * dpr; c.height = h * dpr
+  g.font = `700 ${fs}px ui-monospace, SFMono-Regular, Menlo, monospace`
+  const w = Math.ceil(g.measureText(text).width) + pad * 2, h = fs + pad * 1.4
+  c.width = Math.ceil(w * dpr); c.height = Math.ceil(h * dpr)
   g.scale(dpr, dpr)
-  g.font = `800 ${fs}px ui-monospace, SFMono-Regular, Menlo, monospace`
+  g.font = `700 ${fs}px ui-monospace, SFMono-Regular, Menlo, monospace`
   g.textBaseline = 'middle'
-  g.fillStyle = 'rgba(3,8,14,.82)'
-  g.beginPath(); g.roundRect(0, 0, w, h, 5); g.fill()
+  g.fillStyle = 'rgba(3,8,14,.72)'
+  g.beginPath(); g.roundRect(0, 0, w, h, 2.5); g.fill()
   g.fillStyle = color
-  g.fillText(text, pad, h / 2 + 1)
+  g.fillText(text, pad, h / 2 + 0.5)
   sp.material.map.dispose()
   const t = new THREE.CanvasTexture(c)
   t.colorSpace = THREE.SRGBColorSpace
@@ -43,12 +48,12 @@ function drawTag(sp, text, color) {
 // 경로·락온 색 = 무엇에 닿는가 (결과가 아니라 접촉 대상)
 export const PRED_TONE = {
   target: 0x4ade80, neutral: 0xe2e8f0, earth: 0xf87171,
-  debris: 0x94a3b8, sun: 0xfb923c, lost: 0x94a3b8, timeout: 0x67e8f9,
-  volatile: 0xfb923c, void: 0xa855f7, intercept: 0xf472b6,
+  debris: 0x94a3b8, sun: 0xfb923c, timeout: 0x67e8f9,
+  volatile: 0xfb923c, void: 0xa855f7,
 }
 
 // ─── 조준 보조 렌더 ─────────────────────────────────────────────
-// 락온(맞는 순간 그 공이 있을 자리) + 임펄스/진로/반격탄 화살표 + 폭풍 반경.
+// 락온(맞는 순간 그 공이 있을 자리) + 임펄스/진로 화살표 + 폭풍 반경.
 // **2차 이후의 충돌은 그리지 않는다** — 판이 어떻게 굴러갈지는 플레이어 몫이다.
 export class AimHelper {
   // renderRadius는 Scene이 소유한다(최소 화면 크기 바닥값이 카메라에 의존).
@@ -87,12 +92,9 @@ export class AimHelper {
     this.scene.add(this.lockDisc, this.lockRing, this.lockHemi, this.lockBrackets)
     this.t = 0
 
-    // 조준 보조 — 임펄스 방향(노랑) / 타격 직후 공의 진로(흰색)
-    //           / 요새 반격탄 진로(붉은색) / 폭풍 반경(주황 링)
+    // 조준 보조 — 임펄스 방향(노랑) / 타격 직후 공의 진로(흰색) / 폭풍 반경(주황 링)
     this.pushArrow = makeArrow(0xfbbf24, 0.95)
     this.courseArrow = makeArrow(0xffffff, 0.9)
-    this.counterArrow = makeArrow(0xfb7185, 0.95)
-    this.scene.add(this.counterArrow)
     this.blastRing = new THREE.Mesh(new THREE.RingGeometry(0.985, 1, 96), new THREE.MeshBasicMaterial({
       color: 0xf59e0b, transparent: true, opacity: 0.35, depthTest: false, depthWrite: false, side: THREE.DoubleSide,
     }))
@@ -167,7 +169,6 @@ export class AimHelper {
     this.courseArrow.visible = !!push
     this.pushTag.visible = !!push
     this.courseTag.visible = !!push
-    this.counterArrow.visible = !!(h && h.counter)
     this.blastRing.visible = !!h
     if (h) {
       // 휘발성이면 폭풍이 아니라 유폭 반경을 그린다 — 실제로 밀리는 경계가 그쪽이다
@@ -176,11 +177,6 @@ export class AimHelper {
       this.blastRing.scale.setScalar(useVol ? h.volatileR : h.blast)
       this.blastRing.material.opacity = h.outcome === 'earth' ? 0.6 : useVol ? 0.55 : 0.3
       this.blastRing.material.color.setHex(h.outcome === 'earth' ? 0xf87171 : 0xf59e0b)
-    }
-    if (h && h.counter) {   // 반격탄은 내가 때린 쪽으로 되나온다 = 임펄스의 정반대
-      const ca = Math.atan2(-h.dy, -h.dx)
-      const cl = Math.max(70 * ppw, this.lockRing.scale.x * 2.2)
-      setArrow(this.counterArrow, h.px, h.py, ca, cl, Math.max(3 * ppw, cl * 0.06), 7)
     }
     if (push) {
       const R = this.lockRing.scale.x   // 락온과 같은 반경 위에서 화살표를 시작한다
@@ -200,8 +196,8 @@ export class AimHelper {
       // 둘이 다른 이유(원래 궤도 속도와 합쳐지기 때문)가 이 게임의 핵심이라
       // 두 값을 나란히 보여 준다.
       const pa = Math.atan2(h.dy, h.dx)
-      drawTag(this.pushTag, `충격 ${bearing(h.dx, h.dy).toFixed(0)}° Δv${h.dv.toFixed(1)}`, '#fbbf24')
-      drawTag(this.courseTag, `진로 ${bearing(h.vx, h.vy).toFixed(0)}° ${sp.toFixed(0)}GU/s`, '#ffffff')
+      drawTag(this.pushTag, `${bearing(h.dx, h.dy).toFixed(0)}° Δv${h.dv.toFixed(1)}`, '#fbbf24')
+      drawTag(this.courseTag, `${bearing(h.vx, h.vy).toFixed(0)}° ${sp.toFixed(0)}`, '#ffffff')
       const place = (tag, ax, ay, ang, dist) => {
         const px = tag.userData.px
         tag.scale.set(px.w * ppw, px.h * ppw, 1)
@@ -218,7 +214,6 @@ export class AimHelper {
     this.lockHemi.visible = false; this.lockBrackets.visible = false
     this.pushArrow.visible = false
     this.courseArrow.visible = false
-    this.counterArrow.visible = false
     this.blastRing.visible = false
     this.pushTag.visible = false
     this.courseTag.visible = false

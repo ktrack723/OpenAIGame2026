@@ -32,9 +32,3 @@ export function setArrow(grp, x, y, ang, length, width, z = 6) {
   grp.position.set(x, y, z)
   grp.rotation.z = ang
 }
-
-export function setArrowColor(grp, color, opacity) {
-  const { shaft, head } = grp.userData
-  shaft.material.color.set(color); head.material.color.set(color)
-  if (opacity !== undefined) { shaft.material.opacity = opacity; head.material.opacity = opacity }
-}

@@ -107,7 +107,7 @@ export function stepMissile(m, bodies, dt) {
   }
   m.age += dt
   m.minSunDist = Math.min(m.minSunDist, len(m.pos))   // 태양 가속 보너스 판정용 (§9.1)
-  // 트레일은 최근 ~6초만 (매 4스텝 기록 × 180점). 40초치를 다 남기면
+  // 트레일은 최근 ~6초만 (매 4스텝 기록 × 180점). TTL 52초치를 다 남기면
   // 화면이 실오라기로 뒤덮여 정작 공이 안 보인다.
   if (++m.pathN % 4 === 0 && m.path.push(clone(m.pos)) > 180) m.path.shift()
 }
@@ -196,7 +196,7 @@ export function shatter(b, bodies, rnd) {
 // ─── 당구 충돌 — 운동량 보존 탄성 반사 ──────────────────────────
 // 두 공은 서로를 부수지 않는다. 접촉면 법선 방향의 성분만 교환하고 튕긴다
 // (반발계수 1 = 속력·운동량·에너지 전부 보존). 부수는 건 체력이 다 닳았을
-// 때뿐이다 — 즉 같은 공을 세 번 몰아붙여야 한다.
+// 때뿐이다 — 중립 행성은 세 번, 조르그 요새는 한 번(CFG.PLANET_HP / ZORG_HP).
 // 반환값은 충돌 상대속도(데미지 판정용).
 export function elasticBounce(a, b) {
   let nx = b.pos.x - a.pos.x, ny = b.pos.y - a.pos.y
@@ -247,7 +247,7 @@ export function beltBounce(o, beltR, restitution = CFG.BELT_RESTITUTION) {
 }
 
 // ─── T1-7 개정: 행성끼리의 접촉 = 당구 충돌 (+체력 1 소모) ───────
-// 접촉이 곧 사망이던 규칙을 없앴다. 접촉은 이제 "쳤다"이고, 세 번 쳐야 죽는다.
+// 접촉이 곧 사망이던 규칙을 없앴다. 접촉은 이제 "쳤다"이고, 체력이 다 닳아야 죽는다.
 // 그래서 한 판에 공이 스무 개 굴러다녀도 판이 저절로 정리되지 않는다.
 export function resolveBodyPairs(bodies, game) {
   const n = bodies.length
