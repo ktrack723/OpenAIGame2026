@@ -21,6 +21,10 @@ import { cloneBodies, segCircleEntry, segHitsCircle, stepBodies } from './physic
 //
 // 닿는 것은 **체력과 무관하게 부서진다.** 태양과 특이점만 예외로, 광선을 막되
 // 부서지지 않는다(원래 부술 수 없는 것들이다). 지구에 닿으면 게임 오버다.
+//
+// ③ 요격 — 날아가는 광선의 진로에 **내 탄두가 걸려 있으면** 그 자리에서 터지며
+//    광선을 막는다. 조준선은 충전 내내 보이므로 "미리 그 선 위에 탄을 걸쳐 둔다"가
+//    성립한다 — 회피(지구 밀기)·차폐(행성 밀어넣기)·선제(본성 격파)에 이어 넷째 수다.
 
 export const LASER_IDLE = 'idle'
 export const LASER_CHARGE = 'charge'
@@ -156,6 +160,14 @@ export function stepLaser(L, game, dt) {
     L.head = Math.min(L.range, h0 + CFG.LASER_SPEED * dt)
     const x0 = L.ox + L.ux * h0, y0 = L.oy + L.uy * h0
     const x1 = L.ox + L.ux * L.head, y1 = L.oy + L.uy * L.head
+    // ── 요격 — 천체 판정보다 먼저다. 탄두가 앞을 막고 있으면 거기서 끝난다 ──
+    for (const m of game.missiles) {
+      if (!m.alive) continue
+      if (!segHitsCircle(x0, y0, x1, y1, m.pos.x, m.pos.y, CFG.LASER_INTERCEPT_R)) continue
+      L.state = LASER_IDLE; L.t = 0; L.nextAt = nextPeriod(L)
+      L.head = Math.hypot(m.pos.x - L.ox, m.pos.y - L.oy)
+      return { kind: 'intercept', missile: m, x: m.pos.x, y: m.pos.y }
+    }
     // 총구가 된 본성은 첫 구간에서만 제외한다(제 몸에서 나가는 중이다)
     const hit = sweep(game, x0, y0, x1, y1, h0 < hitRadiusOf(L.from) * 2 ? L.from : null)
     if (hit) {
@@ -190,7 +202,7 @@ export const impactLeft = (L) =>
 // 광선 하나하나는 본성의 것과 똑같이 굴러간다(같은 sweep, 같은 속도, 닿는 첫
 // 천체는 체력 불문 소멸). 다만 조준이 없다 — 부채꼴로 하나씩 돌아가며 뿜는다.
 export function makeDoom(x, y, range, ship) {
-  return { x, y, range, ship, t: 0, warping: true, spawned: 0, beams: [], done: false }
+  return { x, y, range, ship, t: 0, warping: true, spawned: 0, volley: 0, beams: [], done: false }
 }
 
 // 마지막 한 발의 조준각 — 광선이 날아가는 동안 지구가 이동한 만큼 미리 당긴다.
@@ -209,17 +221,18 @@ function doomAimEarth(D, earth) {
 export function stepDoom(D, game, dt) {
   const ev = []
   D.t += dt
+  if (D.ship?.alive) { D.x = D.ship.pos.x; D.y = D.ship.pos.y }   // 총구는 모성을 따라간다
   if (D.warping) {                       // 워프인 연출이 끝나기 전엔 안 쏜다
     if (D.t < CFG.DOOM_WARP) return ev
     D.warping = false; D.t = 0
   }
   // 부채꼴로 한 발씩. 황금각으로 돌려서 순서가 규칙적으로 안 보이게 한다.
+  // 차례마다 시작 각을 조금씩 틀어 같은 자리만 훑지 않게 한다.
   // **마지막 한 발만은 지구를 겨눈다.** 나머지가 사방으로 흩어지는 난사라면
-  // 이 한 발이 마침표다 — 판이 쓸려나가는 걸 보여 준 뒤 마지막에 판돈을 가져간다.
-  // (무작위에 맡기면 지구가 살아남은 채로 런이 끝나는 그림이 나온다.)
+  // 이 한 발이 마침표다 — 판이 쓸려나가는 걸 보여 준 뒤 판돈을 가져간다.
   while (D.spawned < CFG.DOOM_BEAMS && D.t >= D.spawned * CFG.DOOM_GAP) {
     const last = D.spawned === CFG.DOOM_BEAMS - 1
-    const a = last ? doomAimEarth(D, game.earth) : D.spawned * 2.399963
+    const a = last ? doomAimEarth(D, game.earth) : D.spawned * 2.399963 + D.volley * 0.37
     D.beams.push({ ux: Math.cos(a), uy: Math.sin(a), head: 0, dead: false })
     ev.push({ kind: 'beam', a })
     D.spawned++
@@ -236,6 +249,16 @@ export function stepDoom(D, game, dt) {
       ev.push({ kind: 'hit', body: hit.body, x: hit.x, y: hit.y })
     } else if (b.head >= D.range) b.dead = true
   }
-  if (D.spawned >= CFG.DOOM_BEAMS && D.beams.every(b => b.dead)) D.done = true
+  // ── 한 차례가 끝났다 ──
+  // 지구가 아직 살아 있으면 **또 쏜다.** 끝은 시간이 아니라 지구가 정한다.
+  // (행성이 대신 막아 준 만큼 더 사는 것 — 다만 결말은 정해져 있다.)
+  if (D.spawned >= CFG.DOOM_BEAMS && D.beams.every(b => b.dead)) {
+    if (!game.earth.alive || D.volley + 1 >= CFG.DOOM_MAX_VOLLEY) { D.done = true; return ev }
+    if (D.t >= CFG.DOOM_BEAMS * CFG.DOOM_GAP + CFG.DOOM_VOLLEY) {
+      D.volley++
+      D.t = 0; D.spawned = 0; D.beams.length = 0
+      ev.push({ kind: 'volley', n: D.volley })
+    }
+  }
   return ev
 }
