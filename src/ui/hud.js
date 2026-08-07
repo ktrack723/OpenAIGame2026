@@ -279,9 +279,11 @@ function predLine(game, p) {
     case 'neutral': {
       const tag = p.outcome === 'target' ? 'TARGET' : 'CUE'
       // [2층] 이 접촉이 그 공에 즉시 일으키는 것 — 충격 방향/세기, 진로, 체력.
+      // 화면 위 화살표와 같은 이름을 쓴다 — 노란 화살표 = 충격 방향,
+      // 흰 화살표 = 바뀐 진로. 숫자는 여기(LCD)에만 둔다.
       const direct = [
-        `충격 ${dirOf(h.dx, h.dy)}° Δv ${h.dv.toFixed(1)}`,
-        `진로 ${dirOf(h.vx, h.vy)}° ${Math.hypot(h.vx, h.vy).toFixed(0)}GU/s`,
+        `충격 방향 ${dirOf(h.dx, h.dy)}° Δv ${h.dv.toFixed(1)}`,
+        `바뀐 진로 ${dirOf(h.vx, h.vy)}° ${Math.hypot(h.vx, h.vy).toFixed(0)}GU/s`,
         `체력 ${h.hp}/${h.hpMax}`,
       ].join(' · ')
       // [3층] 의도하지 않았을 부작용만. 전부 이 한 발에서 확정적으로 참인 것.
