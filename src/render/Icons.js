@@ -18,8 +18,8 @@ import { VIS } from '../game/config.js'
 export const CATEGORY = {
   rock: { icon: '🪨', label: '암석 행성', color: '#cbd5e1', mech: '규칙 없음 — 무게대로만 움직인다', desc: '태그 없는 일반 행성. 마음 놓고 큐볼로 써라.' },
   ice: { icon: '🧊', label: '얼음 행성', color: '#a5f3fc', mech: '가볍다 — 같은 크기 대비 질량 절반, 두 배로 밀린다', desc: '가장 좋은 큐볼. 한 방에 멀리 날아간다.' },
-  iron: { icon: '🔩', label: '금속 행성', color: '#e2e8f0', mech: '무겁다 — 핵 임펄스가 15%만 먹는다', desc: '핵으로는 못 민다. 다른 행성을 던져서 부숴라.' },
-  gas: { icon: '🪐', label: '가스 행성', color: '#fcd34d', mech: '터진다 — 핵을 맞거나 세게 처박히면 유폭', desc: '유폭 반경 안의 모든 천체가 밀려난다. 연쇄를 노려라.' },
+  iron: { icon: '🔩', label: '금속 행성', color: '#e2e8f0', mech: '무겁다 — 핵 임펄스가 절반만 먹는다', desc: '밀리긴 한다. 다만 같은 작약으로 절반밖에 안 간다.' },
+  gas: { icon: '🪐', label: '가스 행성', color: '#fcd34d', mech: '터진다 — 핵을 맞거나 세게 처박히면 대규모 유폭', desc: '반경 420 GU 이상이 통째로 밀려난다. 판을 뒤집는 수.' },
   void: { icon: '🕳', label: '특이점', color: '#c084fc', mech: '삼킨다 — 닿는 것을 없앤다. 부술 수 없다', desc: '블랙홀·태양과 같은 부류. 여기로 밀어 넣어라.' },
   earth: { icon: '🌍', label: '지구', color: '#93c5fd', mech: '우리 집 — 세 번 처박히면 게임 오버', desc: '발사대이자 지켜야 할 것.' },
   debris: { icon: '·', label: '파편', color: '#94a3b8', mech: '미사일을 조기 격발시킨다', desc: '충돌 잔해.' },
@@ -79,7 +79,7 @@ export class Icons {
     const size = VIS.ICON_PX * ppw
     const seen = new Set()
     for (const b of game.bodies) {
-      if (!b.alive || b.type === 'debris') continue
+      if (!b.alive || b.type === 'debris' || (b.warpIn ?? 0) > 0) continue
       seen.add(b.id)
       let e = this.sprites.get(b.id)
       const cat = categoryOf(b.type)

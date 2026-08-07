@@ -69,14 +69,19 @@ export function stepLaser(L, game, dt) {
     if (L.t < L.nextAt) return null
     const src = game.homeworld
     if (!src || !src.alive) { L.nextAt = L.t + 20; return null }   // 본성이 없으면 조용하다
-    // 조준선 고정 — 충전이 끝나는 순간의 지구 위치를 겨눈다
+    // ── 조준: 지구의 미래 위치를 예측해 **방향을 고정한다** ──
+    // 예전엔 "고정된 한 점"을 겨눴다. 그러면 본성이 밀려나도 총구가 그 점을
+    // 다시 겨눠서(발사점만 옮겨지고 조준점은 그대로) 회피가 안 됐다 —
+    // 본성을 미는 대응이 원천적으로 무의미했다.
+    // 이제 고정되는 건 **방향(ux, uy)**이다. 총구가 옆으로 밀리면 광선 전체가
+    // 그만큼 평행이동하므로, 본성을 밀어내는 것만으로 빗나가게 만들 수 있다.
     const aim = earthAfter(game.earth, CFG.LASER_CHARGE)
     const dx = aim.x - src.pos.x, dy = aim.y - src.pos.y
     const d = Math.hypot(dx, dy) || 1
     L.state = LASER_CHARGE; L.t = 0
     L.from = src; L.ox = src.pos.x; L.oy = src.pos.y
-    L.ax = aim.x; L.ay = aim.y
-    L.ux = dx / d; L.uy = dy / d
+    L.ax = aim.x; L.ay = aim.y            // 예측 지점(연출·경보 문구용)
+    L.ux = dx / d; L.uy = dy / d          // ★ 이게 고정되는 값이다
     L.range = game.aMax * CFG.LASER_RANGE_MUL
     L.result = null
     return { kind: 'charge', src }
@@ -85,11 +90,9 @@ export function stepLaser(L, game, dt) {
   if (L.state === LASER_CHARGE) {
     // 본성이 충전 중에 파괴되면 발사가 취소된다 — 선제 격파가 정당한 대응이 된다
     if (!L.from.alive) { L.state = LASER_IDLE; L.t = 0; L.nextAt = nextPeriod(L); return { kind: 'abort' } }
-    // 발사점은 본성을 따라간다(본성도 공전한다). 조준점은 고정.
+    // 총구는 본성을 따라간다(본성도 공전하고, 밀리면 밀린 대로).
+    // **방향은 건드리지 않는다** — 그래서 본성이 옆으로 밀리면 광선도 통째로 옆으로 간다.
     L.ox = L.from.pos.x; L.oy = L.from.pos.y
-    const dx = L.ax - L.ox, dy = L.ay - L.oy
-    const d = Math.hypot(dx, dy) || 1
-    L.ux = dx / d; L.uy = dy / d
     if (L.t < CFG.LASER_CHARGE) return null
     // ── 발사 ──
     L.state = LASER_FLASH; L.t = 0
