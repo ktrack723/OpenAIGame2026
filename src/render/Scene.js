@@ -150,6 +150,25 @@ export class SceneView {
     this.pad.renderOrder = 14
     this.scene.add(this.pad)
 
+    // ── 예상 피격 표시 ────────────────────────────────────────
+    // 발사 버튼 위의 이름표("Zorg Mogul-1을 친다")만으로는 판 위에서 그게
+    // **어느 공인지** 못 찾는다 — 공이 스무 개 굴러다니고, 락온 브래킷은
+    // 정작 미래의 충돌 지점(빈 우주)에 찍히기 때문이다.
+    // 그래서 지금 그 자리에 있는 공 자체를 예측선 색으로 물들인다.
+    //   ① 채운 원반 — 공이 통째로 그 색이 된다(가장 먼저 눈에 들어오는 것)
+    //   ② 바깥 번짐 — 줌아웃해서 공이 점만 해져도 색 덩어리로 읽힌다
+    //   ③ 가는 실선 — 지금 위치와 락온(미래 위치)을 잇는다. 이게 없으면
+    //      물든 공과 저쪽의 링이 서로 무관한 두 표시로 보인다.
+    const tintMat = (op) => new THREE.MeshBasicMaterial({
+      transparent: true, opacity: op, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending,
+    })
+    this.tintGlow = new THREE.Mesh(this.discGeo, tintMat(0.14))
+    this.tintDisc = new THREE.Mesh(this.discGeo, tintMat(0.34))
+    const linkGeo = new THREE.PlaneGeometry(1, 1); linkGeo.translate(0.5, 0, 0)
+    this.tintLink = new THREE.Mesh(linkGeo, tintMat(0.22))
+    this.tintGlow.renderOrder = 9; this.tintDisc.renderOrder = 11; this.tintLink.renderOrder = 10
+    for (const o of [this.tintGlow, this.tintDisc, this.tintLink]) { o.visible = false; this.scene.add(o) }
+
     this.aim = new AimHelper(this.scene, this.rig, this.discGeo)
 
     // 전면 섬광 — 핵을 "과장"하는 가장 싼 수단. 폭발 프레임에 화면 전체가 탄다
@@ -427,6 +446,7 @@ export class SceneView {
     // 조준 중이면 "지금 화면의 어느 공을 치는가"도 같이 켠다 —
     // 락온은 미래 위치에 찍히므로, 현재 위치의 그 공도 물어 줘야 눈이 이어진다.
     const aimHit = g.canAim ? g.predictPath().hit : null
+    for (const o of [this.tintGlow, this.tintDisc, this.tintLink]) o.visible = false
     for (const b of g.bodies) {
       let fx = this.bodyFx.get(b.id)
       if (!fx) fx = this.makeBodyFx(b)
@@ -519,10 +539,43 @@ export class SceneView {
         fx.ring.material.color.setHex(0xf43f5e)
         fx.ring.material.opacity = 0.7 + 0.25 * Math.abs(Math.sin(performance.now() / 320))
       } else { fx.ring.material.color.setHex(0xe2e8f0); fx.ring.material.opacity = 0.34 }
-      if (aimHit && aimHit.id === b.id) {   // 이번 샷이 건드릴 공 — 예측선 색으로 물어 준다
-        fx.ring.material.color.setHex(PRED_TONE[aimHit.outcome] ?? 0x67e8f9)
+      // ── 이번 샷이 맞히는 공 — 통째로 예측선 색으로 물들인다 ──
+      const targeted = !!aimHit && aimHit.id === b.id
+      if (targeted) {
+        const tone = PRED_TONE[aimHit.outcome] ?? 0x67e8f9
+        const pulse = 0.5 + 0.5 * Math.sin(this.lockT * 5)
+        fx.ring.material.color.setHex(tone)
         fx.ring.material.opacity = 1
         fx.ring.scale.setScalar(r * (1.30 + 0.06 * Math.sin(this.lockT * 5)))
+        // ① 공을 덮는 원반 ② 그 바깥 번짐
+        this.tintDisc.position.set(b.pos.x, b.pos.y, 1.2)
+        this.tintDisc.scale.setScalar(r)
+        this.tintDisc.material.color.setHex(tone)
+        this.tintDisc.material.opacity = 0.26 + 0.16 * pulse
+        this.tintDisc.visible = true
+        this.tintGlow.position.set(b.pos.x, b.pos.y, -2)
+        this.tintGlow.scale.setScalar(r * (2.1 + 0.25 * pulse))
+        this.tintGlow.material.color.setHex(tone)
+        this.tintGlow.material.opacity = 0.10 + 0.06 * pulse
+        this.tintGlow.visible = true
+        // ③ 지금 위치 → 락온(미래 위치)을 잇는 실선
+        const dx = aimHit.x - b.pos.x, dy = aimHit.y - b.pos.y
+        const d = Math.hypot(dx, dy)
+        if (d > r * 0.6) {
+          this.tintLink.position.set(b.pos.x, b.pos.y, 1)
+          this.tintLink.rotation.z = Math.atan2(dy, dx)
+          this.tintLink.scale.set(d, Math.max(1.1 * this.rig.worldPerPx, 1.4), 1)
+          this.tintLink.material.color.setHex(tone)
+          this.tintLink.material.opacity = 0.18 + 0.12 * pulse
+          this.tintLink.visible = true
+        }
+      }
+      // 구체 자체도 그 색으로 달아오르게 — 줌아웃해서 원반이 작아져도 색이 남는다
+      if (targeted !== !!fx.tinted) {
+        fx.tinted = targeted
+        const spec = MATS[b.type] ?? MATS.rock
+        fx.mesh.material.emissive.setHex(targeted ? (PRED_TONE[aimHit.outcome] ?? 0x67e8f9) : spec.c)
+        fx.mesh.material.emissiveIntensity = targeted ? 0.5 : spec.emis
       }
 
       if (fx.trueRing.visible) {   // 줌아웃으로 부풀었을 때만 실제 명중 반경을 얇게 병기
