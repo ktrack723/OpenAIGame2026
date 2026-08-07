@@ -353,15 +353,45 @@ pre{white-space:pre-wrap;line-height:1.55;color:#9fd0c4;margin:0;font-size:11px;
   box-shadow:0 0 30px #f5b54433;
   clip-path:polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,10px 100%,0 calc(100% - 10px))}
 .gameover{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:6;text-align:center;
+  animation:goin .5s ease both;
   padding:26px 30px;border:1px solid #8c1f28;background:rgba(14,3,5,.95);backdrop-filter:blur(10px);
   box-shadow:0 24px 90px #000d,inset 0 0 60px #4a0a0e44;max-width:min(440px,calc(100vw - 40px));
   clip-path:polygon(0 16px,16px 0,100% 0,100% calc(100% - 16px),calc(100% - 16px) 100%,0 100%)}
 .gameover h2{margin:0 0 10px;color:var(--rd);font-size:22px;letter-spacing:.3em;font-weight:900;
   text-shadow:0 0 18px #ff5c6a66}
+@keyframes goin{from{opacity:0;transform:translate(-50%,-46%) scale(.97)}
+  to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+/* 일러스트 — 승리 화면과 같은 구도의 관제실. 이쪽은 불이 꺼져 있다. */
+.goart{margin:-18px -20px 14px;border-bottom:1px solid #3a1216;background:#040609;
+  clip-path:polygon(0 12px,12px 0,100% 0,100% 100%,0 100%)}
+.goart svg{display:block;width:100%;height:auto}
+.gotag{color:var(--rd);font-size:10px;font-weight:800;letter-spacing:.22em;margin-bottom:6px;
+  font-family:var(--mono);opacity:.85}
+.gameover.doom .gotag{color:#e879f9}
+.gameover.doom .goart{border-bottom-color:#3a1240}
+.dsci{animation:dsag 3.4s ease-in-out infinite}
+.dsci.b{animation-duration:4.1s;animation-delay:.4s}
+.dsci.c{animation-duration:3.8s;animation-delay:.8s}
+@keyframes dsag{0%,100%{transform:translateY(0)}50%{transform:translateY(1.5px)}}
+.dsplit{animation:dapartL 7s ease-out infinite}
+.dsplit.b{animation-name:dapartR}
+@keyframes dapartL{0%{transform:translateX(0);opacity:1}100%{transform:translateX(-7px);opacity:.75}}
+@keyframes dapartR{0%{transform:translateX(0);opacity:1}100%{transform:translateX(7px);opacity:.75}}
+.dglow{animation:dcore 2.6s ease-in-out infinite}
+@keyframes dcore{0%,100%{opacity:.55}50%{opacity:1}}
+.dbeam{animation:dflick 1.7s steps(1) infinite}
+@keyframes dflick{0%,72%{opacity:1}73%,100%{opacity:.25}}
+.deye{animation:dstare 3.2s ease-in-out infinite}
+@keyframes dstare{0%,100%{transform:translateX(-5px)}50%{transform:translateX(5px)}}
+.dalarm{animation:dwash 2.4s ease-in-out infinite}
+@keyframes dwash{0%,100%{opacity:.10}50%{opacity:.30}}
 /* 시한 종료 — 조르그 모성이 왔다. 문장 하나만 남기므로 그 하나를 크게 둔다. */
 .gameover.doom h2{color:#e879f9;font-size:26px;letter-spacing:.24em;text-shadow:0 0 26px #e879f999}
 .gameover.doom{border-color:#6b2472;box-shadow:0 0 80px #a21caf55, inset 0 0 60px #2a0a3a88}
 .gameover p{margin:0 0 18px;color:#e7b7bc;font-size:12.5px;line-height:1.65;font-family:var(--mono)}
+@media (prefers-reduced-motion:reduce){
+  .gameover,.dsci,.dsplit,.dglow,.dbeam,.deye,.dalarm{animation:none}
+}
 .gameover .firebtn{border-color:#a02630;background:linear-gradient(180deg,#4a0e16,#2a070c);color:#ffd9dc;font-size:14px}
 .gameover .firebtn:hover{background:linear-gradient(180deg,#7d1521,#4a0e16);box-shadow:0 0 26px #ff5c6a66}
 
