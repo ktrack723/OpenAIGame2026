@@ -9,7 +9,7 @@ import { hasRole, roleOf, volatileRadius } from './roles.js'
 import { CAUSE_KO, makeGoal } from './objectives.js'
 import { bearing } from '../core/angle.js'
 import { createSystem, pickHomeworld, reinforce } from './system.js'
-import { chargeLeft, makeLaser, stepLaser, LASER_CHARGE } from './laser.js'
+import { chargeLeft, impactLeft, makeLaser, stepLaser, LASER_CHARGE, LASER_TRAVEL } from './laser.js'
 import * as Aim from './aim.js'
 
 // 관측 모드 배속 단계 — 화면의 배속 버튼이 이 사이를 돈다
@@ -18,6 +18,7 @@ const OBS_SPEEDS = [1, 2, 4, 8]
 // 파괴 사유별 점수 (목표 / 중립). 추방은 없앴다 — 벨트가 되돌려 보낸다.
 const KILL_SCORE = {
   collision: [120, 40],
+  laser: [0, 0],        // 조르그가 제 광선으로 부순 것 — 내 공이 아니다
   absorb: [110, 35],
   sun: [100, 30],
   blast: [80, 25],
@@ -245,50 +246,68 @@ export class Game {
   }
 
   // ─── 조르그 레이저 ─────────────────────────────────────────
+  // 닿는 것은 체력과 무관하게 부서진다. 태양과 특이점만 예외로, 막되 안 부서진다
+  // — 원래 부술 수 없는 것들이라 여기서만 예외를 만들면 규칙이 어긋난다.
   tickLaser(dt) {
-    const ev = stepLaser(this.laser, this, dt)
+    const L = this.laser
+    const ev = stepLaser(L, this, dt)
     if (!ev) return
     if (ev.kind === 'charge') {
-      this.addFx({ kind: 'laserCharge', x: this.laser.ox, y: this.laser.oy })
-      this.setToast(`조르그 레이저 조준! — ${CFG.LASER_CHARGE}초 뒤 발사. 막거나 피해라`)
-      this.message = `${ev.src.name} 본성이 지구 예상 위치를 조준했다 — 조준선을 끊어라`
+      this.addFx({ kind: 'laserCharge', x: L.ox, y: L.oy })
+      this.setToast(`조르그 레이저 조준 — ${CFG.LASER_CHARGE}초 뒤 발사. 조준점에서 비켜나라`)
+      this.message = `${ev.src.name} 본성이 지구의 도달 지점을 겨눴다 — 지구를 밀면 조준점이 틀어진다`
       return
     }
     if (ev.kind === 'abort') {
       this.setToast('본성 파괴 — 레이저 조준 해제')
+      this.message = '조르그 레이저 — 충전 중 본성이 파괴되어 발사가 취소됐다'
       return
     }
-    // ── 발사 ──
-    const L = this.laser
-    const hit = ev.hit
-    const end = hit ? { x: L.ox + L.ux * hit.t, y: L.oy + L.uy * hit.t }
-      : { x: L.ox + L.ux * L.range, y: L.oy + L.uy * L.range }
-    this.addFx({ kind: 'laserFire', x: L.ox, y: L.oy, ex: end.x, ey: end.y, hit: !!hit })
-    if (!hit) {
-      this.message = '조르그 레이저 — 빗나갔다'
+    if (ev.kind === 'fire') {
+      this.addFx({ kind: 'laserFire', x: L.ox, y: L.oy, a: Math.atan2(L.uy, L.ux) })
+      this.message = '조르그 레이저 발사 — 직진한다. 조준점이 틀어져 있으면 스쳐 지나간다'
+      return
+    }
+    if (ev.kind === 'expire') {
+      this.addFx({ kind: 'laserMiss', x: ev.x, y: ev.y })
+      this.message = '조르그 레이저 — 아무것도 맞히지 못하고 성계를 벗어났다'
       this.setToast('레이저 회피 성공')
       return
     }
-    if (hit.body.isEarth) {
-      this.addFx({ kind: 'destroy', x: this.earth.pos.x, y: this.earth.pos.y, r: this.earth.radius * 2, earth: true })
-      this.earth.alive = false
+    // ── 착탄 ──
+    const b = ev.body
+    this.addFx({ kind: 'laserHit', x: ev.x, y: ev.y, r: b ? hitRadiusOf(b) : CFG.R_STAR, sun: !b })
+    if (!b) {   // 태양이 막았다
+      this.message = '조르그 레이저가 태양에 삼켜졌다 — 항성은 부술 수 없다'
+      this.setToast('태양이 광선을 막았다')
+      return
+    }
+    if (b.isEarth) {
+      this.addFx({ kind: 'destroy', x: b.pos.x, y: b.pos.y, r: b.radius * 2, earth: true })
+      b.alive = false
       this.fail('EARTH_LASER', '조르그 레이저가 지구를 관통했다. 작전 종료.')
       this.setToast('지구 피격 — 게임 오버')
       return
     }
-    // 다른 행성이 대신 맞았다 — 그 행성은 광선 방향으로 크게 밀린다.
-    // 즉 "막는 것"이 곧 "그 공을 세게 치는 것"이라 당구로 되돌아온다.
-    const b = hit.body
-    const dv = CFG.LASER_PUSH / b.mu
-    b.vel.x += L.ux * dv; b.vel.y += L.uy * dv
-    b.hitFlash = 1.0; b.trailFlash = 2.5
-    b.scorch = Math.min(3, (b.scorch || 0) + 1)
-    this.message = `${b.name}이(가) 레이저를 대신 맞았다 — Δv ${dv.toFixed(1)}로 밀려남`
-    this.setToast(`레이저 차단 — ${b.name}`)
+    if (b.role === 'void') {   // 특이점도 막되 안 부서진다
+      this.message = `${b.name}이(가) 레이저를 삼켰다 — 특이점엔 아무것도 안 통한다`
+      this.setToast(`특이점이 광선을 막았다 — ${b.name}`)
+      return
+    }
+    // 체력 불문 파괴. 막아 준 대가가 그 공의 소멸이다.
+    this.addFx({ kind: 'destroy', x: b.pos.x, y: b.pos.y, r: b.radius * 1.8, big: true })
+    this.message = `${b.name}이(가) 레이저에 관통당해 소멸했다 — 체력과 무관하게 부서진다`
+    this.setToast(`레이저 차단 — ${b.name} 소멸`)
+    this.killBody(b, 'laser', { fx: false })
   }
 
   get laserCharging() { return this.laser.state === LASER_CHARGE }
+  get laserFlying() { return this.laser.state === LASER_TRAVEL }
   get laserLeft() { return chargeLeft(this.laser) }
+  get laserImpactLeft() { return impactLeft(this.laser) }
+  // 조준선에서 지구까지 예상 수직거리 / 지금 이대로면 빗나가는가
+  get laserMiss() { return this.laser.miss ?? 0 }
+  get laserSafe() { return !!this.laser.safe }
 
   // 시한이 줄고 있다는 걸 토스트로 못 박는다 (남은 60/30/10초)
   warnTime() {

@@ -4,9 +4,10 @@
 // 특이점에 먹이든, 유폭시키든 전부 인정한다.
 // 성계 추방은 없앴다: 바깥은 카이퍼 벨트가 막고 있어서 아무도 못 나간다.
 
-// cause: 'collision' | 'absorb' | 'sun' | 'blast'
+// cause: 'collision' | 'absorb' | 'sun' | 'blast' | 'laser'
 export const CAUSE_KO = {
   collision: '충돌 파괴', absorb: '특이점 흡수', sun: '항성 처분', blast: '유폭',
+  laser: '조르그 레이저에 관통',
 }
 
 export const GOAL_TITLE = '조르그 요새 섬멸'

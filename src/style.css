@@ -69,6 +69,12 @@ h1{margin:0;color:var(--cy);letter-spacing:.34em;font-size:15px;font-weight:800;
 .mod.alarm .modhead{color:var(--rd)}
 .mod.alarm .modhead .tick{background:var(--rd);box-shadow:0 0 10px var(--rd)}
 .mod.alarm .clockv{color:var(--rd)}
+/* 레이저 경보가 '지금은 산다' 상태일 때 — 같은 칸을 청록으로 뒤집는다.
+   상태가 둘뿐이라(맞는다/빗나간다) 색 하나로 끝내는 게 가장 빨리 읽힌다. */
+.mod.alarm.ok{border-color:#1f6c8c;background:linear-gradient(180deg,#062230aa,#04141caa);animation:none}
+.mod.alarm.ok .modhead,.mod.alarm.ok .clockv{color:var(--cy)}
+.mod.alarm.ok .modhead .tick{background:var(--cy);box-shadow:0 0 10px var(--cy)}
+.mod.alarm.ok .alarmtext{color:#bfe9f8}
 .alarmtext{color:#ffc9cf;font-size:11px;line-height:1.5}
 @keyframes alarmpulse{0%,100%{box-shadow:0 0 0 #0000}50%{box-shadow:0 0 22px #ff5c6a55,inset 0 0 22px #ff5c6a22}}
 
