@@ -31,7 +31,11 @@ export class Game {
     this.rng = new Rng(this.seed ^ 0x9e3779b9)
     // ─── 지속 성계 ───
     // 성계는 런 전체에서 하나뿐이다. 판이 끝나도 새로 만들지 않고,
-    // 살아남은 행성이 위치·속도 그대로 다음 판으로 넘어간다.
+    // 살아남은 행성이 위치·속도·**체력** 그대로 다음 판으로 넘어간다.
+    // 체력이 이어지는 건 특히 지구가 그렇다 — 한 판에서 두 번 처박힌 지구는
+    // 1/3으로 다음 판을 시작한다. 판마다 리셋되면 "지구를 지킨다"가 한 판짜리
+    // 임무가 되어 버리는데, 이 게임의 판돈은 런 전체다.
+    // (loadStage는 hp를 건드리지 않는다. 체력을 쓰는 곳은 damage() 하나뿐이다.)
     const sys = createSystem(this.seed)
     this.bodies = sys.bodies; this.earth = sys.earth
     this.laser = makeLaser(this.rng)
