@@ -243,7 +243,7 @@ export class SceneView {
     this.syncBodies(dt)
     this.belt.update(this.game.beltR, dt, this.rig.worldPerPx)
     this.icons.update(this.game, this.rig, dt, (b) => this.renderRadius(b))
-    this.laserView.update(this.game, dt)
+    this.laserView.update(this.game)
     this.orbits.sync(this.game.bodies, this.game.aMax,
       (b) => b.isEarth ? 0x60a5fa : b.isTarget ? 0x22d3ee : colorOf(b.type))
     this.syncMissiles()

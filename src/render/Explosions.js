@@ -24,6 +24,8 @@ export class Explosions {
       } else if (e.kind === 'warp') this.warp(e)
       else if (e.kind === 'laserCharge') this.laserCharge(e)
       else if (e.kind === 'laserFire') this.laserFire(e)
+      else if (e.kind === 'laserHit') this.laserHit(e)
+      else if (e.kind === 'laserMiss') this.laserMiss(e)
       else if (e.kind === 'volatile') this.volatile(e)
       else if (e.kind === 'absorb') this.absorb(e)
       else if (e.kind === 'nuke') this.nuke(e)
@@ -121,23 +123,34 @@ export class Explosions {
     this.flash(0.16, '#ffe0e6')
   }
 
-  // ─── 레이저 발사 ─────────────────────────────────────────────
+  // ─── 레이저 발사 — 총구에서 탄두가 튀어나가는 순간만 ────────
+  // 착탄은 별도 이벤트다(laserHit). 광선이 날아가는 데 시간이 걸리므로
+  // 예전처럼 발사와 착탄을 한 번에 터뜨리면 거짓말이 된다.
   laserFire(e) {
     const P = this.parts
-    // 총구 쪽
-    P.puff(e.x, e.y, { r0: 8, r1: 150, ttl: 0.5, color: 0xff4d6d, alpha: 1 })
-    P.spikes(e.x, e.y, { n: 16, color: 0xffd7de, speed: 1400, size: 9, ttl: 0.45 })
-    // 착탄 쪽
-    if (e.hit) {
-      P.puff(e.ex, e.ey, { r0: 10, r1: 220, ttl: 0.7, color: 0xff2d4d, alpha: 1 })
-      P.shock(e.ex, e.ey, 180, 0xffffff, 0.6, { thin: true, from: 0.08, to: 2.6, alpha: 1 })
-      P.shock(e.ex, e.ey, 180, 0xff4d6d, 1.1, { from: 0.1, to: 2.0, delay: 0.06 })
-      P.burst(e.ex, e.ey, { n: 260, color: 0xff6b7f, speed: 520, size: 16, ttl: 1.6 })
-      P.burst(e.ex, e.ey, { n: 90, color: 0xffffff, speed: 900, size: 9, ttl: 0.6 })
-      this.rig.focus(e.ex, e.ey, 420, 2)
-    }
+    P.puff(e.x, e.y, { r0: 8, r1: 120, ttl: 0.4, color: 0xff4d6d, alpha: 1 })
+    P.burst(e.x, e.y, { n: 70, color: 0xffd7de, speed: 900, size: 9, ttl: 0.4, spread: 0.5, dir: e.a })
+    this.rig.hit(14)
+    this.flash(0.32, '#ffdde3')
+  }
+
+  // ─── 레이저 착탄 — 여기서 뭔가가 부서진다 ───────────────────
+  laserHit(e) {
+    const P = this.parts, R = Math.max(120, (e.r ?? 30) * 2.6)
+    P.puff(e.x, e.y, { r0: 10, r1: R, ttl: 0.7, color: 0xff2d4d, alpha: 1 })
+    P.shock(e.x, e.y, R, 0xffffff, 0.6, { thin: true, from: 0.08, to: 2.6, alpha: 1 })
+    P.shock(e.x, e.y, R, 0xff4d6d, 1.1, { from: 0.1, to: 2.0, delay: 0.06 })
+    P.burst(e.x, e.y, { n: e.sun ? 120 : 260, color: e.sun ? 0xffb247 : 0xff6b7f, speed: 520, size: 16, ttl: 1.6 })
+    P.burst(e.x, e.y, { n: 90, color: 0xffffff, speed: 900, size: 9, ttl: 0.6 })
+    this.rig.focus(e.x, e.y, 420, 2)
     this.rig.hit(VIS.SHAKE_MAX)
     this.flash(0.85, '#ffdde3')
+  }
+
+  // ─── 레이저 소진 — 아무것도 못 맞히고 성계를 벗어났다 ───────
+  // 회피 성공의 신호이므로 조용하고 짧게. 터지지 않는다.
+  laserMiss(e) {
+    this.parts.puff(e.x, e.y, { r0: 6, r1: 70, ttl: 0.5, color: 0xff8fa3, alpha: 0.6 })
   }
 
   // ─── 핵 기폭 (§14.5 개정) ────────────────────────────────────

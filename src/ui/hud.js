@@ -1,4 +1,4 @@
-import { CFG, VIS } from '../game/config.js'
+import { CFG, VIS, hitRadiusOf } from '../game/config.js'
 import { ROLES } from '../game/roles.js'
 import { bearing, toDeg180 } from '../core/angle.js'
 
@@ -320,11 +320,15 @@ export function updateHud(el, game) {
     const left = game.timeLeft
     const clock = `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`
     const sub = game.laserCharging
-      ? `⚠ 조르그 레이저 T-${game.laserLeft.toFixed(0)}s — 지금 조준하라`
-      : `${game.effTimeScale()}× 진행 중 · 잔여 ${clock}`
+      ? `⚠ 레이저 T-${game.laserLeft.toFixed(0)}s · 빗나감 ${game.laserMiss.toFixed(0)} GU`
+        + (game.laserSafe ? ' — 지금은 산다' : ' — 지금은 맞는다')
+      : game.laserFlying
+        ? `⚠ 레이저 비행 중 — 도달까지 ${game.laserImpactLeft.toFixed(1)}s`
+        : `${game.effTimeScale()}× 진행 중 · 잔여 ${clock}`
+    const alarm = game.laserCharging || game.laserFlying
     const bar = el._obsBar, btn = bar.querySelector('#toAim')
     if (btn._sub !== sub) { btn._sub = sub; bar.querySelector('#obsSub').textContent = sub }
-    btn.classList.toggle('alarm', !!game.laserCharging)
+    btn.classList.toggle('alarm', alarm)
     const spd = game.obsSpeedLabel
     if (bar._spd !== spd) { bar._spd = spd; bar.querySelector('#obsSpdV').textContent = spd }
     return   // 패널이 숨겨져 있으므로 나머지 갱신은 통째로 건너뛴다
@@ -368,14 +372,25 @@ export function updateHud(el, game) {
   }
 
   // ── 조르그 레이저 경보 ──
+  // 문구는 상태마다 딱 한 줄씩. 충전 중에는 "무엇을 하면 되는가"만,
+  // 비행 중에는 "언제 닿는가"만 말한다 — 읽을 게 많으면 아무것도 안 읽힌다.
   const lm = el.querySelector('#laserMod')
   if (game.laserCharging) {
     lm.hidden = false
+    lm.classList.toggle('ok', game.laserSafe)
     el.querySelector('#laserT').textContent = `T-${game.laserLeft.toFixed(1)}s`
     el.querySelector('#laserWhy').textContent =
-      `${game.homeworld ? game.homeworld.name : '본성'}이 지구의 예상 위치를 계산해 발사 "방향"을 고정했다. `
-      + '대응 넷: ① 행성을 선 위로 밀어 막는다 ② 폭풍으로 지구를 비킨다 '
-      + '③ 본성을 옆으로 민다(총구가 밀리면 광선이 통째로 평행이동해 빗나간다) ④ 본성을 부순다.'
+      `조준선에서 지구까지 ${game.laserMiss.toFixed(0)} GU — `
+      + (game.laserSafe ? '이대로면 빗나간다.' : `아직 맞는다(${hitRadiusOf(game.earth).toFixed(0)} GU 넘겨야 산다).`)
+      + ' 조르그는 지구가 원래 궤도를 돈다고 보고 겨눈다 — 폭풍으로 밀면 그만큼 조준이 틀어진다.'
+      + ' 행성으로 ◇ 선을 막아도 되지만 그 행성은 소멸한다.'
+  } else if (game.laserFlying) {
+    lm.hidden = false
+    lm.classList.remove('ok')
+    el.querySelector('#laserT').textContent = `착탄 ${game.laserImpactLeft.toFixed(1)}s`
+    el.querySelector('#laserWhy').textContent =
+      '광선이 날아가는 중이다 — 조준점에서 멈추지 않고 직진한다. '
+      + '닿는 첫 천체는 체력과 무관하게 소멸한다(태양·특이점은 막기만 한다).'
   } else lm.hidden = true
 
   const rig = el._rig

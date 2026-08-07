@@ -2,65 +2,71 @@ import * as THREE from 'three'
 import { CFG } from '../game/config.js'
 
 // ─── 조르그 레이저 연출 ─────────────────────────────────────────
-// 충전 중에 화면에 뜨는 건 **위험 회랑**이다. 조준점에 표식을 찍는 방식은
-// 없앴다 — 그러면 플레이어가 점만 보고 정작 "이 선 위에 있으면 죽는다"는
-// 걸 안 읽는다. 위험은 점이 아니라 **경로 전체**에 있으므로 경로에 그린다.
+// **단순하게.** 예전엔 흐르는 빗금 + 맥동 + 색 변화 + 번짐을 한꺼번에 얹었더니
+// 빨리 감기로 보면 화면이 정신없어서 정작 "어디가 위험한가"가 안 읽혔다.
+// 움직이는 것은 하나만 둔다.
 //
-// 회랑은 세 겹이다:
-//   ① 넓은 위험대 — 흐르는 경고 빗금(공사장 테이프). 여기 걸치면 맞는다.
-//   ② 가는 심선 — 정확한 광선 경로.
-//   ③ 조준점까지의 구간을 더 진하게 — 지구가 도착할 자리가 어디쯤인지
-//      선의 밀도만으로 읽힌다(표식 없이).
-// 충전이 찰수록 폭이 좁아지고 색이 주황 → 적색으로 익는다. 발사 순간에는
-// 같은 경로 위에 굵은 빔이 번쩍이고 곧 사그라든다.
+// 충전 중 — 화면에 뜨는 것은 딱 둘이다.
+//   ① 조준선: 총구에서 조준점을 지나 사거리 끝까지. **가늘고 정지해 있다.**
+//      광선은 조준점에서 멈추지 않고 직진하므로 선도 거기서 안 끊는다.
+//   ② 조준점: 마름모 표식. 조르그가 겨눈 한 점이고, 지구를 밀면 지구가
+//      여기서 미끄러져 나간다. **색이 두 상태로만 갈린다** — 붉은색이면
+//      이대로 맞고, 청록이면 빗나간다. 회피 성공 여부가 색 하나로 끝난다.
+//
+// 비행 중 — 짧고 밝은 탄두 하나가 조준선을 따라 달린다. 그게 전부다.
 
-function quad(color, opacity, blending = THREE.AdditiveBlending) {
+function quad(color, opacity) {
   const geo = new THREE.PlaneGeometry(1, 1)
   geo.translate(0.5, 0, 0)          // 원점에서 +x 로 뻗는 단위 사각형
   const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
-    color, transparent: true, opacity, depthTest: false, depthWrite: false, side: THREE.DoubleSide, blending,
+    color, transparent: true, opacity, depthTest: false, depthWrite: false,
+    side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
   }))
   m.visible = false
   return m
 }
 
-// 경고 빗금 텍스처 — 공사장 테이프. 이 무늬 하나로 "지나가지 마라"가 읽힌다.
-function hazardTexture() {
-  const w = 64, h = 32
-  const c = document.createElement('canvas'); c.width = w; c.height = h
-  const g = c.getContext('2d')
-  g.fillStyle = 'rgba(0,0,0,0)'; g.fillRect(0, 0, w, h)
-  g.strokeStyle = '#ffffff'; g.lineWidth = 12; g.lineCap = 'butt'
-  for (let x = -h; x < w + h; x += 32) {   // 45° 빗금
-    g.beginPath(); g.moveTo(x, h); g.lineTo(x + h, 0); g.stroke()
-  }
-  const t = new THREE.CanvasTexture(c)
-  t.wrapS = t.wrapT = THREE.RepeatWrapping
-  t.colorSpace = THREE.SRGBColorSpace
-  return t
+// 총구에서 태양 원반에 부딪히기까지의 거리. 안 가로막히면 null.
+// 게임 판정(laser.js sweep)과 같은 사실을 그림으로만 반복하는 것이므로
+// 여기서 계산해도 규칙이 두 군데로 갈리지 않는다.
+function sunBlock(L) {
+  const ux = (L.ax - L.ox), uy = (L.ay - L.oy)
+  const d = Math.hypot(ux, uy) || 1
+  const nx = ux / d, ny = uy / d
+  const t = -L.ox * nx - L.oy * ny            // 총구→태양 중심의 진행 방향 성분
+  if (t <= 0) return null                     // 태양이 뒤에 있다
+  const perp = Math.hypot(-L.ox - nx * t, -L.oy - ny * t)
+  if (perp >= CFG.R_STAR) return null
+  return Math.max(0, t - Math.sqrt(CFG.R_STAR * CFG.R_STAR - perp * perp))
 }
 
 export class LaserView {
   constructor(scene, rig) {
-    this.scene = scene; this.rig = rig; this.t = 0
-    this.hazTex = hazardTexture()
-    // ① 위험대 — 빗금이 조준점 쪽으로 흘러간다
-    this.band = quad(0xff4d6d, 0.5, THREE.NormalBlending)
-    this.band.material.map = this.hazTex
-    this.band.material.needsUpdate = true
-    this.glow = quad(0xff2d4d, 0.22)            // 위험대 뒤에 깔리는 번짐
-    this.aimCore = quad(0xffd7de, 0.7)          // ② 가는 심선
-    this.lead = quad(0xff8fa3, 0.5)             // ③ 조준점까지의 구간(더 진하게)
-    this.beam = quad(0xff2d4d, 1)               // 발사 빔 (굵게)
-    this.beamCore = quad(0xffffff, 1)
-    this.parts = [this.glow, this.band, this.lead, this.aimCore, this.beam, this.beamCore]
+    this.scene = scene; this.rig = rig
+    this.line = quad(0xff4d6d, 0.34)      // ① 조준선 — 정지, 가늘게
+    this.bolt = quad(0xff2d4d, 1)         // 비행 탄두
+    this.boltCore = quad(0xffffff, 1)
+    this.parts = [this.line, this.bolt, this.boltCore]
     for (const o of this.parts) { o.renderOrder = 18; scene.add(o) }
-    this.glow.renderOrder = 17
 
-    // 충전 오브 — 본성 위에서 부풀며 밝아진다
-    this.orb = new THREE.Mesh(new THREE.CircleGeometry(1, 32), new THREE.MeshBasicMaterial({
-      color: 0xff4d6d, transparent: true, opacity: 0.9, depthTest: false, depthWrite: false,
-      blending: THREE.AdditiveBlending,
+    // ② 조준점 — 마름모 하나. 얇은 링을 4각형으로 굽는다.
+    this.markGrp = new THREE.Group()
+    const mk = (r0, r1, seg, op) => new THREE.Mesh(
+      new THREE.RingGeometry(r0, r1, seg), new THREE.MeshBasicMaterial({
+        color: 0xff4d6d, transparent: true, opacity: op,
+        depthTest: false, depthWrite: false, side: THREE.DoubleSide,
+      }))
+    this.markRing = mk(0.72, 1, 4, 0.95)     // seg 4 = 마름모
+    this.markDot = mk(0, 0.3, 12, 0.9)
+    this.markGrp.add(this.markRing, this.markDot)
+    this.markGrp.renderOrder = 19
+    this.markGrp.visible = false
+    scene.add(this.markGrp)
+
+    // 총구 충전 오브 — 커지기만 한다(깜빡이지 않는다)
+    this.orb = new THREE.Mesh(new THREE.CircleGeometry(1, 24), new THREE.MeshBasicMaterial({
+      color: 0xff4d6d, transparent: true, opacity: 0.5,
+      depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending,
     }))
     this.orb.renderOrder = 18; this.orb.visible = false
     scene.add(this.orb)
@@ -75,61 +81,58 @@ export class LaserView {
 
   hideAll() {
     for (const o of this.parts) o.visible = false
+    this.markGrp.visible = false
     this.orb.visible = false
   }
 
-  update(game, dt) {
-    this.t += dt
+  update(game) {
     const L = game.laser
     this.hideAll()
     if (!L || game.runOver) return
     const ppw = this.rig.worldPerPx
-    const ang = Math.atan2(L.uy, L.ux)
 
     if (L.state === 'charge') {
       const u = Math.min(1, L.t / CFG.LASER_CHARGE)          // 충전 진행도
-      const pulse = 0.55 + 0.45 * Math.abs(Math.sin(this.t * (5 + 9 * u)))
-      // 색은 충전이 찰수록 주황 → 적색으로 익는다(남은 시간이 색으로 읽힌다)
-      const hot = new THREE.Color(0xf59e0b).lerp(new THREE.Color(0xff2d4d), u)
-      // 폭도 함께 좁아진다 — 넓고 흐린 경고에서 가늘고 확실한 사선으로
-      const bw = Math.max(26 * ppw, 30) * (1.35 - 0.6 * u)
-
-      // ① 위험대 — 사거리 끝까지. 빗금이 조준점 쪽으로 흐른다.
-      this.hazTex.repeat.set(L.range / (bw * 2.2), 1)
-      this.hazTex.offset.x = -this.t * (0.5 + 1.6 * u)
-      this.place(this.band, L.ox, L.oy, ang, L.range, bw, 6.9)
-      this.band.material.color.copy(hot)
-      this.band.material.opacity = (0.16 + 0.26 * u) * pulse
-      this.place(this.glow, L.ox, L.oy, ang, L.range, bw * 1.9, 6.8)
-      this.glow.material.color.copy(hot)
-      this.glow.material.opacity = (0.05 + 0.13 * u) * pulse
-
-      // ③ 조준점까지의 구간 — 지구가 도달할 자리가 선의 밀도로 읽힌다
-      this.place(this.lead, L.ox, L.oy, ang, L.aimDist || L.range, bw * 0.5, 7.05)
-      this.lead.material.color.copy(hot)
-      this.lead.material.opacity = (0.2 + 0.45 * u) * pulse
-
-      // ② 심선
-      this.place(this.aimCore, L.ox, L.oy, ang, L.range, Math.max(0.9 * ppw, 1.2), 7.1)
-      this.aimCore.material.opacity = (0.3 + 0.6 * u) * pulse
-
-      // 충전 오브
+      const ang = Math.atan2(L.ay - L.oy, L.ax - L.ox)
+      // ① 조준선 — 조준점을 지나 사거리 끝까지. 굵기·색·투명도 모두 고정.
+      //   단 **태양에 가로막히면 거기서 끊는다.** 태양은 안 움직이므로 이 절단은
+      //   언제나 참이고, 선이 태양 앞에서 멎는 것만으로 "저건 막힌다"가 읽힌다.
+      //   (행성은 95초 동안 움직이므로 미리 끊어 주면 거짓말이 된다.)
+      this.place(this.line, L.ox, L.oy, ang, sunBlock(L) ?? L.range, Math.max(1.4 * ppw, 2), 6.9)
+      this.line.material.opacity = 0.34
+      // ② 조준점 — 유일하게 움직이는 것. 충전이 찰수록 조여든다.
+      // 조준점 색은 두 상태뿐이다: 붉은색 = 이대로면 맞는다 / 청록 = 빗나간다.
+      // 회피가 먹히는 순간을 색 하나로 못 박는다.
+      const tone = L.safe ? 0x4fd6f7 : 0xff4d6d
+      this.markRing.material.color.setHex(tone)
+      this.markDot.material.color.setHex(tone)
+      this.line.material.color.setHex(tone)
+      const mr = Math.max(9, 22 * ppw) * (1.6 - 0.6 * u)
+      this.markGrp.position.set(L.ax, L.ay, 7.2)
+      this.markGrp.scale.setScalar(mr)
+      this.markGrp.rotation.z = Math.PI / 4
+      this.markGrp.visible = true
+      this.markRing.material.opacity = 0.55 + 0.4 * u
+      this.markDot.material.opacity = 0.35 + 0.55 * u
+      // 총구 오브
       this.orb.position.set(L.ox, L.oy, 8)
-      this.orb.scale.setScalar(Math.max(6, 26 * ppw) * (0.4 + 1.5 * u * u))
-      this.orb.material.color.copy(hot)
-      this.orb.material.opacity = 0.35 + 0.6 * pulse
+      this.orb.scale.setScalar(Math.max(5, 20 * ppw) * (0.35 + 0.9 * u))
+      this.orb.material.opacity = 0.25 + 0.45 * u
       this.orb.visible = true
       return
     }
 
-    if (L.state === 'flash') {
-      const u = Math.min(1, L.t / CFG.LASER_FLASH)
-      const fade = Math.pow(1 - u, 1.6)
-      const len = L.result ? L.result.t : L.range
-      this.place(this.beam, L.ox, L.oy, ang, len, Math.max(16 * ppw, 22) * (0.4 + fade), 7)
-      this.beam.material.opacity = fade
-      this.place(this.beamCore, L.ox, L.oy, ang, len, Math.max(5 * ppw, 7) * (0.5 + fade), 7.2)
-      this.beamCore.material.opacity = fade
+    if (L.state === 'travel') {
+      const ang = Math.atan2(L.uy, L.ux)
+      this.line.material.color.setHex(0xff4d6d)
+      // 지나간 자리는 흐릿하게 남겨 "어디서 왔는지"만 남긴다
+      this.place(this.line, L.ox, L.oy, ang, L.head, Math.max(1.4 * ppw, 2), 6.9)
+      this.line.material.opacity = 0.22
+      // 탄두 — 짧은 막대 하나. 이게 유일하게 움직인다.
+      const tail = Math.min(L.head, Math.max(90, 150 * ppw))
+      const bx = L.ox + L.ux * (L.head - tail), by = L.oy + L.uy * (L.head - tail)
+      this.place(this.bolt, bx, by, ang, tail, Math.max(9 * ppw, 12), 7)
+      this.place(this.boltCore, bx, by, ang, tail, Math.max(3 * ppw, 4), 7.2)
     }
   }
 }
