@@ -12,6 +12,9 @@ import { createSystem, pickHomeworld, reinforce } from './system.js'
 import { chargeLeft, makeLaser, stepLaser, LASER_CHARGE } from './laser.js'
 import * as Aim from './aim.js'
 
+// 관측 모드 배속 단계 — 화면의 배속 버튼이 이 사이를 돈다
+const OBS_SPEEDS = [1, 2, 4, 8]
+
 // 파괴 사유별 점수 (목표 / 중립). 추방은 없앴다 — 벨트가 되돌려 보낸다.
 const KILL_SCORE = {
   collision: [120, 40],
@@ -62,12 +65,13 @@ export class Game {
     this.laser.state = 'idle'; this.laser.t = 0; this.laser.nextAt = CFG.LASER_FIRST
 
     this.pairCool.clear()
-    this.missiles = []; this.rockets = CFG.ROCKETS; this.score = 0; this.chainLast = 0
+    this.missiles = []; this.shots = 0; this.score = 0; this.chainLast = 0
     this.won = false; this.lost = false; this.failReason = null
     const t = this.target
     this.aim = Math.atan2(t.pos.y - this.earth.pos.y, t.pos.x - this.earth.pos.x)
     this.power = 30; this.yieldMt = CFG.YIELD_DEFAULT
     this.mode = 'aim'; this.advancing = false; this.time = 0
+    this.obsSpeed = 1   // OBS_SPEEDS 인덱스 — 기본 2×
     this.toast = null; this.toastT = 0
     this.winBanked = false; this.timeWarn = 0
     this.stage = { roles: this.presentRoles(), added: added.length }
@@ -118,8 +122,15 @@ export class Game {
   // 붙잡혀 되떨어진다 = 자기 지구에 핵을 박는다. 반격탄과 같은 검사다.
   get launchEscape() { return escapeSpeed(CFG.EARTH_MU, CFG.LAUNCH_OFFSET) }
 
+  // 비행 중인 아군 탄이 있으면 다음 탄을 못 쏜다 — 탄약이 아니라 **차례**가 자원이다.
+  get inFlight() { return this.missiles.some(m => m.alive && !m.hostile) }
+
   fire() {
-    if (this.won || this.lost || this.rockets <= 0 || !this.earth.alive) return
+    if (this.won || this.lost || !this.earth.alive) return
+    if (this.inFlight) {
+      this.setToast('아직 탄이 날고 있다 — 결판난 뒤에 다음 탄을 쏜다')
+      return
+    }
     if (this.power <= this.launchEscape) {
       this.setToast(`발사 속도 부족 — 지구 탈출속도 ${this.launchEscape.toFixed(1)} 초과 필요`)
       return
@@ -132,7 +143,7 @@ export class Game {
       path: [{ ...p }], pathN: 0, enc: new Map(), bestDeflection: 0,
       encountered: false, minSunDist: Infinity, hit: null, out: null, lastBelt: -99,
     })
-    this.rockets--
+    this.shots++
     this.addFx({ kind: 'launch', x: p.x, y: p.y, a: this.aim })
     this.message = `MISSILE AWAY — ${this.yieldMt}Mt 탄두. 어느 살을 치느냐가 전부다`
     // 쏘면 자동으로 관측 모드로 넘어간다 — 쏜 뒤엔 보는 게 할 일이다.
@@ -164,14 +175,20 @@ export class Game {
     if (this.mode === 'aim') {
       // 기본은 정지. 진행 버튼(SHIFT)을 누르고 있는 동안만 흐른다.
       if (!this.advancing) return 0
-      return this.missiles.some(m => m.alive) ? 1 : 2
+      return this.missiles.some(m => m.alive) ? 1 : 2   // 조준 중 시간 보내기
     }
-    // 관측 중 미사일 비행은 1×였는데, 판이 2000 GU로 넓어지면서 한 발이
-    // 실시간 13~15초, 빗나간 탄은 TTL 52초를 통째로 기다려야 했다(플레이테스트).
-    // 2×로 올리고 SHIFT를 누르면 8×까지 감을 수 있게 한다.
-    if (this.missiles.some(m => m.alive)) return this.advancing ? 8 : 2
-    return this.advancing ? 10 : 4
+    // 관측 배속은 플레이어가 고른다(obsSpeed). 미사일이 날 때는 제대로 보라고
+    // 한 단계 낮춰 주고, 아무것도 안 날면 고른 배속 그대로 빨리 감는다.
+    const s = OBS_SPEEDS[this.obsSpeed] ?? 2
+    return this.missiles.some(m => m.alive) ? Math.max(1, s / 2) : s
   }
+
+  // 관측 배속 단계 — 버튼을 누를 때마다 다음 단계로 돈다
+  cycleObsSpeed() {
+    this.obsSpeed = (this.obsSpeed + 1) % OBS_SPEEDS.length
+    return OBS_SPEEDS[this.obsSpeed]
+  }
+  get obsSpeedLabel() { return `${OBS_SPEEDS[this.obsSpeed]}×` }
 
   tick(dtFrame) {
     if (this.toastT > 0) this.toastT -= dtFrame
@@ -620,7 +637,7 @@ export class Game {
 
   // 조준 가능 = 조준 모드일 것. 관측 모드에서는 조준선도 발사대도 사라진다.
   get canAim() {
-    return this.mode === 'aim' && !this.won && !this.lost && this.rockets > 0 && this.earth.alive
+    return this.mode === 'aim' && !this.won && !this.lost && this.earth.alive
   }
 
   // ─── 조준 보조 (aim.js) ─────────────────────────────────────

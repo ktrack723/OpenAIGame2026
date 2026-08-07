@@ -1,6 +1,7 @@
 import { Rng } from '../core/random.js'
 import { CFG, aMaxOf, beltRadius, contactDist, radiusOf } from './config.js'
 import { makeBody } from './body.js'
+import { TYPE_MU_MUL } from './roles.js'
 import { cloneBodies, stepBodies } from './physics.js'
 
 // 성계 생성 원시함수 모음. 표적 선정·목표 배정은 system.js로 옮겼다 —
@@ -12,10 +13,12 @@ import { cloneBodies, stepBodies } from './physics.js'
 //   "성계를 통째로 새로 뽑는" 경로 자체가 사라졌다.
 
 // STEP 4 — 바이옴 배정 (정규화 반경 존별 확률)
+// 분류는 다섯뿐이고 넷은 규칙을 갖는다(Icons.CATEGORY). 안쪽은 암석·금속,
+// 바깥쪽은 얼음·가스가 흔하다 — 실제 태양계의 배치와 같은 감각.
 const zoneTable = (x) =>
-  x < 0.30 ? [['lava', 55], ['rock', 30], ['toxic', 15]]
-  : x < 0.62 ? [['rock', 30], ['ocean', 30], ['toxic', 20], ['lava', 10], ['life', 10]]
-  : [['ice', 45], ['gas', 35], ['rock', 15], ['ocean', 5]]
+  x < 0.35 ? [['rock', 60], ['iron', 40]]
+  : x < 0.65 ? [['rock', 55], ['iron', 25], ['ice', 20]]
+  : [['ice', 50], ['gas', 35], ['rock', 15]]
 function pickW(rng, table) {
   let u = rng.range(0, 100)
   for (const [t, w] of table) if ((u -= w) <= 0) return t
@@ -48,7 +51,7 @@ export function elementsToState(a, e, w, nu) {
 const SOLAR = [
   // 이름, 궤도장반경(AU), 질량(지구=1), 반경(지구=1), 이심률, 종류
   { name: '수성 Mercury', au: 0.387, m: 0.0553, r: 0.383, e: 0.206, type: 'iron' },
-  { name: '금성 Venus', au: 0.723, m: 0.815, r: 0.949, e: 0.007, type: 'toxic' },
+  { name: '금성 Venus', au: 0.723, m: 0.815, r: 0.949, e: 0.007, type: 'rock' },
   { name: '지구 Earth', au: 1.000, m: 1.000, r: 1.000, e: 0.017, type: 'earth', isEarth: true },
   { name: '화성 Mars', au: 1.524, m: 0.107, r: 0.532, e: 0.093, type: 'rock' },
   { name: '베스타 Vesta', au: 2.362, m: 4.35e-5, r: 0.041, e: 0.089, type: 'rock' },
@@ -85,7 +88,10 @@ export function buildSolarSystem(rng, A = 1) {
   const rows = SOLAR.map((s, i) => ({
     ...s,
     a: aEarth * Math.pow(s.au, SOLAR_P),
-    mu: s.isEarth ? CFG.EARTH_MU : Math.max(12, CFG.EARTH_MU * Math.pow(s.m, SOLAR_Q)),
+    // 얼음은 가볍다 — 분류가 곧 질량이다(TYPE_MU_MUL). 반경은 실제 비율 그대로라
+    // "덩치는 큰데 잘 밀리는 공"이 자연스럽게 생긴다.
+    mu: s.isEarth ? CFG.EARTH_MU
+      : Math.max(10, CFG.EARTH_MU * Math.pow(s.m, SOLAR_Q) * (TYPE_MU_MUL[s.type] ?? 1)),
     radius: s.isEarth ? CFG.EARTH_R : Math.max(2.2, CFG.EARTH_R * Math.pow(s.r, SOLAR_S)),
     ecc: Math.min(SOLAR_E_MAX, s.e * SOLAR_E),
     idx: i,

@@ -1,5 +1,5 @@
 import { CFG, hitRadiusOf } from '../game/config.js'
-import { ROLES, modsOf, volatileRadius } from '../game/roles.js'
+import { ROLES, massClass, modsOf, volatileRadius } from '../game/roles.js'
 import { CATEGORY, HOSTILE, categoryOf } from '../render/Icons.js'
 
 // ─── 천체 정보창 ────────────────────────────────────────────────
@@ -93,8 +93,12 @@ export class Inspector {
     out.push(`<div class="itags">${tags.length
       ? tags.map(([c, t]) => `<span class="ibadge ${c}">${t}</span>`).join('')
       : '<span class="ibadge plain">태그 없음 · 일반 행성</span>'}</div>`)
-    out.push(`<div class="isub" style="color:${cat.color}">${cat.label} — ${cat.desc}</div>`)
+    // 분류의 메카닉을 한 줄로 못 박는다 — "이 분류가 게임에서 뭘 하는가"
+    out.push(`<div class="isub" style="color:${cat.color}">${cat.label} · ${cat.mech}</div>`)
     out.push(`<div class="irow"><span>체력</span><b class="${hp <= 1 ? 'crit' : ''}">${pips} ${hp}/${hpMax}</b></div>`)
+    // 무게 등급 — 태그와 무관하게 모든 행성이 갖는 성질. 밀 수 있는가에 대한 답.
+    const mc = massClass(b)
+    out.push(`<div class="irow"><span>무게</span><b style="color:${mc.color}">${mc.label}</b></div>`)
     out.push(`<div class="irow"><span>질량 μ</span><b>${fmt(b.mu)}</b></div>`)
     out.push(`<div class="irow"><span>반경 / 판정</span><b>${fmt(b.radius, 1)} / ${fmt(hitRadiusOf(b), 1)} GU</b></div>`)
     out.push(`<div class="irow"><span>궤도반경</span><b>${fmt(r)} GU</b></div>`)
@@ -112,8 +116,8 @@ export class Inspector {
     if (b.role === 'volatile') out.push(`<div class="irow"><span>유폭 반경</span><b>${fmt(volatileRadius(b))} GU</b></div>`)
     out.push(`<div class="ifoot">${b.isEarth
       ? '지구는 세 번 처박히면 끝난다 — 폭풍으로도 밀리니 조심해라.'
-      : hostile ? '충돌 3회로 박살난다. 태양·특이점·유폭도 인정된다.'
-        : '큐볼로 써라 — 밀어서 표적에 처박는 게 이 게임이다.'}</div>`)
+      : hostile ? '체력 1 — 한 번만 제대로 처박으면 끝난다. 태양·특이점·유폭도 인정된다.'
+        : `${mc.hint} — 밀어서 표적에 처박는 게 이 게임이다.`}</div>`)
     return out.join('')
   }
 

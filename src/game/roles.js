@@ -5,7 +5,7 @@ import { CFG, nukeDv } from './config.js'
 // 마음 놓고 큐볼로 쓰면 된다.
 //
 //   ☠ 조르그 요새 — 부숴야 할 표적. 때리면 반격 미사일이 되날아온다.
-//   ⚙ 금속 행성   — 무겁다. 핵으로 밀어도 거의 안 움직인다.
+//   🔩 금속 행성   — 무겁다. 핵으로 밀어도 거의 안 움직인다.
 //   🪐 가스 행성   — 터진다. 핵을 맞으면 그 자리에서 유폭한다.
 //   🕳 특이점      — 삼킨다. 블랙홀·태양처럼 닿는 것을 없애 버린다.
 //
@@ -16,13 +16,13 @@ export const ROLES = {
   battery: {
     label: '조르그 요새', icon: '☠', color: 0xf43f5e,
     dvScale: 1,
-    brief: '☠ 이게 표적이다. 체력 3 — 세 번 처박아야 부서진다. 때리면 반격 미사일을 되쏜다.',
+    brief: '☠ 이게 표적이다. 체력 1 — 제대로 한 번 처박으면 끝난다. 때리면 반격 미사일을 되쏜다.',
     aim: '조르그 요새 — 때린 쪽으로 반격 미사일이 튀어나온다 (붉은 화살표)',
   },
   armor: {
-    label: '금속 행성', icon: '⚙', color: 0x94a3b8,
+    label: '금속 행성', icon: '🔩', color: 0x94a3b8,
     dvScale: CFG.ARMOR_DV,
-    brief: '⚙ 무겁다. 핵 임펄스가 15%밖에 안 먹는다 — 다른 행성을 던져서 밀어라.',
+    brief: '🔩 무겁다. 핵 임펄스가 15%밖에 안 먹는다 — 다른 행성을 던져서 밀어라.',
     aim: '금속 행성 — 무거워서 밀리는 양이 15%다',
   },
   volatile: {
@@ -41,6 +41,23 @@ export const ROLES = {
 
 // 종류 → 태그. 여기 없는 종류는 전부 일반 행성이다.
 export const TAG_BY_TYPE = { iron: 'armor', gas: 'volatile', void: 'void' }
+
+// 종류별 질량 배율 — 얼음은 **가볍다**. 이게 "얼음 행성"의 메카닉 전부다:
+// 같은 크기라도 질량이 절반이라 핵 한 방에 두 배로 밀린다(Δv = 임펄스/질량).
+// 태그를 붙이지는 않는다(태그는 넷 그대로). 대신 질량이 실제로 낮으므로
+// 정보창의 질량·Δv·무게등급에 그대로 드러난다 — 규칙이 곧 숫자다.
+export const TYPE_MU_MUL = { ice: 0.55 }
+
+// 무게 등급 — 모든 행성이 갖는 성질. "이 공을 밀 수 있는가"를 한 단어로 답한다.
+// 기준은 최대 작약(12Mt)으로 얻는 Δv다. 궤도 속도가 13~25 GU/s 대역이므로
+// 그와 견줘 읽으면 된다: 60이면 총알처럼 날아가고, 5면 꿈쩍도 안 한다.
+export function massClass(b) {
+  const dv = nukeDv(CFG.YIELD_MAX, b.mu) * dvScaleOf(b)
+  if (dv >= 60) return { key: 'feather', label: '아주 가벼움', hint: '한 방에 총알처럼 날아간다', color: '#7dd3fc' }
+  if (dv >= 25) return { key: 'light', label: '가벼움', hint: '큐볼로 쓰기 좋다', color: '#a5f3fc' }
+  if (dv >= 10) return { key: 'medium', label: '보통', hint: '큰 작약이면 궤도가 바뀐다', color: '#cbd5e1' }
+  return { key: 'heavy', label: '무거움', hint: '핵으로는 거의 못 민다 — 다른 공을 던져라', color: '#f5b544' }
+}
 // 이 천체에 붙는 태그 하나(없으면 null). 조르그 요새가 최우선 —
 // 금속으로 만든 요새라도 플레이어에게 먼저 읽혀야 하는 건 "표적"이다.
 export const tagOf = (b) => (b && b.role) ? b.role : null
