@@ -104,6 +104,7 @@ export class Victory {
       ['남은 시한', `${Math.floor(g.timeLeft / 60)}:${String(Math.floor(g.timeLeft % 60)).padStart(2, '0')} (보너스 +${g.timeBonus})`],
       ['이번 판 점수', `${g.score + g.timeBonus}`],
       ['살아남은 천체', `${survivors}기 — 그대로 다음 판으로 간다`],
+      ['지구 체력', `${g.earth.hp}/${g.earth.hpMax} — 회복되지 않는다`],
     ].map(([k, v]) => `<div class="vicrow"><span>${k}</span><b>${v}</b></div>`).join('')
     this.el.hidden = false
     this.el.classList.remove('out')
