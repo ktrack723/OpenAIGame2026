@@ -22,6 +22,7 @@ const MATS = {
   gas: { c: 0xffd166, rough: 0.85, metal: 0.00, emis: 0.08 },
   void: { c: 0x120a1e, rough: 1.00, metal: 0.00, emis: 0.00 },
   earth: { c: 0x3b82f6, rough: 0.55, metal: 0.10, emis: 0.08 },
+  zorg: { c: 0x4a1240, rough: 0.45, metal: 0.65, emis: 0.30 },   // 조르그 모성
   debris: { c: 0x8b8f96, rough: 1.00, metal: 0.10, emis: 0.00 },
 }
 

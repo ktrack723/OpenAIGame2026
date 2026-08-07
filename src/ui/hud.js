@@ -301,7 +301,7 @@ function predLine(game, p) {
 
 const FAIL_WHY = {
   EARTH_LOST: '지구를 잃었다. 조르그보다 먼저 인류가 끝났다.',
-  TIME_UP: '작전 시한이 끝났다. 조르그가 회랑을 재정비했다.',
+  TIME_UP: '',   // 시한 종료는 '그들이 왔다…' 한 줄로만 — 설명하지 않는다
   EARTH_LASER: `조르그 레이저가 지구를 관통했다. ${CFG.LASER_CHARGE}초의 조준 시간 안에 선을 끊었어야 했다.`,
 }
 
@@ -311,7 +311,7 @@ export function updateHud(el, game) {
   if (el._stageIdx !== game.stageIdx) { el._stageIdx = game.stageIdx; el._sync() }
 
   // ── 모드 전환 — 관측 중에는 패널을 통째로 감추고 버튼 하나만 남긴다 ──
-  const observing = game.mode === 'observe' && !game.runOver
+  const observing = (game.mode === 'observe' || !!game.doom) && !game.runOver
   if (el._observing !== observing) {
     el._observing = observing
     el.hidden = observing
@@ -321,13 +321,15 @@ export function updateHud(el, game) {
     // 버튼 하나에 접어 넣는 최소 정보: 배속 · 남은 시한 · 레이저 경보
     const left = game.timeLeft
     const clock = `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`
-    const sub = game.laserCharging
+    const sub = game.doom
+      ? '그들이 왔다…'
+      : game.laserCharging
       ? `⚠ 레이저 T-${game.laserLeft.toFixed(0)}s · 빗나감 ${game.laserMiss.toFixed(0)} GU`
         + (game.laserSafe ? ' — 지금은 산다' : ' — 지금은 맞는다')
       : game.laserFlying
         ? `⚠ 레이저 비행 중 — 도달까지 ${game.laserImpactLeft.toFixed(1)}s`
         : `${game.effTimeScale()}× 진행 중 · 잔여 ${clock}`
-    const alarm = game.laserCharging || game.laserFlying
+    const alarm = game.laserCharging || game.laserFlying || !!game.doom
     const bar = el._obsBar, btn = bar.querySelector('#toAim')
     if (btn._sub !== sub) { btn._sub = sub; bar.querySelector('#obsSub').textContent = sub }
     btn.classList.toggle('alarm', alarm)
@@ -348,8 +350,13 @@ export function updateHud(el, game) {
   if (over.hidden === game.runOver) {
     over.hidden = !game.runOver
     if (game.runOver) {
+      // 시한 종료는 제목부터 다르다 — 설명 없이 그 한 줄만 남긴다.
+      const doom = game.failReason === 'TIME_UP'
+      over.querySelector('h2').textContent = doom ? '그들이 왔다…' : '작전 실패'
+      over.classList.toggle('doom', doom)
+      const why = FAIL_WHY[game.failReason] ?? game.message
       over.querySelector('#overWhy').textContent =
-        `${FAIL_WHY[game.failReason] ?? game.message}  ·  최종 점수 ${game.runScore + game.score}`
+        why ? `${why}  ·  최종 점수 ${game.runScore + game.score}` : `최종 점수 ${game.runScore + game.score}`
       el.querySelector('#wait').disabled = true
     }
   }

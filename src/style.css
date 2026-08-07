@@ -358,6 +358,9 @@ pre{white-space:pre-wrap;line-height:1.55;color:#9fd0c4;margin:0;font-size:11px;
   clip-path:polygon(0 16px,16px 0,100% 0,100% calc(100% - 16px),calc(100% - 16px) 100%,0 100%)}
 .gameover h2{margin:0 0 10px;color:var(--rd);font-size:22px;letter-spacing:.3em;font-weight:900;
   text-shadow:0 0 18px #ff5c6a66}
+/* 시한 종료 — 조르그 모성이 왔다. 문장 하나만 남기므로 그 하나를 크게 둔다. */
+.gameover.doom h2{color:#e879f9;font-size:26px;letter-spacing:.24em;text-shadow:0 0 26px #e879f999}
+.gameover.doom{border-color:#6b2472;box-shadow:0 0 80px #a21caf55, inset 0 0 60px #2a0a3a88}
 .gameover p{margin:0 0 18px;color:#e7b7bc;font-size:12.5px;line-height:1.65;font-family:var(--mono)}
 .gameover .firebtn{border-color:#a02630;background:linear-gradient(180deg,#4a0e16,#2a070c);color:#ffd9dc;font-size:14px}
 .gameover .firebtn:hover{background:linear-gradient(180deg,#7d1521,#4a0e16);box-shadow:0 0 26px #ff5c6a66}

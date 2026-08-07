@@ -22,6 +22,7 @@ export const CATEGORY = {
   gas: { icon: '🪐', label: '가스 행성', color: '#fcd34d', mech: '터진다 — 핵을 맞거나 세게 처박히면 대규모 유폭', desc: '반경 420 GU 이상이 통째로 밀려난다. 판을 뒤집는 수.' },
   void: { icon: '🕳', label: '특이점', color: '#c084fc', mech: '삼킨다 — 닿는 것을 없앤다. 부술 수 없다', desc: '블랙홀·태양과 같은 부류. 여기로 밀어 넣어라.' },
   earth: { icon: '🌍', label: '지구', color: '#93c5fd', mech: '우리 집 — 세 번 처박히면 게임 오버', desc: '발사대이자 지켜야 할 것.' },
+  zorg: { icon: '👁', label: '조르그 모성', color: '#e879f9', mech: '부술 수 없다 — 시한이 끝나면 온다', desc: '판돈을 회수하러 직접 온 것.' },
   debris: { icon: '·', label: '파편', color: '#94a3b8', mech: '미사일을 조기 격발시킨다', desc: '충돌 잔해.' },
 }
 export const HOSTILE = { icon: '☠', label: '조르그 요새', color: '#ff5c6a' }

@@ -95,7 +95,8 @@ function solveAim(L, game) {
 }
 
 // 광선이 이번 구간에서 처음 닿는 것. 태양(원점)과 천체를 함께 본다.
-// 반환: { body|null, x, y, stop } — body가 null이면 태양에 막힌 것이다.
+// 반환: { body|null, x, y } — body가 null이면 태양에 막힌 것이다.
+// 본성의 조준 광선과 모성의 난사가 같은 함수를 쓴다 — 규칙이 갈리면 안 된다.
 function sweep(game, x0, y0, x1, y1, skip) {
   let best = null, bestD = Infinity
   const take = (body, p) => {
@@ -180,3 +181,61 @@ export const chargeLeft = (L) => L.state === LASER_CHARGE ? Math.max(0, CFG.LASE
 // 비행 중 조준점까지 남은 시간 (HUD 경고용)
 export const impactLeft = (L) =>
   L.state === LASER_TRAVEL ? Math.max(0, (L.aimDist - L.head) / CFG.LASER_SPEED) : 0
+
+// ─── 조르그 모성의 난사 ─────────────────────────────────────────
+// 작전 시한이 끝나면 조르그 **모성**이 판 한가운데로 워프해 들어와 사방에
+// 광선을 뿌린다. 이건 플레이어가 이길 수 있는 싸움이 아니다 — 시한을 넘겼다는
+// 사실을 문장 하나로 통보하는 대신 **보여 주는** 장치다.
+//
+// 광선 하나하나는 본성의 것과 똑같이 굴러간다(같은 sweep, 같은 속도, 닿는 첫
+// 천체는 체력 불문 소멸). 다만 조준이 없다 — 부채꼴로 하나씩 돌아가며 뿜는다.
+export function makeDoom(x, y, range, ship) {
+  return { x, y, range, ship, t: 0, warping: true, spawned: 0, beams: [], done: false }
+}
+
+// 마지막 한 발의 조준각 — 광선이 날아가는 동안 지구가 이동한 만큼 미리 당긴다.
+// (안 당기면 2초 비행 중 지구가 50 GU 옮겨 가 판정 반경 37 GU를 벗어난다 —
+//  실제로 네 시드 모두 마지막 발이 빗나가 지구가 살아남았다.)
+function doomAimEarth(D, earth) {
+  let px = earth.pos.x, py = earth.pos.y
+  for (let i = 0; i < 3; i++) {                    // 거리↔비행시간을 두어 번 되풀어 수렴시킨다
+    const t = Math.hypot(px - D.x, py - D.y) / CFG.LASER_SPEED
+    px = earth.pos.x + earth.vel.x * t
+    py = earth.pos.y + earth.vel.y * t
+  }
+  return Math.atan2(py - D.y, px - D.x)
+}
+
+export function stepDoom(D, game, dt) {
+  const ev = []
+  D.t += dt
+  if (D.warping) {                       // 워프인 연출이 끝나기 전엔 안 쏜다
+    if (D.t < CFG.DOOM_WARP) return ev
+    D.warping = false; D.t = 0
+  }
+  // 부채꼴로 한 발씩. 황금각으로 돌려서 순서가 규칙적으로 안 보이게 한다.
+  // **마지막 한 발만은 지구를 겨눈다.** 나머지가 사방으로 흩어지는 난사라면
+  // 이 한 발이 마침표다 — 판이 쓸려나가는 걸 보여 준 뒤 마지막에 판돈을 가져간다.
+  // (무작위에 맡기면 지구가 살아남은 채로 런이 끝나는 그림이 나온다.)
+  while (D.spawned < CFG.DOOM_BEAMS && D.t >= D.spawned * CFG.DOOM_GAP) {
+    const last = D.spawned === CFG.DOOM_BEAMS - 1
+    const a = last ? doomAimEarth(D, game.earth) : D.spawned * 2.399963
+    D.beams.push({ ux: Math.cos(a), uy: Math.sin(a), head: 0, dead: false })
+    ev.push({ kind: 'beam', a })
+    D.spawned++
+  }
+  for (const b of D.beams) {
+    if (b.dead) continue
+    const h0 = b.head
+    b.head = Math.min(D.range, h0 + CFG.LASER_SPEED * dt)
+    const hit = sweep(game, D.x + b.ux * h0, D.y + b.uy * h0,
+      D.x + b.ux * b.head, D.y + b.uy * b.head, D.ship)
+    if (hit) {
+      b.dead = true
+      b.head = Math.hypot(hit.x - D.x, hit.y - D.y)
+      ev.push({ kind: 'hit', body: hit.body, x: hit.x, y: hit.y })
+    } else if (b.head >= D.range) b.dead = true
+  }
+  if (D.spawned >= CFG.DOOM_BEAMS && D.beams.every(b => b.dead)) D.done = true
+  return ev
+}
