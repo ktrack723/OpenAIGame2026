@@ -534,6 +534,10 @@ export class Game {
   // 사유는 점수(KILL_SCORE)와 로그 문구에만 쓴다.
   recordKill(b, cause) {
     if (b.type === 'debris') return
+    // 모성이 온 뒤의 파괴는 **전과가 아니다.** 저쪽이 제 광선으로 판을 쓸어
+    // 내는 중이고, 그 와중에 조르그 요새가 같이 녹아도 그건 내가 부순 게 아니다.
+    // 점수·목표 갱신·문구를 전부 건너뛴다 — 이 화면의 문장은 하나뿐이다.
+    if (this.doom) return
     const wasFort = b.role === 'battery'
     const [tp, np] = KILL_SCORE[cause] ?? [0, 0]
     const gained = wasFort ? tp : np
@@ -558,7 +562,10 @@ export class Game {
   }
 
   win() {
-    if (this.won || this.lost) return
+    // 모성이 오는 중에는 절대 이기지 않는다. 예전엔 난사가 마지막 요새를
+    // 태우는 순간 recordKill → win()이 그대로 걸려서, 성계가 쓸려나가는 와중에
+    // 축하 화면이 떴다(그리고 won=true가 되면 시계가 멈춰 연출까지 얼어붙었다).
+    if (this.won || this.lost || this.doom) return
     this.won = true
     this.message = '작전 성공 — 조르그 요새 전멸. 성계는 그대로 다음 판으로 이어진다'
     this.setToast('작전 성공')
