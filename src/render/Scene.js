@@ -298,6 +298,13 @@ export class SceneView {
     this.flashV = Math.min(1, this.flashV + v)
   }
 
+  // 화면에 떠 있는 연출(파티클·링·화구·섬광)을 그 자리에서 지운다.
+  // 오프닝 예고편의 컷 전환용 — 하드컷이므로 앞 컷의 불꽃을 끌고 가지 않는다.
+  clearFx() {
+    this.parts.clear()
+    this.flashV = 0
+  }
+
   resetStage() {
     this.orbits.dispose()
     for (const fx of this.bodyFx.values()) this.disposeBodyFx(fx)

@@ -19,15 +19,48 @@ const LOGO_MS = 1400    // 마지막 로고 체류
 // (Game.effTimeScale). 아래 컷 길이는 그걸 감안한 **실시간** 밀리초다.
 // 태양은 반경 150에 화면을 하얗게 태우므로 컷은 전부 원점에서 멀리 세운다.
 
+// ── 화면 ────────────────────────────────────────────────────────
+
+// HUD 패널은 넓은 화면에서 왼쪽에 붙지만, 좁은 화면(모바일)에서는 화면 아래위로
+// **도킹해 절반을 먹는다.** 그러면 예고편이 남은 띠 안에서만 벌어져 아무것도 안
+// 보인다. 그 레이아웃에서는 예고편을 **관측 모드**로 돌린다 — 조준 UI가 통째로
+// 사라지고 화면 전체가 게임이 된다. 관측 모드도 실제 플레이 화면이다.
+const hudDocked = () => {
+  const r = document.querySelector('.hud')?.getBoundingClientRect()
+  return !!r && r.width > 0 && r.width >= innerWidth * 0.7
+}
+
+// 컷을 세울 축 = **화면의 긴 쪽**. 세로 화면에서 공을 가로로 늘어놓으면 셋을 다
+// 담느라 통째로 줌아웃되어 아무것도 안 보인다. 긴 축을 따라 세우면 같은 사건이
+// 세로 화면에서도 같은 크기로 온다.
+const longAxis = () => innerWidth >= innerHeight ? { x: 1, y: 0 } : { x: 0, y: 1 }
+const perp = (u) => ({ x: -u.y, y: u.x })
+
+// (x, y)를 화면 한가운데 놓고 줌을 잡는다. 요구치가 둘이다:
+//   · reach  — 배치가 뻗은 길이의 절반. 컷을 긴 축에 세우므로 **긴 축** 요구치다.
+//   · radial — 폭발처럼 사방으로 퍼지는 것의 반경. 사방이므로 **짧은 축**이 문제다.
+// 둘 중 큰 쪽으로 잡는다. 이걸 나누지 않으면 세로 화면에서 폭발이 화면을 통째로
+// 태워 아무것도 안 보인다(가로 화면의 종횡비로 맞춘 줌은 세로 화면에서 2배 이상
+// 확대된 셈이 된다).
+// rig.frame은 halfH(세로 절반)를 받으므로 여기서 종횡비를 풀어 준다.
+function look(rig, x, y, reach, radial = 0) {
+  const a = Math.max(0.2, innerWidth / Math.max(1, innerHeight))
+  const byReach = a >= 1 ? reach / a : reach        // 긴 축 = 가로면 halfW 기준
+  const byRadial = a >= 1 ? radial : radial / a     // 짧은 축 = 가로면 세로, 세로면 가로
+  rig.frame(x, y, Math.max(byReach, byRadial))
+}
+
 // ── 판 세팅 도우미 ──────────────────────────────────────────────
 
 // 컷마다 판을 **처음부터 다시** 세운다. 앞 컷의 잔해·폭발·전사자가 다음 컷으로
 // 새지 않는다. 예고편은 컷 사이가 점프컷이므로 이래도 자연스럽고, 대신 여섯 컷이
 // 언제 봐도 똑같이 나온다.
-function board(g) {
+function board(g, mode) {
   g.resetRun()
   g.stepWarpIns(99)   // 조르그 증원 워프를 즉시 끝내 놓는다 (본성도 여기서 정해진다)
   g.fx.length = 0     // 워프 연출까지는 안 보여 준다
+  g.mode = mode       // loadStage가 'aim'으로 되돌려 놓는다 — 매 컷 다시 건다
+  g._predKey = null   // 판을 갈아 끼웠으므로 예측 캐시는 버린다
   g.advancing = true
   return g
 }
@@ -47,12 +80,16 @@ const biggest = (list, n) => [...list].sort((a, b) => hitRadiusOf(b) - hitRadius
 // 읽힌다. 시드는 매일 바뀌므로 자리를 고정할 수 없다 — 주어진 반경들을 한 바퀴씩
 // 훑어 **가장 한산한 지점**을 고른다. actors(이번 컷에서 옮길 것들)는 지금 어디에
 // 있든 상관없으므로 계산에서 뺀다.
-function stage(g, radii, actors) {
-  let best = { x: radii[0], y: 0 }, bestD = -1
+//
+// axis/minPerp를 주면 "그 자리에 axis 방향으로 선을 그었을 때 태양에서 minPerp
+// 이상 떨어진" 자리만 고른다 — 레이저 진로가 태양에 막히지 않아야 하는 컷용.
+function stage(g, radii, actors, { axis, minPerp = 0 } = {}) {
+  let best = null, bestD = -1
   for (const r of radii) {
     for (let i = 0; i < 36; i++) {
       const a = i * Math.PI / 18
       const x = Math.cos(a) * r, y = Math.sin(a) * r
+      if (axis && Math.abs(x * axis.y - y * axis.x) < minPerp) continue
       let d = Infinity
       for (const b of g.bodies) {
         if (!b.alive || actors.includes(b)) continue
@@ -61,8 +98,11 @@ function stage(g, radii, actors) {
       if (d > bestD) { bestD = d; best = { x, y } }
     }
   }
-  return best
+  return best ?? { x: radii[0], y: 0 }
 }
+
+// 무대 좌표계 — P에서 긴 축으로 d, 옆으로 off 만큼 간 자리
+const at = (P, u, n, d, off = 0) => [P.x + u.x * d + n.x * off, P.y + u.y * d + n.y * off]
 
 const place = (b, x, y, vx = 0, vy = 0) => {
   b.pos.x = x; b.pos.y = y; b.vel.x = vx; b.vel.y = vy
@@ -87,14 +127,16 @@ const CUTS = [
     setup(g, rig) {
       const [b, c, a] = biggest(solidBalls(g), 3)
       if (!a || !b || !c) return null
-      const { x: X, y: Y } = stage(g, [1100, 1400, 1750], [a, b, c])
-      place(c, X + hitRadiusOf(b) + hitRadiusOf(c) + 42, Y)
-      place(b, X, Y)
-      place(a, X - hitRadiusOf(a) - hitRadiusOf(b) - 90, Y - 11, 82, 0)
-      aimAt(g, X, Y)
-      const look = () => rig.frame((a.pos.x + b.pos.x + c.pos.x) / 3, Y, 330)
-      look()
-      return look
+      const u = longAxis(), n = perp(u)
+      const P = stage(g, [1100, 1400, 1750], [a, b, c])
+      place(c, ...at(P, u, n, hitRadiusOf(b) + hitRadiusOf(c) + 42))
+      place(b, ...at(P, u, n, 0))
+      place(a, ...at(P, u, n, -(hitRadiusOf(a) + hitRadiusOf(b) + 90), -11), u.x * 82, u.y * 82)
+      aimAt(g, P.x, P.y)
+      const cam = () => look(rig,
+        (a.pos.x + b.pos.x + c.pos.x) / 3, (a.pos.y + b.pos.y + c.pos.y) / 3, 300, 200)
+      cam()
+      return cam
     },
   },
   // ② 핵 — 탄두가 날아와 공의 한쪽 살을 친다. 진짜 임펄스·폭풍·밀림 화살표.
@@ -103,9 +145,12 @@ const CUTS = [
     setup(g, rig) {
       const t = biggest(solidBalls(g), 1)[0]
       if (!t) return null
-      const { x: X, y: Y } = stage(g, [1100, 1400, 1750], [t])
-      place(t, X, Y, 0, 12)
-      const from = { x: X - 430, y: Y - 150 }
+      const u = longAxis(), n = perp(u)
+      const P = stage(g, [1100, 1400, 1750], [t])
+      const [X, Y] = at(P, u, n, 0)
+      place(t, X, Y, n.x * 12, n.y * 12)
+      const [fx, fy] = at(P, u, n, -430, -150)
+      const from = { x: fx, y: fy }
       const dx = X - from.x, dy = Y - from.y
       const d = Math.hypot(dx, dy)
       g.yieldMt = CFG.YIELD_MAX
@@ -117,9 +162,11 @@ const CUTS = [
       })
       g.addFx({ kind: 'launch', x: from.x, y: from.y, a: Math.atan2(dy, dx) })
       aimAt(g, X, Y)
-      const look = () => rig.frame(X - 120, Y - 45, 470)
-      look()
-      return look
+      // 폭심을 화면 한가운데 두고, 탄두가 들어오는 쪽으로 조금만 물러선다
+      const [cx, cy] = at(P, u, n, -70, -25)
+      const cam = () => look(rig, cx, cy, 380, 380)
+      cam()
+      return cam
     },
   },
   // ③ 표적 — 조르그 요새를 공으로 처박는다. 진짜 파괴 + 파편 + 목표 카운터.
@@ -129,15 +176,20 @@ const CUTS = [
       const fort = g.bodies.find(x => x.alive && x.role === 'battery')
       const cue = biggest(solidBalls(g), 1)[0]
       if (!fort || !cue) return null
-      const { x: X, y: Y } = stage(g, [1150, 1450, 1750], [fort, cue])
-      place(cue, X - hitRadiusOf(cue) - hitRadiusOf(fort) - 150, Y - 12, 105, 0)
+      const u = longAxis(), n = perp(u)
+      const P = stage(g, [1150, 1450, 1750], [fort, cue])
+      const [X, Y] = at(P, u, n, 0)
+      place(cue, ...at(P, u, n, -(hitRadiusOf(cue) + hitRadiusOf(fort) + 150), -12),
+        u.x * 105, u.y * 105)
       place(fort, X, Y)
       aimAt(g, X, Y)
       // 요새가 부서지면 카메라를 그 자리에 세운다 — 안 그러면 큐볼을 따라가며
       // 정작 보여 줘야 할 폭발과 파편을 화면 밖에 두고 나간다.
-      const look = () => { if (fort.alive) rig.frame((cue.pos.x + X) / 2, Y, 440) }
-      look()
-      return look
+      const cam = () => {
+        if (fort.alive) look(rig, (cue.pos.x + X) / 2, (cue.pos.y + Y) / 2, 320, 220)
+      }
+      cam()
+      return cam
     },
   },
   // ④ 유폭 — 가스 행성이 터지며 반경 안이 통째로 밀려난다. 진짜 volatileBlast.
@@ -156,7 +208,7 @@ const CUTS = [
       })
       aimAt(g, X, Y)
       g.volatileBlast(gas)
-      rig.frame(X, Y, 900)
+      look(rig, X, Y, 700, 560)
       return null
     },
   },
@@ -168,8 +220,13 @@ const CUTS = [
       const src = g.homeworld ?? g.bodies.find(x => x.alive && x.role === 'battery')
       if (!src) return null
       g.homeworld = src
-      place(src, -1500, -1450)
-      place(g.earth, 200, -1450, 0, 6)     // 광선이 지구를 겨눈다 = 진로가 +x
+      // 광선은 지구를 겨눈다. 그러니 본성과 지구를 긴 축 위에 세우면 진로가
+      // 그대로 긴 축이 된다. 태양(반경 150)이 그 선을 막지 않게 무대는 축에서
+      // 700 GU 이상 떨어진 자리만 고른다.
+      const u = longAxis(), n = perp(u)
+      const P = stage(g, [1500, 1800], [src, g.earth], { axis: u, minPerp: 700 })
+      place(src, ...at(P, u, n, -750))
+      place(g.earth, ...at(P, u, n, 880), n.x * 6, n.y * 6)
       const L = g.laser
       L.state = LASER_IDLE; L.t = 0; L.nextAt = 0
       g.step(CFG.DT)                        // → charge (원래 궤도 ghost·조준점 계산)
@@ -184,7 +241,7 @@ const CUTS = [
       const D = 1150
       const wall = biggest(solidBalls(g), 1)[0]
       if (wall) place(wall, L.ox + L.ux * D, L.oy + L.uy * D)
-      rig.frame(L.ox + L.ux * D * 0.55, L.oy + L.uy * D * 0.55, 560)
+      look(rig, L.ox + L.ux * D * 0.5, L.oy + L.uy * D * 0.5, 660, 200)
       return null
     },
   },
@@ -195,9 +252,9 @@ const CUTS = [
       g.summonMothership()
       const s = g.mothership
       if (!s) return null
-      const look = () => rig.frame((s.pos.x + g.earth.pos.x) / 2, (s.pos.y + g.earth.pos.y) / 2, 1050)
-      look()
-      return look
+      const cam = () => look(rig, (s.pos.x + g.earth.pos.x) / 2, (s.pos.y + g.earth.pos.y) / 2, 1150, 700)
+      cam()
+      return cam
     },
   },
 ]
@@ -247,8 +304,10 @@ export class Attract {
   }
 
   start() {
-    // 시간이 흐르되 HUD 패널은 그대로 보이는 상태 — 실제 플레이 화면과 같다.
-    this.game.setMode('aim')
+    // 넓은 화면: 조준 모드 — 시간이 흐르되 HUD 패널이 그대로 보이는, 실제 플레이 화면.
+    // 좁은 화면: 관측 모드 — 조준 UI가 화면 절반을 먹으므로 통째로 치우고 화면을 준다.
+    this.mode = hudDocked() ? 'observe' : 'aim'
+    this.game.setMode(this.mode)
     this.next()
     return this
   }
@@ -276,8 +335,9 @@ export class Attract {
     this.fill.style.width = `${((this.i + 1) / (CUTS.length + 1)) * 100}%`
     let hold = cut.ms
     this.tick = null
+    this.view.clearFx()      // 하드컷 — 앞 컷의 불꽃을 끌고 가지 않는다
     try {
-      this.tick = cut.setup(board(this.game), this.view.rig) ?? null
+      this.tick = cut.setup(board(this.game, this.mode), this.view.rig) ?? null
     } catch {
       this.tick = null; hold = 60      // 세팅이 실패하면 그 컷은 건너뛴다
     }

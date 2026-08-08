@@ -171,6 +171,17 @@ export class Particles {
     s.userData = { t: 0, ttl, r0, r1, delay, alpha, vx: Math.cos(a) * drift, vy: Math.sin(a) * drift }
   }
 
+  // 살아 있는 파티클·링·화구를 그 자리에서 전부 걷어낸다.
+  // 오프닝 예고편이 컷을 바꿀 때 쓴다 — 하드컷인데 앞 컷의 불꽃이 넘어오면
+  // 두 사건이 한 화면에 겹쳐 보인다.
+  clear() {
+    this.life.fill(0); this.alpha.fill(0); this.size.fill(0)
+    for (const m of this.rings) m.visible = false
+    for (const s of this.puffs) s.visible = false
+    this.geo.attributes.aAlpha.needsUpdate = true
+    this.geo.attributes.aSize.needsUpdate = true
+  }
+
   update(dt, uScale) {
     this.mat.uniforms.uScale.value = uScale
     const { pos, vx, vy, life, ttl, alpha, size, size0, drag } = this
