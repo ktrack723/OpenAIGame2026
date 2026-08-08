@@ -38,7 +38,7 @@ if (!params.get('nointro')) {
 let last = performance.now()
 function loop(now) {
   const dt = Math.min(0.1, (now - last) / 1000); last = now
-  attract?.frame()                    // 예고편이 카메라를 잡고 있는 동안만
+  attract?.frame(dt)                  // 예고편이 카메라를 잡고 있는 동안만
   game.tick(dt); view.render(); updateHud(hud, game); inspector.update()
   // 판을 이긴 순간 축하 장면을 연다(한 번만). 닫으면 다음 침공이 온다.
   if (game.won && !game.runOver && !victory.shown && !attract) { victory.shown = true; victory.open() }

@@ -1,263 +1,371 @@
 import { CFG, hitRadiusOf } from '../game/config.js'
-import { LASER_CHARGE, LASER_IDLE, LASER_TRAVEL } from '../game/laser.js'
+import { LASER_CHARGE, LASER_IDLE } from '../game/laser.js'
+import { makeGoal } from '../game/objectives.js'
+import { cloneBodies, stepBodies, stepMissile } from '../game/physics.js'
+import { effDv } from '../game/roles.js'
 
-// ─── 오프닝 예고편 — 진짜 인게임 푸티지 ─────────────────────────
-// 그려 놓은 일러스트가 아니다. **실제 게임을 굴린다.** 같은 렌더러, 같은 HUD,
-// 같은 폭발·트레일·충격파, 같은 물리. 이 파일이 하는 일은 연출이 아니라
-// **연출가**다: 판을 한 컷씩 세팅하고 카메라를 그 자리에 붙인 뒤, 게임이
-// 스스로 돌아가는 걸 보여 준다. 인게임 푸티지를 짜깁기한 예고편과 같은 방식이다.
+// ─── 오프닝 예고편 — 한 판의 긴 한 수 ───────────────────────────
+// 짧은 컷을 여러 개 이어 붙이지 않는다. **한 번의 발사가 끝까지 굴러가는 것**을
+// 처음부터 끝까지 한 호흡으로 보여 준다:
 //
-// 글자는 없다. 컷마다 "무슨 일이 벌어지는지"만 보이고, 마지막에 로고가 박힌다.
-// (HUD에 뜨는 문구는 게임이 스스로 띄우는 것이다 — 예고편 자막이 아니다.)
+//   조준(예측선이 휘어진 궤적을 그린다) → 발사 → 가스 행성을 끼고 스윙바이
+//   → 돌아 나와 행성 한 대를 핵으로 후려침 → 밀려난 그 행성이 굴러가
+//   → **레이저를 충전 중이던** 조르그 본성을 그대로 들이받음
+//   → 요새 격파 · 레이저 침묵 → 로고.
 //
-// 끝나면 game.resetRun()으로 판을 처음부터 다시 세운다 — Game은 객체 정체성을
-// 유지하며 리셋되므로 렌더러·HUD·카메라를 다시 이을 필요가 없다.
+// 그려 놓은 그림이 아니다. 실제 게임을 굴린다 — 같은 렌더러, 같은 HUD, 같은
+// 폭발, 같은 물리. 이 파일이 하는 일은 **판을 세우는 것 하나**다. 세팅이 끝나면
+// game.fire() 한 번이 나가고, 그 뒤는 전부 게임이 스스로 굴린다.
+//
+// 그래서 세팅을 눈대중으로 할 수 없다. 시드는 매일 바뀌고 성계 배치도 매일
+// 달라지므로, 스윙바이 궤적과 표적 위치를 **매번 수치로 푼다**(solveShot).
+// 글자는 없다 — 화면에 뜨는 문구는 전부 게임이 스스로 띄우는 HUD다.
 
-const LOGO_MS = 1400    // 마지막 로고 체류
-
-// 조준 모드에서 진행 중이면 판은 2×로 흐르고, 탄두가 날 때만 1×로 떨어진다
-// (Game.effTimeScale). 아래 컷 길이는 그걸 감안한 **실시간** 밀리초다.
-// 태양은 반경 150에 화면을 하얗게 태우므로 컷은 전부 원점에서 멀리 세운다.
+const AIM_MS = 950       // 발사 전 조준 — 예측선이 스윙바이 궤적을 그린다
+const TAIL_MS = 900      // 요새가 부서진 뒤 여운
+// 안전장치 — 장면이 어그러졌을 때만 걸린다. 정상 진행은 요새가 부서지는
+// 순간(보통 7~9초)에 끝나므로, 느린 기기에서 잘리지 않게 넉넉히 잡는다.
+const CAP_MS = 18000
+const LOGO_MS = 1500
 
 // ── 화면 ────────────────────────────────────────────────────────
 
 // HUD 패널은 넓은 화면에서 왼쪽에 붙지만, 좁은 화면(모바일)에서는 화면 아래위로
-// **도킹해 절반을 먹는다.** 그러면 예고편이 남은 띠 안에서만 벌어져 아무것도 안
-// 보인다. 그 레이아웃에서는 예고편을 **관측 모드**로 돌린다 — 조준 UI가 통째로
-// 사라지고 화면 전체가 게임이 된다. 관측 모드도 실제 플레이 화면이다.
+// **도킹해 절반을 먹는다.** 그런 레이아웃에서는 조준 단계를 건너뛰고 처음부터
+// 관측 모드로 간다 — 조준 UI가 통째로 사라지고 화면 전체가 게임이 된다.
+// (넓은 화면도 발사 순간 게임이 스스로 관측 모드로 넘어간다. 원래 그런 게임이다.)
 const hudDocked = () => {
   const r = document.querySelector('.hud')?.getBoundingClientRect()
   return !!r && r.width > 0 && r.width >= innerWidth * 0.7
 }
 
-// 컷을 세울 축 = **화면의 긴 쪽**. 세로 화면에서 공을 가로로 늘어놓으면 셋을 다
-// 담느라 통째로 줌아웃되어 아무것도 안 보인다. 긴 축을 따라 세우면 같은 사건이
-// 세로 화면에서도 같은 크기로 온다.
+// 무대를 세울 축 = **화면의 긴 쪽**. 세로 화면에서 궤적을 가로로 눕히면 통째로
+// 줌아웃되어 아무것도 안 보인다.
 const longAxis = () => innerWidth >= innerHeight ? { x: 1, y: 0 } : { x: 0, y: 1 }
 const perp = (u) => ({ x: -u.y, y: u.x })
 
-// (x, y)를 화면 한가운데 놓고 줌을 잡는다. 요구치가 둘이다:
-//   · reach  — 배치가 뻗은 길이의 절반. 컷을 긴 축에 세우므로 **긴 축** 요구치다.
-//   · radial — 폭발처럼 사방으로 퍼지는 것의 반경. 사방이므로 **짧은 축**이 문제다.
-// 둘 중 큰 쪽으로 잡는다. 이걸 나누지 않으면 세로 화면에서 폭발이 화면을 통째로
-// 태워 아무것도 안 보인다(가로 화면의 종횡비로 맞춘 줌은 세로 화면에서 2배 이상
-// 확대된 셈이 된다).
-// rig.frame은 halfH(세로 절반)를 받으므로 여기서 종횡비를 풀어 준다.
+// (x, y)를 화면 한가운데 놓고 줌을 잡는다. 요구치가 둘이다 —
+// reach는 긴 축, radial은 짧은 축. 하나로 잡으면 세로 화면에서 2배 이상
+// 확대된 셈이 되어 폭발이 화면을 통째로 태운다.
 function look(rig, x, y, reach, radial = 0) {
   const a = Math.max(0.2, innerWidth / Math.max(1, innerHeight))
-  const byReach = a >= 1 ? reach / a : reach        // 긴 축 = 가로면 halfW 기준
-  const byRadial = a >= 1 ? radial : radial / a     // 짧은 축 = 가로면 세로, 세로면 가로
-  rig.frame(x, y, Math.max(byReach, byRadial))
+  rig.frame(x, y, Math.max(a >= 1 ? reach / a : reach, a >= 1 ? radial : radial / a))
 }
 
-// ── 판 세팅 도우미 ──────────────────────────────────────────────
-
-// 컷마다 판을 **처음부터 다시** 세운다. 앞 컷의 잔해·폭발·전사자가 다음 컷으로
-// 새지 않는다. 예고편은 컷 사이가 점프컷이므로 이래도 자연스럽고, 대신 여섯 컷이
-// 언제 봐도 똑같이 나온다.
-function board(g, mode) {
-  g.resetRun()
-  g.stepWarpIns(99)   // 조르그 증원 워프를 즉시 끝내 놓는다 (본성도 여기서 정해진다)
-  g.fx.length = 0     // 워프 연출까지는 안 보여 준다
-  g.mode = mode       // loadStage가 'aim'으로 되돌려 놓는다 — 매 컷 다시 건다
-  g._predKey = null   // 판을 갈아 끼웠으므로 예측 캐시는 버린다
-  g.advancing = true
-  return g
+// 지금 이야기가 벌어지는 것들만 상자에 담아 부드럽게 따라간다.
+// 한 호흡짜리 긴 장면이라 카메라가 고정이면 사건이 화면 구석에서 벌어진다.
+function follow(rig, cam, pts, dt) {
+  const u = longAxis(), n = perp(u)
+  let a0 = Infinity, a1 = -Infinity, b0 = Infinity, b1 = -Infinity
+  for (const p of pts) {
+    const a = p.x * u.x + p.y * u.y, b = p.x * n.x + p.y * n.y
+    a0 = Math.min(a0, a - p.r); a1 = Math.max(a1, a + p.r)
+    b0 = Math.min(b0, b - p.r); b1 = Math.max(b1, b + p.r)
+  }
+  if (!Number.isFinite(a0)) return
+  const ca = (a0 + a1) / 2, cb = (b0 + b1) / 2
+  const tx = ca * u.x + cb * n.x, ty = ca * u.y + cb * n.y
+  // 하한을 둔다. 스윙바이 천체(목성)는 표식 링이 판정 원의 두 배라, 너무
+  // 당기면 화면이 행성 하나로 꽉 차 정작 휘어 도는 궤적이 안 보인다.
+  const reach = Math.max(340, (a1 - a0) / 2 * 1.14)
+  const radial = Math.max(260, (b1 - b0) / 2 * 1.14)
+  if (cam.x === null) { cam.x = tx; cam.y = ty; cam.reach = reach; cam.radial = radial }
+  else {
+    const k = 1 - Math.pow(0.02, Math.min(0.12, dt))
+    cam.x += (tx - cam.x) * k; cam.y += (ty - cam.y) * k
+    cam.reach += (reach - cam.reach) * k; cam.radial += (radial - cam.radial) * k
+  }
+  look(rig, cam.x, cam.y, cam.reach, cam.radial)
 }
 
-// 큐볼로 쓸 것들 — 살아 있는 태양계 행성. 지구·조르그·잔해는 뺀다.
-const cueBalls = (g) => g.bodies.filter(b =>
-  b.alive && !b.isEarth && !b.zorg && b.type !== 'debris' && b.role !== 'void')
-// 그중 가스 행성이 아니고 체력이 2 이상인 것 = 처박아도 유폭하지도, 한 방에
-// 깨지지도 않는 "그냥 공". (성계에는 체력 1짜리 잔챙이도 굴러다닌다 — 그걸
-// 큐볼로 쓰면 당구가 아니라 파괴 장면이 된다.)
-const solidBalls = (g) => cueBalls(g).filter(b => b.role !== 'volatile' && b.hpMax >= 2)
+// ── 무대 세우기 ─────────────────────────────────────────────────
 
-// 큰 순서로 n개 — 화면에서 "공"으로 읽히려면 어느 정도 크기가 있어야 한다
-const biggest = (list, n) => [...list].sort((a, b) => hitRadiusOf(b) - hitRadiusOf(a)).slice(0, n)
+const place = (b, x, y, vx = 0, vy = 0) => {
+  b.pos.x = x; b.pos.y = y; b.vel.x = vx; b.vel.y = vy
+  b.hp = b.hpMax; b.trailFlash = 0; b.scorch = 0
+}
 
-// 무대 자리 고르기. 배경 천체가 컷 한복판에 걸치면 무슨 일이 벌어지는지 안
-// 읽힌다. 시드는 매일 바뀌므로 자리를 고정할 수 없다 — 주어진 반경들을 한 바퀴씩
-// 훑어 **가장 한산한 지점**을 고른다. actors(이번 컷에서 옮길 것들)는 지금 어디에
-// 있든 상관없으므로 계산에서 뺀다.
-//
-// axis/minPerp를 주면 "그 자리에 axis 방향으로 선을 그었을 때 태양에서 minPerp
-// 이상 떨어진" 자리만 고른다 — 레이저 진로가 태양에 막히지 않아야 하는 컷용.
-function stage(g, radii, actors, { axis, minPerp = 0 } = {}) {
-  let best = null, bestD = -1
-  for (const r of radii) {
-    for (let i = 0; i < 36; i++) {
-      const a = i * Math.PI / 18
+// 무대 후보 자리 — 배경 천체에서 먼 순서로. 시드가 매일 바뀌므로 좌표를 못
+// 박는다. 반경은 안쪽으로 잡는다: 장면이 ±600 GU를 뻗으므로 카이퍼 벨트(2599)
+// 까지는 여유가 있어야 미사일이 벽에 튕기지 않는다.
+function stageSpots(g, actors) {
+  const out = []
+  for (const r of [1150, 1330, 1520]) {
+    for (let i = 0; i < 24; i++) {
+      const a = i * Math.PI / 12
       const x = Math.cos(a) * r, y = Math.sin(a) * r
-      if (axis && Math.abs(x * axis.y - y * axis.x) < minPerp) continue
       let d = Infinity
       for (const b of g.bodies) {
         if (!b.alive || actors.includes(b)) continue
         d = Math.min(d, Math.hypot(b.pos.x - x, b.pos.y - y))
       }
-      if (d > bestD) { bestD = d; best = { x, y } }
+      out.push({ x, y, clear: d })
     }
   }
-  return best ?? { x: radii[0], y: 0 }
+  return out.sort((p, q) => q.clear - p.clear)
 }
 
-// 무대 좌표계 — P에서 긴 축으로 d, 옆으로 off 만큼 간 자리
-const at = (P, u, n, d, off = 0) => [P.x + u.x * d + n.x * off, P.y + u.y * d + n.y * off]
+// ── 궤적 풀이 ───────────────────────────────────────────────────
+// 스윙바이는 사실상 2체 문제다: 무대가 태양에서 1200 GU 밖이라 그 자리의
+// 태양 가속은 0.13 GU/s²로 무시할 만하고, 미사일 중력은 천체 쪽만 κ=120으로
+// 증폭된다. 그래서 "얼마나 비껴 쏘면 얼마나 휘는가"가 임팩트 파라미터 하나로
+// 정해지고, 그 값을 이분법으로 찾는다.
 
-const place = (b, x, y, vx = 0, vy = 0) => {
-  b.pos.x = x; b.pos.y = y; b.vel.x = vx; b.vel.y = vy
-  b.hp = b.hpMax; b.trailFlash = 0
+const PROBE_DT = 1 / 60, PROBE_EVERY = 4    // 탐색용 — 거칠어도 근점거리는 1 GU 안쪽
+const FINE_DT = CFG.DT, FINE_EVERY = 2      // 확정용 — 실제 게임과 같은 dt
+
+// 미사일 한 발을 굴려 본다. 실제와 같은 적분기·중력이다.
+// stop(m, sim, t)이 참을 돌려주면 그 자리에서 멈춘다.
+function fly(bodies, pos, vel, seconds, stop, dt = PROBE_DT, every = PROBE_EVERY) {
+  const sim = cloneBodies(bodies)
+  const m = {
+    pos: { ...pos }, vel: { ...vel }, age: 0, pathN: 0, path: [],
+    minSunDist: Infinity, prev: { ...pos },
+  }
+  const steps = Math.round(seconds / dt)
+  for (let i = 0; i < steps; i++) {
+    if (i % every === (every >> 1)) stepBodies(sim, dt * every)
+    stepMissile(m, sim, dt)
+    if (stop(m, sim, (i + 1) * dt)) break
+  }
+  m.sim = sim   // 멈춘 순간의 판 — 그 뒤를 이어서 굴려 볼 수 있게
+  return m
 }
 
-// 조준선이 엉뚱한 데를 겨누고 있으면 화면이 산만하다. 발사각을 이번 컷의
-// 무대 쪽으로 돌려 둔다 — 플레이어가 그쪽을 노리고 있는 화면이 된다.
-function aimAt(g, x, y) {
-  g.aim = Math.atan2(y - g.earth.pos.y, x - g.earth.pos.x)
+// 한 발을 쏴 보고 스윙바이 천체와의 만남을 계측한다.
+// 반환: { rp, deg, out } — 근점거리, 굴절각(도), 이탈 시점의 상태.
+// 굴절각은 게임이 스윙바이를 인정하는 기준(SWING_ZONE 안팎의 속도 방향 차이)과
+// 같은 방식으로 잰다. 여기서 25°를 못 넘으면 화면에도 스윙바이가 안 뜬다.
+function probeSwing(bodies, jId, pos, vel, seconds, outDist) {
+  const zone = { in: null, out: null }
+  let rp = Infinity, exit = null
+  const m = fly(bodies, pos, vel, seconds, (mm, sim) => {
+    const j = sim.find(b => b.id === jId)
+    if (!j) return true
+    const d = Math.hypot(mm.pos.x - j.pos.x, mm.pos.y - j.pos.y)
+    rp = Math.min(rp, d)
+    const z = CFG.SWING_ZONE * j.radius
+    if (d < z) { if (!zone.in) zone.in = { ...mm.vel } }
+    else if (zone.in && !zone.out) zone.out = { ...mm.vel }
+    if (zone.out && d > outDist) {
+      exit = { x: mm.pos.x, y: mm.pos.y, vx: mm.vel.x, vy: mm.vel.y }
+      return true
+    }
+    return false
+  })
+  let deg = 0
+  if (zone.in && zone.out) {
+    const dot = zone.in.x * zone.out.x + zone.in.y * zone.out.y
+    const den = (Math.hypot(zone.in.x, zone.in.y) * Math.hypot(zone.out.x, zone.out.y)) || 1
+    deg = Math.acos(Math.max(-1, Math.min(1, dot / den))) * 180 / Math.PI
+  }
+  return { rp, deg, exit, m }
 }
 
-// ── 컷 ──────────────────────────────────────────────────────────
-// { ms, setup(g, rig) } — setup은 판을 세우고 카메라를 잡는다.
-// 반환한 함수가 있으면 그 컷이 도는 동안 매 프레임 호출된다(카메라 추적용).
+// 무대 하나를 통째로 푼다. 성공하면 배치를, 실패하면 null을 돌려준다.
+//   u/n  : 화면의 긴 축과 그 수직
+//   P    : 무대 중심 (= 스윙바이 천체가 설 자리)
+function solveShot(g, u, n, P, cast) {
+  const { swing: J, cue: C, fort: F, earth: E } = cast
+  const jr = J.radius
+  place(J, P.x, P.y)
 
-const CUTS = [
-  // ① 브레이크 샷 — 공이 공을 치고, 맞은 공이 또 다음 공을 친다. 진짜 탄성 충돌.
-  //    속도는 일부러 낮췄다: 90 이상이면 피해 2가 들어가 공이 그냥 깨진다.
-  {
-    ms: 1500,
-    setup(g, rig) {
-      const [b, c, a] = biggest(solidBalls(g), 3)
-      if (!a || !b || !c) return null
-      const u = longAxis(), n = perp(u)
-      const P = stage(g, [1100, 1400, 1750], [a, b, c])
-      place(c, ...at(P, u, n, hitRadiusOf(b) + hitRadiusOf(c) + 42))
-      place(b, ...at(P, u, n, 0))
-      place(a, ...at(P, u, n, -(hitRadiusOf(a) + hitRadiusOf(b) + 90), -11), u.x * 82, u.y * 82)
-      aimAt(g, P.x, P.y)
-      const cam = () => look(rig,
-        (a.pos.x + b.pos.x + c.pos.x) / 3, (a.pos.y + b.pos.y + c.pos.y) / 3, 300, 200)
-      cam()
-      return cam
-    },
-  },
-  // ② 핵 — 탄두가 날아와 공의 한쪽 살을 친다. 진짜 임펄스·폭풍·밀림 화살표.
-  {
-    ms: 1100,
-    setup(g, rig) {
-      const t = biggest(solidBalls(g), 1)[0]
-      if (!t) return null
-      const u = longAxis(), n = perp(u)
-      const P = stage(g, [1100, 1400, 1750], [t])
-      const [X, Y] = at(P, u, n, 0)
-      place(t, X, Y, n.x * 12, n.y * 12)
-      const [fx, fy] = at(P, u, n, -430, -150)
-      const from = { x: fx, y: fy }
-      const dx = X - from.x, dy = Y - from.y
-      const d = Math.hypot(dx, dy)
-      g.yieldMt = CFG.YIELD_MAX
-      g.missiles.push({
-        pos: { ...from }, vel: { x: dx / d * 620, y: dy / d * 620 },
-        yld: CFG.YIELD_MAX, alive: true, chain: 0, nearMiss: 0, age: 0,
-        path: [{ ...from }], pathN: 0, enc: new Map(), bestDeflection: 0,
-        encountered: false, minSunDist: Infinity, hit: null, out: null, lastBelt: -99,
-      })
-      g.addFx({ kind: 'launch', x: from.x, y: from.y, a: Math.atan2(dy, dx) })
-      aimAt(g, X, Y)
-      // 폭심을 화면 한가운데 두고, 탄두가 들어오는 쪽으로 조금만 물러선다
-      const [cx, cy] = at(P, u, n, -70, -25)
-      const cam = () => look(rig, cx, cy, 380, 380)
-      cam()
-      return cam
-    },
-  },
-  // ③ 표적 — 조르그 요새를 공으로 처박는다. 진짜 파괴 + 파편 + 목표 카운터.
-  {
-    ms: 1050,
-    setup(g, rig) {
-      const fort = g.bodies.find(x => x.alive && x.role === 'battery')
-      const cue = biggest(solidBalls(g), 1)[0]
-      if (!fort || !cue) return null
-      const u = longAxis(), n = perp(u)
-      const P = stage(g, [1150, 1450, 1750], [fort, cue])
-      const [X, Y] = at(P, u, n, 0)
-      place(cue, ...at(P, u, n, -(hitRadiusOf(cue) + hitRadiusOf(fort) + 150), -12),
-        u.x * 105, u.y * 105)
-      place(fort, X, Y)
-      aimAt(g, X, Y)
-      // 요새가 부서지면 카메라를 그 자리에 세운다 — 안 그러면 큐볼을 따라가며
-      // 정작 보여 줘야 할 폭발과 파편을 화면 밖에 두고 나간다.
-      const cam = () => {
-        if (fort.alive) look(rig, (cue.pos.x + X) / 2, (cue.pos.y + Y) / 2, 320, 220)
-      }
-      cam()
-      return cam
-    },
-  },
-  // ④ 유폭 — 가스 행성이 터지며 반경 안이 통째로 밀려난다. 진짜 volatileBlast.
-  {
-    ms: 900,
-    setup(g, rig) {
-      const gas = g.bodies.find(x => x.alive && x.role === 'volatile')
-      if (!gas) return null
-      // 둘레에 가벼운 것들을 깔아 둔다 — 밀려나는 게 보여야 유폭이 유폭으로 읽힌다
-      const ring = cueBalls(g).filter(b => b !== gas && b.mu < 30).slice(0, 6)
-      const { x: X, y: Y } = stage(g, [1250, 1550, 1850], [gas, ...ring])
-      place(gas, X, Y)
-      ring.forEach((b, i) => {
-        const a = i * (Math.PI * 2 / Math.max(1, ring.length)) + 0.3
-        place(b, X + Math.cos(a) * 430, Y + Math.sin(a) * 430)
-      })
-      aimAt(g, X, Y)
-      g.volatileBlast(gas)
-      look(rig, X, Y, 700, 560)
-      return null
-    },
-  },
-  // ⑤ 레이저 — 본성이 쏜 광선이 **날아가서** 앞을 막은 행성을 관통한다.
-  //    충전 95초는 건너뛰고 발사 순간부터 보여 준다.
-  {
-    ms: 1150,
-    setup(g, rig) {
-      const src = g.homeworld ?? g.bodies.find(x => x.alive && x.role === 'battery')
-      if (!src) return null
-      g.homeworld = src
-      // 광선은 지구를 겨눈다. 그러니 본성과 지구를 긴 축 위에 세우면 진로가
-      // 그대로 긴 축이 된다. 태양(반경 150)이 그 선을 막지 않게 무대는 축에서
-      // 700 GU 이상 떨어진 자리만 고른다.
-      const u = longAxis(), n = perp(u)
-      const P = stage(g, [1500, 1800], [src, g.earth], { axis: u, minPerp: 700 })
-      place(src, ...at(P, u, n, -750))
-      place(g.earth, ...at(P, u, n, 880), n.x * 6, n.y * 6)
-      const L = g.laser
-      L.state = LASER_IDLE; L.t = 0; L.nextAt = 0
-      g.step(CFG.DT)                        // → charge (원래 궤도 ghost·조준점 계산)
-      if (L.state !== LASER_CHARGE) return null
-      L.t = CFG.LASER_CHARGE                // 다음 스텝에서 바로 발사
-      g.step(CFG.DT)
-      if (L.state !== LASER_TRAVEL) return null
-      // 충전 토스트("95초 뒤 발사")는 지운다 — 그 95초를 건너뛰었으므로 지금 화면과
-      // 어긋난다. 광선은 이미 날아가고 있다.
-      g.toast = null; g.toastT = 0
-      // 진로가 확정된 **뒤에** 벽을 세운다 — 조준점을 짐작하지 않고 그대로 읽는다.
-      const D = 1150
-      const wall = biggest(solidBalls(g), 1)[0]
-      if (wall) place(wall, L.ox + L.ux * D, L.oy + L.uy * D)
-      look(rig, L.ox + L.ux * D * 0.5, L.oy + L.uy * D * 0.5, 660, 200)
-      return null
-    },
-  },
-  // ⑥ 모성 — 시한이 끝나면 오는 것. 진짜 워프 + 사방 난사.
-  {
-    ms: 1300,
-    setup(g, rig) {
-      g.summonMothership()
-      const s = g.mothership
-      if (!s) return null
-      const cam = () => look(rig, (s.pos.x + g.earth.pos.x) / 2, (s.pos.y + g.earth.pos.y) / 2, 1150, 700)
-      cam()
-      return cam
-    },
-  },
-]
+  // 근점거리 목표 — 판정 원 바로 바깥. 계측: 여기가 굴절이 가장 크게 나오면서
+  // 부딪히지 않는 자리다(목성 기준 근점 133에서 굴절 26~36°, 기준선은 25°).
+  const hitJ = hitRadiusOf(J)
+  const wantRp = hitJ * 1.2
+  // 발사점은 스윙바이 구간(6× 반지름) 바로 바깥에 둔다 — 더 멀리서 쏘면
+  // 화면에는 "직선으로 한참 날아가는" 시간만 늘어난다.
+  const zone = CFG.SWING_ZONE * jr
+  const approach = Math.max(zone * 1.15, hitJ * 1.5 + 70)
+  // 큐볼은 **스윙바이 구간 밖**에 세워야 한다. 구간 안에서 터지면 미사일이
+  // 구간을 빠져나온 적이 없어 게임이 스윙바이를 인정하지 않는다(=화면에도 안 뜬다).
+  const outDist = zone + 90
+  const at = (d, off) => ({ x: P.x + u.x * d + n.x * off, y: P.y + u.y * d + n.y * off })
+
+  // 발사 속도 — 실제 조작 범위 안(지구 탈출 15.2 초과). 느릴수록 크게 휜다.
+  for (const v0 of [27, 24, 30, 21]) {
+    const launch = (b) => at(-approach, b)
+    const vel = { x: u.x * v0, y: u.y * v0 }
+    const flightT = (approach + outDist + hitJ * 5) / (v0 * 0.5)
+
+    // 임팩트 파라미터 이분법 — b가 커질수록 근점거리도 커진다(단조)
+    let lo = hitJ * 0.4, hi = hitJ * 6
+    for (let k = 0; k < 9; k++) {
+      const b = (lo + hi) / 2
+      const r = probeSwing(g.bodies, J.id, launch(b), vel, flightT, outDist).rp
+      if (r < wantRp) lo = b; else hi = b
+    }
+    const b = (lo + hi) / 2
+    const s = probeSwing(g.bodies, J.id, launch(b), vel, flightT, outDist)
+    if (!s.exit || s.deg < CFG.SWING_DEG + 2 || s.rp < hitJ * 1.08) continue
+
+    // ── 여기서부터: 스윙바이는 확정됐다. 나온 자리에 표적을 세운다 ──
+    const L = launch(b)
+    place(E, L.x - u.x * CFG.LAUNCH_OFFSET, L.y - u.y * CFG.LAUNCH_OFFSET)
+    const aim = Math.atan2(u.y, u.x)
+
+    // 큐볼을 미사일이 지나갈 자리에 놓는다. 놓고 나면 그 질량이 궤적을 다시
+    // 바꾸므로, 실제로 맞을 때까지 자리를 몇 번 고쳐 잡는다.
+    let q = { x: s.exit.x, y: s.exit.y }
+    let hit = null
+    for (let k = 0; k < 5; k++) {
+      place(C, q.x, q.y)
+      hit = firstContact(g.bodies, C.id, L, { x: u.x * v0, y: u.y * v0 }, flightT * 2.2)
+      if (hit.id === C.id) break
+      if (!hit.near) return null
+      q = { x: q.x + (hit.near.x - hit.near.cx), y: q.y + (hit.near.y - hit.near.cy) }
+    }
+    if (!hit || hit.id !== C.id) continue
+
+    // ── 밀려난 큐볼이 갈 자리에 요새를 세운다 ──
+    // 임펄스 방향은 폭심 → 중심(=어느 살을 쳤는가)이고, 그 뒤 큐볼은 거의
+    // 직진한다. 다만 "거의"라서 눈대중으로 놓으면 60 GU짜리 접촉 원을 스친다.
+    // 놓고 → 굴려 보고 → 빗나간 만큼 옮기기를 몇 번 돌려 확정한다.
+    const runT = 5.2
+    let post = impulseOf(C, hit)
+    let fx = hit.cx + post.ux * post.w * runT
+    let fy = hit.cy + post.uy * post.w * runT
+    let ok = false
+    for (let k = 0; k < 4 && !ok; k++) {
+      if (Math.hypot(fx, fy) > 2150) break                  // 카이퍼 벨트에 너무 붙는다
+      place(F, fx, fy)
+      // 요새를 놓으면 그 질량이 미사일 궤적도 조금 바꾼다 — 매번 다시 확인한다
+      const h2 = firstContact(g.bodies, C.id, L, { x: u.x * v0, y: u.y * v0 }, flightT * 2.2)
+      if (h2.id !== C.id) break
+      hit = h2
+      post = impulseOf(C, hit)
+      if (post.w < 24) break                                // 너무 안 밀리면 이야기가 안 된다
+      const r = runAfter(h2.sim, C.id, F.id, post, runT * 1.7)
+      if (r.hit) { ok = true; break }
+      if (r.blocked || !r.at) break                         // 딴 게 진로를 막고 있다
+      fx = r.at.x; fy = r.at.y                              // 큐볼이 실제로 간 자리로 옮긴다
+    }
+    if (!ok) continue
+
+    return { J, C, F, aim, v0, rp: s.rp, deg: s.deg, runT }
+  }
+  return null
+}
+
+// 핵 한 방이 큐볼에 주는 것 — 방향(폭심 → 중심)과 그 직후의 속도.
+// 게임의 applyNuke와 같은 규칙이다: 입사각도 입사속도도 보지 않고 어느 살을
+// 쳤는지만 본다.
+function impulseOf(C, hit) {
+  let dx = hit.cx - hit.x, dy = hit.cy - hit.y
+  const d = Math.hypot(dx, dy) || 1
+  dx /= d; dy /= d
+  const dv = effDv(C, CFG.YIELD_MAX)
+  const wx = hit.vx + dx * dv, wy = hit.vy + dy * dv
+  const w = Math.hypot(wx, wy) || 1
+  return { ux: wx / w, uy: wy / w, w }
+}
+
+// 타격 직후의 판을 이어받아 큐볼을 실제로 굴려 본다 — 요새에 닿는가, 딴 게
+// 먼저 막는가, 아니면 어디까지 가는가.
+function runAfter(sim, cId, fId, post, seconds) {
+  const c = sim.find(b => b.id === cId), f = sim.find(b => b.id === fId)
+  if (!c || !f) return { hit: false }
+  c.vel.x = post.ux * post.w; c.vel.y = post.uy * post.w
+  const dt = 1 / 60, steps = Math.round(seconds / dt)
+  for (let i = 0; i < steps; i++) {
+    stepBodies(sim, dt)
+    if (Math.hypot(c.pos.x - f.pos.x, c.pos.y - f.pos.y) < hitRadiusOf(c) + hitRadiusOf(f))
+      return { hit: true, t: (i + 1) * dt }
+    for (const o of sim) {
+      if (o === c || o === f || !o.alive || o.type === 'debris') continue
+      if (Math.hypot(c.pos.x - o.pos.x, c.pos.y - o.pos.y) < hitRadiusOf(c) + hitRadiusOf(o))
+        return { hit: false, blocked: true }
+    }
+  }
+  return { hit: false, at: { x: c.pos.x, y: c.pos.y } }
+}
+
+// 미사일이 처음 닿는 천체. 아무 데도 안 닿으면 목표 천체에 가장 가까웠던
+// 순간(near)을 함께 돌려준다 — 자리를 고쳐 잡는 데 쓴다.
+function firstContact(bodies, wantId, pos, vel, seconds) {
+  let id = null, cx = 0, cy = 0, hx = 0, hy = 0, vx = 0, vy = 0
+  let bestD = Infinity, near = null
+  const end = fly(bodies, pos, vel, seconds, (m, sim) => {
+    const want = sim.find(o => o.id === wantId)
+    if (want && want.alive) {
+      const d = Math.hypot(m.pos.x - want.pos.x, m.pos.y - want.pos.y)
+      if (d < bestD) { bestD = d; near = { x: m.pos.x, y: m.pos.y, cx: want.pos.x, cy: want.pos.y } }
+    }
+    for (const o of sim) {
+      if (!o.alive || o.type === 'debris') continue
+      const r = hitRadiusOf(o)
+      if (Math.hypot(m.pos.x - o.pos.x, m.pos.y - o.pos.y) > r) continue
+      id = o.id; cx = o.pos.x; cy = o.pos.y
+      hx = m.prev.x; hy = m.prev.y; vx = o.vel.x; vy = o.vel.y
+      return true
+    }
+    return Math.hypot(m.pos.x, m.pos.y) < CFG.R_STAR + 8
+  }, FINE_DT, FINE_EVERY)
+  return { id, cx, cy, x: hx, y: hy, vx, vy, near, sim: end.sim }
+}
+
+// ── 판 세팅 ─────────────────────────────────────────────────────
+
+// 배역을 고른다.
+//   스윙바이 천체 — 궤적이 화면에서 읽히려면 덩치가 있어야 하고, 너무 크면
+//     판정 원(3.4×)이 스윙바이 구간(6×)을 거의 다 먹어 지날 틈이 없다.
+//   큐볼 — 핵 한 방에 잘 밀리는 것. 무거우면 이야기가 안 굴러간다.
+function castOf(g) {
+  const solar = g.bodies.filter(b =>
+    b.alive && !b.isEarth && !b.zorg && b.type !== 'debris' && b.role !== 'void')
+  const swing = solar.slice().sort((a, b) => b.radius - a.radius)[0]
+  // 큐볼의 Δv는 **중간**이어야 한다. 가벼운 얼음은 300~480 GU/s로 튕겨 나가
+  // 화면 밖으로 사라지고, 무거운 금속은 40 아래라 굴러가질 않는다.
+  const cue = solar.filter(b => b !== swing && b.role !== 'volatile' && b.hpMax >= 2)
+    .map(b => ({ b, dv: effDv(b, CFG.YIELD_MAX) }))
+    .sort((p, q) => Math.abs(p.dv - 70) - Math.abs(q.dv - 70))[0]?.b
+  const fort = g.bodies.find(b => b.alive && b.role === 'battery')
+  return (swing && cue && fort) ? { swing, cue, fort, earth: g.earth } : null
+}
+
+// 판을 처음부터 다시 세우고 이번 장면을 짠다.
+function setUp(g, mode) {
+  g.resetRun()
+  g.stepWarpIns(99)     // 조르그 증원 워프를 즉시 끝내 놓는다
+  g.fx.length = 0
+  g.mode = mode
+  g._predKey = null
+  g.obsSpeed = 3        // 관측 8× — 미사일이 나는 동안엔 게임이 4×로 낮춰 준다
+  g.yieldMt = CFG.YIELD_MAX
+
+  const cast = castOf(g)
+  if (!cast) return null
+
+  // 요새는 하나만 남긴다. 둘을 두면 이 한 수로 판이 안 끝나 이야기가 잘린다.
+  for (let i = g.bodies.length - 1; i >= 0; i--) {
+    const b = g.bodies[i]
+    if (b.role === 'battery' && b !== cast.fort) g.bodies.splice(i, 1)
+  }
+  cast.fort.homeworld = true
+  g.homeworld = cast.fort
+  g.targets = [cast.fort]
+  g.goal = makeGoal([cast.fort])
+
+  const u = longAxis(), n = perp(u)
+  const actors = [cast.swing, cast.cue, cast.fort, cast.earth]
+  for (const P of stageSpots(g, actors).slice(0, 5)) {
+    const shot = solveShot(g, u, n, P, cast)
+    if (shot) { g.aim = shot.aim; g.power = shot.v0; return shot }
+  }
+  return null
+}
+
+// 조르그 본성을 **발사 직전**으로 만든다. 충전 표식과 ZORG BEAM 패널이 뜨고,
+// 조준선이 지구를 향해 그어진다 — 그걸 큐볼이 끊는 게 이 장면의 결말이다.
+function armLaser(g, left) {
+  const L = g.laser
+  L.state = LASER_IDLE; L.t = 0; L.nextAt = 0
+  g.step(CFG.DT)                                  // → charge (ghost·조준점 계산)
+  if (L.state !== LASER_CHARGE) return
+  L.t = Math.max(0, CFG.LASER_CHARGE - left)      // 남은 충전 시간을 맞춘다
+  g.toast = null; g.toastT = 0                    // "95초 뒤 발사"는 지금 화면과 어긋난다
+}
 
 // ── 로고 ────────────────────────────────────────────────────────
 // 마크는 이 게임 한 줄 요약이다: **궤도(원) 위의 공을 친다.**
@@ -278,10 +386,11 @@ const LOGOMARK = `
 export class Attract {
   constructor(game, view, onDone) {
     this.game = game; this.view = view; this.onDone = onDone
-    this.i = -1
     this.done = false
-    this.timer = null
-    this.tick = null      // 이번 컷의 매 프레임 훅(카메라 추적)
+    this.timers = []
+    this.shot = null
+    this.phase = 'aim'
+    this.cam = { x: null, y: 0, reach: 400, radial: 300 }
 
     const el = document.createElement('div')
     el.className = 'attract'
@@ -303,66 +412,110 @@ export class Attract {
     addEventListener('keydown', this.onKey)
   }
 
+  after(ms, fn) { this.timers.push(setTimeout(fn, ms)) }
+
   start() {
-    // 넓은 화면: 조준 모드 — 시간이 흐르되 HUD 패널이 그대로 보이는, 실제 플레이 화면.
-    // 좁은 화면: 관측 모드 — 조준 UI가 화면 절반을 먹으므로 통째로 치우고 화면을 준다.
-    this.mode = hudDocked() ? 'observe' : 'aim'
-    this.game.setMode(this.mode)
-    this.next()
+    const g = this.game
+    // 좁은 화면은 조준 UI가 화면 절반을 먹으므로 처음부터 관측 모드로 간다.
+    const mode = hudDocked() ? 'observe' : 'aim'
+    g.setMode(mode)
+    this.shot = setUp(g, mode)
+    if (!this.shot) return this.finish()      // 이 시드로는 장면이 안 나온다 — 조용히 넘어간다
+
+    // 충전 시간은 **미사일이 날아가는 내내 보이도록** 넉넉히 남겨 둔다.
+    // 큐볼이 도착하기 전에 광선이 나가 버리면 이야기가 뒤집힌다.
+    // 남은 충전 시간. 장면 전체가 인게임 25초 남짓이므로, 32초를 남겨 두면
+    // 카운트다운이 내내 줄어들다가 큐볼이 요새를 부수는 순간 끊긴다.
+    armLaser(g, 32)
+    this.bar(0.06)
+
+    if (mode === 'aim') {
+      // 조준 한 박자 — 예측선이 휘어진 궤적을 그리고 락온 표식이 큐볼에 붙는다
+      this.after(AIM_MS, () => this.launch())
+    } else this.launch()
+
+    this.after(CAP_MS, () => this.showLogo())
     return this
   }
 
-  // 매 프레임 main 루프가 불러 준다.
-  frame() {
-    if (this.done) return
-    // ── 예고편은 끝나지 않는다 ──
-    // 컷 중에 마지막 요새가 부서지면 win(), 지구가 레이저에 맞으면 fail()이
-    // 걸리는데, 그 순간 effTimeScale이 0이 되어 **남은 컷이 통째로 얼어붙는다.**
-    // 여기 판은 어차피 finish()에서 버려지므로 승패 플래그를 매 프레임 지운다.
-    const g = this.game
-    g.won = false; g.lost = false; g.runOver = false; g.failReason = null
-    if (!g.earth.alive) g.earth.alive = true          // 지구가 죽어도 예고편은 계속된다
-    if (g.earth.hp <= 0) g.earth.hp = g.earth.hpMax   // 마커에 "체력 0/3"이 뜨지 않게
-    g.advancing = true
-    this.tick?.()
+  launch() {
+    if (this.done || this.phase !== 'aim') return
+    this.phase = 'fly'
+    this.game.fire()          // 진짜 발사 — 게임이 스스로 관측 모드로 넘어간다
+    this.bar(0.2)
   }
 
-  next() {
+  bar(f) { this.fill.style.width = `${Math.min(100, f * 100)}%` }
+
+  // 매 프레임 main 루프가 불러 준다.
+  frame(dt = 1 / 60) {
     if (this.done) return
-    this.i++
-    if (this.i >= CUTS.length) return this.showLogo()
-    const cut = CUTS[this.i]
-    this.fill.style.width = `${((this.i + 1) / (CUTS.length + 1)) * 100}%`
-    let hold = cut.ms
-    this.tick = null
-    this.view.clearFx()      // 하드컷 — 앞 컷의 불꽃을 끌고 가지 않는다
-    try {
-      this.tick = cut.setup(board(this.game, this.mode), this.view.rig) ?? null
-    } catch {
-      this.tick = null; hold = 60      // 세팅이 실패하면 그 컷은 건너뛴다
+    const g = this.game, s = this.shot
+    // ── 예고편은 중간에 멈추지 않는다 ──
+    // 요새가 부서지면 win()이 걸리고 그 순간 effTimeScale이 0이 되어 남은
+    // 여운이 통째로 얼어붙는다. 이 판은 finish()에서 버려지므로 매 프레임 지운다.
+    g.won = false; g.lost = false; g.runOver = false; g.failReason = null
+    if (!g.earth.alive) g.earth.alive = true
+    if (g.earth.hp <= 0) g.earth.hp = g.earth.hpMax
+    if (!s || this.phase === 'logo') return
+
+    const m = g.missiles.find(x => x.alive)
+    const pts = []
+    if (this.phase === 'aim') {
+      pts.push({ x: g.earth.pos.x, y: g.earth.pos.y, r: 150 })
+      pts.push({ x: s.J.pos.x, y: s.J.pos.y, r: hitRadiusOf(s.J) * 2.4 })
+    } else if (m) {
+      // 비행 중 — 탄두와 스윙바이 천체를 물고 간다
+      pts.push({ x: m.pos.x, y: m.pos.y, r: 90 })
+      pts.push({ x: s.J.pos.x, y: s.J.pos.y, r: hitRadiusOf(s.J) * 1.3 })
+      if (s.C.alive) pts.push({ x: s.C.pos.x, y: s.C.pos.y, r: hitRadiusOf(s.C) })
+      this.bar(0.2 + 0.5 * Math.min(1, m.age / 20))
+    } else if (s.F.alive) {
+      // 밀려난 큐볼이 요새로 굴러가는 구간
+      if (this.phase === 'fly') {
+        this.phase = 'run'; this.bar(0.72)
+        // 여기부터가 이 장면의 결말이다. 배속을 2×로 내려 천천히 보여 준다
+        // (관측 배속은 원래 플레이어가 고르는 값이다).
+        g.obsSpeed = 1
+      }
+      if (s.C.alive) pts.push({ x: s.C.pos.x, y: s.C.pos.y, r: hitRadiusOf(s.C) * 2.2 })
+      pts.push({ x: s.F.pos.x, y: s.F.pos.y, r: hitRadiusOf(s.F) * 3.4 })
+      this.runT = (this.runT ?? 0) + dt
+      this.bar(0.72 + 0.2 * Math.min(1, this.runT / 2.5))
+    } else {
+      // 요새가 부서졌다 — 그 자리를 물고 여운을 준다
+      if (this.phase !== 'end') {
+        this.phase = 'end'; this.bar(0.95)
+        this.endAt = { x: s.F.pos.x, y: s.F.pos.y }
+        this.after(TAIL_MS, () => this.showLogo())
+      }
+      pts.push({ x: this.endAt.x, y: this.endAt.y, r: 320 })
     }
-    this.game.advancing = true          // 컷 세팅 중 멈췄을 수 있다
-    this.timer = setTimeout(() => this.next(), hold)
+    follow(this.view.rig, this.cam, pts, dt)
   }
 
   showLogo() {
-    this.tick = null
-    this.game.advancing = false          // 로고에서는 판을 세운다
+    if (this.done || this.phase === 'logo') return
+    this.phase = 'logo'
+    // 모드는 그대로 둔다 — 여기서 조준 모드로 돌리면 로고 뒤로 HUD 패널이
+    // 다시 튀어나온다. 배속만 1×로 내려 판을 잔잔하게 만든다.
+    this.game.advancing = false
+    this.game.obsSpeed = 0
     this.el.classList.add('logo')
-    this.fill.style.width = '100%'
-    this.timer = setTimeout(() => this.finish(), LOGO_MS)
+    this.bar(1)
+    this.after(LOGO_MS, () => this.finish())
   }
 
   finish() {
     if (this.done) return
     this.done = true
-    this.tick = null
-    clearTimeout(this.timer)
+    for (const t of this.timers) clearTimeout(t)
     removeEventListener('keydown', this.onKey)
     this.el.classList.add('out')
     setTimeout(() => this.el.remove(), 420)
     // 판을 처음부터 다시 — 예고편이 헤집어 놓은 성계를 되돌린다.
     this.game.resetRun()
+    this.view.clearFx()
     this.view.rig.snapToAuto()
     this.onDone?.()
   }
