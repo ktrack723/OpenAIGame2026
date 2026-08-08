@@ -197,6 +197,26 @@ export class CameraRig {
   // 자동 프레이밍이 잠시 물고 있을 지점 (폭발 지점 등)
   focus(x, y, r = 220, t = 3) { this.focusPt = { x, y, r, t } }
 
+  // 연출용 하드 프레이밍 — 자동 프레이밍을 끄고 지정한 자리를 그대로 잡는다.
+  // (오프닝 예고편의 컷 전환처럼 "카메라가 여기를 본다"가 확정이어야 할 때만.)
+  //
+  // halfH는 "이만큼은 보여야 한다"는 요구치다. HUD 패널이 화면을 덮고 있으면
+  // 그만큼 줌을 빼고 중심을 밀어, **가려지지 않는 영역**의 한가운데에 (x,y)가
+  // 오게 한다. 이게 없으면 연출 컷이 매번 패널 뒤에서 벌어진다.
+  frame(x, y, halfH) {
+    this.auto = false
+    this.updateInsets()
+    const W = innerWidth, H = innerHeight
+    const visW = Math.max(80, W - this.inset.l - this.inset.r)
+    const visH = Math.max(80, H - this.inset.t - this.inset.b)
+    this.halfH = Math.max(120, halfH * Math.max(H / visH, W / visW))
+    const wpp = 2 * this.halfH / Math.max(1, H)
+    this.center.set(
+      x - ((this.inset.l + visW / 2) - W / 2) * wpp,
+      y + ((this.inset.t + visH / 2) - H / 2) * wpp,
+    )
+  }
+
   update(dt) {
     this.aspect = Math.max(0.2, innerWidth / Math.max(1, innerHeight))
     this.updateInsets()

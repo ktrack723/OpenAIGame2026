@@ -419,34 +419,25 @@ pre{white-space:pre-wrap;line-height:1.55;color:#9fd0c4;margin:0;font-size:11px;
   pre{font-size:10.5px}
 }
 
-/* ─── 오프닝 스플래시 — 6초 예고편 ─────────────────────────────
-   튜토리얼(.intro) 앞에 붙는다. 컷이 0.75초씩 자동으로 넘어가고 마지막에
-   로고가 박힌다. 읽을 것은 없고 볼 것만 있는 화면이라 글자를 최소로 뒀다. */
-.splash{position:fixed;inset:0;z-index:11;display:flex;flex-direction:column;
-  align-items:center;justify-content:center;gap:0;
-  background:radial-gradient(circle at 50% 45%,#08131f 0%,#02050a 70%);
-  cursor:pointer;user-select:none}
-.splash.out{opacity:0;transition:opacity .4s ease;pointer-events:none}
-.splashbox{width:min(620px,calc(100vw - 32px))}
-.splashbox.snap{animation:snap .3s cubic-bezier(.2,1.7,.4,1)}
-.splashframe{border:1px solid var(--line2);background:#040a12;
-  clip-path:polygon(0 10px,10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%)}
-.splashframe svg{display:block;width:100%;height:auto}
-.splashcap{margin-top:12px;text-align:center;color:#eaf7ff;font-size:16px;font-weight:800;
-  letter-spacing:.02em;text-shadow:0 0 16px #4fd6f744;word-break:keep-all}
-.splashbar{margin-top:12px;height:2px;background:#0e2233}
-.splashbar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--cy),var(--gr));
-  box-shadow:0 0 8px #4fd6f7aa;transition:width .28s linear}
-.splashskip{position:fixed;right:max(14px,env(safe-area-inset-right));
-  bottom:max(14px,env(safe-area-inset-bottom));padding:6px 12px;border:1px solid var(--line);
-  background:#0b1826;color:#a9c8d8;font-size:10.5px;letter-spacing:.14em;cursor:pointer;
+/* ─── 오프닝 예고편 오버레이 ───────────────────────────────────
+   화면 대부분은 **실제 게임 화면**이다(Attract.js가 판을 굴린다). 이 오버레이가
+   그리는 건 진행 막대와 건너뛰기 버튼, 그리고 마지막 로고뿐이다. */
+.attract{position:fixed;inset:0;z-index:11;pointer-events:auto;cursor:pointer;user-select:none;
+  display:flex;align-items:center;justify-content:center;background:#0000}
+.attract.out{opacity:0;transition:opacity .4s ease;pointer-events:none}
+.attractbar{position:fixed;left:0;right:0;bottom:0;height:2px;background:#0e223355}
+.attractbar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--cy),var(--gr));
+  box-shadow:0 0 8px #4fd6f7aa;transition:width .3s linear}
+.attractskip{position:fixed;right:max(14px,env(safe-area-inset-right));
+  bottom:max(16px,env(safe-area-inset-bottom));padding:6px 12px;border:1px solid var(--line);
+  background:rgba(11,24,38,.85);color:#a9c8d8;font-size:10.5px;letter-spacing:.14em;cursor:pointer;
   font-family:var(--mono)}
-.splashskip:hover{background:#16334a;color:#eaf7ff}
+.attractskip:hover{background:#16334a;color:#eaf7ff}
 
-/* 마지막 컷 = 로고. 예고편 프레임을 걷어내고 마크와 이름만 남긴다. */
-.splashlogo{display:none;flex-direction:column;align-items:center;gap:6px}
-.splash.logo .splashbox{display:none}
-.splash.logo .splashlogo{display:flex;animation:slogoin .5s cubic-bezier(.2,1.5,.4,1) both}
+/* 마지막 컷 = 로고. 판은 멈추고 화면을 어둡게 깐 위에 마크와 이름만 남긴다. */
+.attractlogo{display:none;flex-direction:column;align-items:center;gap:6px}
+.attract.logo{background:radial-gradient(circle at 50% 45%,#08131fdd 0%,#02050af2 70%)}
+.attract.logo .attractlogo{display:flex;animation:slogoin .5s cubic-bezier(.2,1.5,.4,1) both}
 .slogomark{width:min(150px,34vw);height:auto}
 .slogotitle{color:var(--cy);font-size:clamp(26px,7vw,46px);font-weight:900;letter-spacing:.3em;
   text-indent:.3em;text-shadow:0 0 28px #4fd6f766,0 0 60px #4fd6f733}
@@ -457,38 +448,4 @@ pre{white-space:pre-wrap;line-height:1.55;color:#9fd0c4;margin:0;font-size:11px;
 @keyframes sorbit{to{transform:rotate(360deg)}}
 .slogospark{animation:sspark .9s ease-in-out infinite}
 @keyframes sspark{0%,100%{opacity:.45}50%{opacity:1}}
-
-/* 컷 안에서 움직이는 것들 — 하나같이 0.75초 안에 끝나야 한다 */
-.scue{animation:scue .5s cubic-bezier(.4,0,.2,1) both}
-.scue2{animation:scue2 .5s cubic-bezier(.4,0,.2,1) both}
-@keyframes scue{from{transform:translateX(0)}to{transform:translateX(170px)}}
-@keyframes scue2{from{transform:translateX(0)}to{transform:translateX(150px)}}
-.spop{animation:spop .45s ease-out .42s both}
-@keyframes spop{from{opacity:0;transform:scale(.4)}60%{opacity:1;transform:scale(1.15)}to{opacity:0;transform:scale(1.5)}}
-.sfly{animation:sfly .5s ease-out .45s both}
-@keyframes sfly{from{opacity:0;transform:translateX(-22px)}to{opacity:1;transform:translateX(0)}}
-.smissile{animation:smissile .42s linear both}
-@keyframes smissile{from{transform:translateX(-70px)}to{transform:translateX(58px)}}
-.sflash{animation:sflash .4s ease-out .4s both}
-@keyframes sflash{from{opacity:0;transform:scale(.2)}45%{opacity:1;transform:scale(1.25)}to{opacity:0;transform:scale(1.6)}}
-.sflash2{animation:sflash .4s ease-out .3s both}
-.sshake{animation:sshake .3s ease-out .45s both}
-@keyframes sshake{0%{transform:translate(0,0)}25%{transform:translate(9px,-4px)}
-  55%{transform:translate(-6px,4px)}100%{transform:translate(14px,-6px)}}
-.sboom{transform-origin:0 0;animation:sboom .7s ease-out both}
-@keyframes sboom{from{opacity:1;transform:scale(.25)}to{opacity:0;transform:scale(1.5)}}
-.sspin{transform-origin:0 0;animation:sorbit 3s linear infinite}
-.ssuck{animation:ssuck .7s ease-in both}
-@keyframes ssuck{from{opacity:1;transform:translateX(0) scale(1)}to{opacity:0;transform:translateX(52px) scale(.2)}}
-.sbeam{animation:sbeamin .35s ease-out both}
-@keyframes sbeamin{from{opacity:0}to{opacity:1}}
-.sdodge{animation:sdodge .6s ease-out .1s both}
-@keyframes sdodge{from{transform:translate(0,0)}to{transform:translate(-26px,-30px)}}
-.sfan{transform-origin:0 0;animation:sfan .7s ease-out both}
-@keyframes sfan{from{opacity:0;transform:scale(.1) rotate(-25deg)}to{opacity:.9;transform:scale(1) rotate(0)}}
-.seye{animation:seye 1.4s ease-in-out infinite}
-@keyframes seye{0%,100%{transform:translateX(-4px)}50%{transform:translateX(4px)}}
-
-@media (prefers-reduced-motion:reduce){
-  .splash *{animation:none!important}
-}
+@media (prefers-reduced-motion:reduce){ .attract *{animation:none!important} }
