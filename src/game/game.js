@@ -26,6 +26,18 @@ const KILL_SCORE = {
 }
 export class Game {
   constructor(seed) {
+    this.bodies = []
+    // 같은 쌍이 한 번의 접촉에서 여러 스텝 붙어 있어도 피해는 한 번만 센다
+    this.pairCool = new Map()
+    this.resetRun(seed)
+  }
+
+  // ─── 런을 처음부터 다시 ──────────────────────────────────────
+  // **객체 정체성을 유지한다.** 렌더러·HUD·카메라가 전부 이 인스턴스와 이
+  // bodies 배열을 붙들고 있으므로, 새 Game을 만들면 그 참조를 전부 다시 이어야
+  // 한다. 제자리에서 갈아 끼우면 아무것도 안 건드려도 된다.
+  // (오프닝 예고편이 실제 게임을 굴려 보여 준 뒤 판을 되돌리는 데 쓴다.)
+  resetRun(seed = this.seed) {
     this.seed = seed >>> 0
     this.stageIdx = 0; this.runScore = 0; this.runOver = false
     this.rng = new Rng(this.seed ^ 0x9e3779b9)
@@ -37,10 +49,10 @@ export class Game {
     // 임무가 되어 버리는데, 이 게임의 판돈은 런 전체다.
     // (loadStage는 hp를 건드리지 않는다. 체력을 쓰는 곳은 damage() 하나뿐이다.)
     const sys = createSystem(this.seed)
-    this.bodies = sys.bodies; this.earth = sys.earth
+    this.bodies.length = 0; this.bodies.push(...sys.bodies)   // 배열 정체성 유지
+    this.earth = sys.earth
     this.laser = makeLaser(this.rng)
-    // 같은 쌍이 한 번의 접촉에서 여러 스텝 붙어 있어도 피해는 한 번만 센다
-    this.pairCool = new Map()
+    this.pairCool.clear()
     this.loadStage()
   }
 
