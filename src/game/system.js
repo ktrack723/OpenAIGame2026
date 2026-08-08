@@ -57,9 +57,17 @@ function freeOrbit(rng, bodies, aMax, mu, nearBand = 0, band = null) {
     .filter(b => !b.isEarth && nukeDv(CFG.YIELD_MAX, b.mu) >= CFG.FORT_CUE_MIN_DV)
     .map(b => Math.hypot(b.pos.x, b.pos.y))
   const rNew = radiusOf(mu)
+  // ── 카이퍼 벨트 안쪽으로 못 박는다 ──────────────────────────
+  // 벨트는 장식이 아니라 **판의 벽**이다(physics.beltBounce). 그 바깥은 판 밖이고,
+  // 거기 워프해 들어온 적은 첫 프레임부터 벽에 튕기며 굴러 들어온다.
+  // 요새 대역은 **지구의 지금 반경**에서 파생되는데(fortBand), 지구는 핵 폭풍에
+  // 밀려 바깥으로 나갈 수 있다 — 그러면 대역 상한이 벨트를 넘어선다.
+  // (계측: 지구를 1500 GU 밀어낸 판에서 증원 180기 중 2기가 벨트 밖에 떨어졌다.)
+  // 이심률이 0.07까지 붙으므로 **원점(遠點)** 기준으로 자른다.
+  const aCap = (beltRadius(aMax) - CFG.BELT_THICK) / 1.08
+  const aHi = Math.min(band ? band[1] : aMax * 0.95, aCap)
   // band = [lo, hi] 가 주어지면 그 반경대 안에서만 자리를 찾는다
-  const aLo = band ? band[0] : CFG.A_MIN * 1.15
-  const aHi = band ? band[1] : aMax * 0.95
+  const aLo = Math.min(band ? band[0] : CFG.A_MIN * 1.15, aHi * 0.92)
   for (let tries = 0; tries < 240; tries++) {
     // 안쪽 절반은 태양에 너무 가깝고 바깥은 벨트라 [1.15 A_MIN, 0.95 aMax]
     const a = aLo + rng.next() * Math.max(1, aHi - aLo)
@@ -80,6 +88,8 @@ function freeOrbit(rng, bodies, aMax, mu, nearBand = 0, band = null) {
     for (let k = 0; k < 24; k++) {
       const nu = rng.range(0, Math.PI * 2)
       const st = elementsToState(a, e, w, nu)
+      // 원점 기준으로 잘랐어도 여기서 한 번 더 본다 — 벽 밖은 판 밖이다
+      if (Math.hypot(st.pos.x, st.pos.y) > beltRadius(aMax) - CFG.BELT_THICK) continue
       let clear = true
       for (const b of live) {
         const d = Math.hypot(st.pos.x - b.pos.x, st.pos.y - b.pos.y)

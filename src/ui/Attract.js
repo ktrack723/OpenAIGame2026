@@ -65,10 +65,10 @@ function follow(rig, cam, pts, dt) {
   if (!Number.isFinite(a0)) return
   const ca = (a0 + a1) / 2, cb = (b0 + b1) / 2
   const tx = ca * u.x + cb * n.x, ty = ca * u.y + cb * n.y
-  // 하한을 둔다. 스윙바이 천체(목성)는 표식 링이 판정 원의 두 배라, 너무
-  // 당기면 화면이 행성 하나로 꽉 차 정작 휘어 도는 궤적이 안 보인다.
-  const reach = Math.max(340, (a1 - a0) / 2 * 1.14)
-  const radial = Math.max(260, (b1 - b0) / 2 * 1.14)
+  // 하한과 여백을 넉넉히 둔다. 스윙바이 천체(목성)는 표식 링이 판정 원의 두
+  // 배라, 너무 당기면 화면이 행성 하나로 꽉 차 정작 휘어 도는 궤적이 안 보인다.
+  const reach = Math.max(470, (a1 - a0) / 2 * 1.28)
+  const radial = Math.max(360, (b1 - b0) / 2 * 1.28)
   if (cam.x === null) { cam.x = tx; cam.y = ty; cam.reach = reach; cam.radial = radial }
   else {
     const k = 1 - Math.pow(0.02, Math.min(0.12, dt))
