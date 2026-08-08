@@ -3,6 +3,7 @@ import { SceneView } from './render/Scene.js'
 import { makeHud, updateHud } from './ui/hud.js'
 import { Inspector } from './ui/Inspector.js'
 import { Intro } from './ui/Intro.js'
+import { Splash } from './ui/Splash.js'
 import { Victory } from './ui/Victory.js'
 
 // 시드: ?seed= 지정 시 그 값, 아니면 데일리 시드 (고정 dt + 시드 PRNG → 결정론, §4.2)
@@ -24,10 +25,13 @@ const victory = new Victory(game, () => game.nextStage())
 window.__game = game; window.__view = view; window.__victory = victory
 document.querySelector('.boot')?.remove()
 
-// 오프닝 — 목표·규칙·플로우를 박에 맞춰 훑고 지나간다.
+// 오프닝 — 두 단계다.
+// ① 스플래시(6초): "이 게임에서 무슨 일이 벌어지는가"를 컷 여섯으로 훑고 로고.
+//    가르치지 않는다. 예고편이다.
+// ② 튜토리얼: 규칙을 한 컷씩, 누르는 사람 속도로.
 // 게임은 뒤에서 이미 조준 모드(시간 정지)로 대기 중이라 따로 멈출 게 없다.
-// ?nointro=1 로 끌 수 있다(반복 플레이·자동 검증용).
-if (!params.get('nointro')) new Intro().start()
+// ?nointro=1 로 둘 다 끌 수 있다(반복 플레이·자동 검증용).
+if (!params.get('nointro')) new Splash(() => new Intro().start()).start()
 
 let last = performance.now()
 function loop(now) {
