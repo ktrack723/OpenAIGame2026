@@ -82,7 +82,16 @@ export class Game {
     // 조르그 증원 — 지금 성계에 남은 것을 보고 그만큼만 보낸다.
     // 한꺼번에 뿅 나타나지 않고 **순서대로** 워프해 들어온다(stepWarpIns).
     const { added, fortresses } = reinforce(this.rng, this.bodies, this.earth, this.ante, this.stageIdx)
-    added.forEach((b, i) => { b.alive = false; b.warp = 1; b.warpIn = CFG.WARP_LEAD + i * CFG.WARP_STAGGER })
+    // 마릿수가 많으면 간격을 조여 도착 전체를 WARP_SPAN 안에 담는다 —
+    // 막이 마지막 한 기까지 기다리므로, 간격이 고정이면 후반 개막이 10초를 넘는다.
+    const gap = added.length > 1
+      ? Math.min(CFG.WARP_STAGGER, CFG.WARP_SPAN / (added.length - 1))
+      : CFG.WARP_STAGGER
+    added.forEach((b, i) => { b.alive = false; b.warp = 1; b.warpIn = CFG.WARP_LEAD + i * gap })
+    // 스폰이 끝나는 시각 = 마지막 도착 + 그 한 기가 다 나타나는 데 걸리는 시간.
+    // 렌더러가 b.warp를 WARP_TIME에 걸쳐 0으로 내리므로, 마지막 warpIn만 보고
+    // 막을 걷으면 요새가 아직 반투명한 채로 조작이 열린다.
+    this.spawnEnd = added.length ? CFG.WARP_LEAD + (added.length - 1) * gap + CFG.WARP_TIME : 0
     this.targets = fortresses
     this.goal = makeGoal(fortresses)
     this.homeworld = pickHomeworld(this.bodies)   // 증원이 도착하면 stepWarpIns가 다시 고른다
@@ -97,7 +106,7 @@ export class Game {
     this.aim = Math.atan2(t.pos.y - this.earth.pos.y, t.pos.x - this.earth.pos.x)
     this.power = 30; this.yieldMt = CFG.YIELD_DEFAULT
     this.mode = 'aim'; this.advancing = false; this.time = 0; this.paused = false
-    this.warpHold = this.warpHold ?? false; this.curtainT = 0
+    this.warpHold = this.warpHold ?? false; this.openT = 0
     this.obsSpeed = 1   // OBS_SPEEDS 인덱스 — 기본 2×
     this.toast = null; this.toastT = 0
     this.winBanked = false; this.timeWarn = 0
@@ -154,6 +163,7 @@ export class Game {
 
   fire() {
     if (this.won || this.lost || this.doom || !this.earth.alive) return
+    if (this.warpCurtain) return   // 개막 중 — 아직 내 차례가 아니다
     if (this.inFlight) {
       this.setToast('아직 탄이 날고 있다 — 결판난 뒤에 다음 탄을 쏜다')
       return
@@ -249,19 +259,32 @@ export class Game {
   // ─── 막 ───────────────────────────────────────────────────────
   // 판이 열리고 조르그가 들어오는 동안은 아직 내 차례가 아니다. 조작 패널도,
   // 이름표도, 레티클도 없이 성계만 보여 준다 — 궤도와 카이퍼 벨트까지가 전부다.
-  // 시계를 stepWarpIns와 **같은 클럭**으로 센다. 벽시계로 재면 프레임이 느린
+  //
+  // 막이 걷히는 시점은 **스폰이 전부 끝나고 WARP_SETTLE만큼 더 지난 뒤**다.
+  // 예전에는 "워프가 남아 있는 동안, 단 최대 3.2초"였는데 그 규칙은 두 군데서
+  // 거짓말을 했다: ① 요새가 넷 이상이면 아직 도착 중인데 막이 걷혔고
+  // ② 마지막 한 기가 반투명하게 떠오르는 도중에 패널이 올라왔다.
+  // 지금은 한 방향으로만 흐르는 시계 하나(openT)가 개막 전체를 잰다 —
+  // 스폰 끝 → 뜸 → 조작 인계. 판마다 같은 박자다(1스테이지도, 5스테이지도).
+  //
+  // 시계는 stepWarpIns와 **같은 클럭**이다. 벽시계로 재면 프레임이 느린
   // 기기에서 워프가 끝나기도 전에 막이 걷혔다(계측: 워프 잔여 0.2초에 걷힘).
+  get openHold() { return (this.spawnEnd ?? 0) + CFG.WARP_SETTLE }
   get warpCurtain() {
     if (this.lost || this.won || this.runOver) return false
-    return this.warpPending && (this.warpHold || this.curtainT < CFG.WARP_CURTAIN)
+    return this.warpHold || this.openT < this.openHold
   }
+  // 개막을 즉시 끝낸다 — 오프닝 예고편은 판을 직접 연출하므로 막이 방해가 된다.
+  endOpening() { this.openT = this.openHold }
   // 화면에서 UI를 통째로 걷는 구간 — 예고편 도입부(cineBare)와 판이 열리는 순간.
   get bare() { return !!this.cineBare || this.warpCurtain }
 
   tick(dtFrame) {
     if (this.toastT > 0) this.toastT -= dtFrame
-    if (!this.warpPending) this.curtainT = 0
-    else if (!this.warpHold) this.curtainT += dtFrame
+    // 개막 시계. warpHold(튜토리얼이 화면을 덮고 있는 동안)면 멈춘다 —
+    // 규칙을 읽는 사이에 스폰이 끝나 버리면 첫 판에서 제일 먼저 봐야 할
+    // 장면을 오버레이 뒤에서 놓친다.
+    if (!this.warpHold && this.openT < this.openHold) this.openT += dtFrame
     this.stepWarpIns(dtFrame)
     let acc = Math.min(0.1, dtFrame) * this.effTimeScale()
     while (acc >= CFG.DT) { this.step(CFG.DT); acc -= CFG.DT }
@@ -682,9 +705,9 @@ export class Game {
     // 모성이 오는 중이면 판정을 멈춘다 — 연출이 끝나야 진짜 종료다.
     // (안 막으면 광선이 지구를 부순 순간 EARTH_LOST로 끝나 버려 난사가 중간에 멎는다.)
     if (this.doom) return
-    // 증원이 아직 워프 중이면 판정을 미룬다 — 안 그러면 "요새 0기"로
-    // 도착하기도 전에 클리어가 나 버린다.
-    if (this.warpPending) return
+    // 개막 중이면 판정을 미룬다 — 안 그러면 "요새 0기"로 도착하기도 전에
+    // 클리어가 나 버린다. 막이 걷혀야 내 차례이므로 뜸까지 통째로 센다.
+    if (this.warpPending || this.warpCurtain) return
     this.goal.update(this.aliveFortresses)
     if (this.won && !this.winBanked) {   // 클리어 시점의 남은 시간을 보너스로 정산
       this.winBanked = true

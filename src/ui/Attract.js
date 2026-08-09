@@ -355,6 +355,7 @@ function castOf(g) {
 function setUp(g, mode) {
   g.resetRun()
   g.stepWarpIns(1e9)    // 조르그 증원 워프를 즉시 끝내 놓는다(예고편이 직접 연출한다)
+  g.endOpening()        // 개막 막도 같이 걷는다 — 여기서는 예고편이 화면의 주인이다
   g.fx.length = 0
   g.mode = mode
   g._predKey = null
