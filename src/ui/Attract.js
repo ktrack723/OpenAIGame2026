@@ -382,8 +382,9 @@ const LOGOMARK = `
 </svg>`
 
 export class Attract {
-  constructor(game, view, onDone) {
+  constructor(game, view, onDone, comms = null) {
     this.game = game; this.view = view; this.onDone = onDone
+    this.comms = comms          // 예고편에도 저쪽이 한 마디 한다
     this.done = false
     this.timers = []
     this.shot = null
@@ -436,6 +437,10 @@ export class Attract {
     this.game.cinematic = false   // 여기서부터는 관측 바를 보여 준다(배속·레이저 카운트다운)
     this.game.fire()              // 진짜 발사 — 게임이 스스로 관측 모드로 넘어간다
     this.bar(0.2)
+    // 탄두가 날기 시작한 뒤 저쪽이 한 마디 한다. 발사와 동시에 띄우면 발사
+    // 연출과 겹쳐 둘 다 안 읽힌다. (요새가 부서질 때의 단말마는 Comms가
+    // 스스로 알아채 끊고 들어온다 — 이 장면의 마지막 소리가 그거다.)
+    this.after(700, () => this.comms?.say())
   }
 
   bar(f) { this.fill.style.width = `${Math.min(100, f * 100)}%` }
@@ -492,6 +497,7 @@ export class Attract {
     // 다시 튀어나온다. 배속만 1×로 내려 판을 잔잔하게 만든다.
     this.game.advancing = false
     this.game.obsSpeed = 0
+    this.comms?.close()          // 로고 위에 교신창을 얹지 않는다
     this.el.classList.add('logo')
     this.bar(1)
     this.after(LOGO_MS, () => this.finish())
@@ -501,6 +507,7 @@ export class Attract {
     if (this.done) return
     this.done = true
     this.game.cinematic = false
+    this.comms?.close()
     for (const t of this.timers) clearTimeout(t)
     removeEventListener('keydown', this.onKey)
     this.el.classList.add('out')

@@ -315,6 +315,34 @@ pre{white-space:pre-wrap;line-height:1.55;color:#9fd0c4;margin:0;font-size:11px;
 .commswho b{background:#ff5c9e;color:#1a0009;padding:1px 4px;font-weight:800}
 .commsline{margin-top:3px;color:#ffd9e6;font-size:12px;line-height:1.4;word-break:keep-all}
 .comms.in{animation:commsin .26s cubic-bezier(.2,1.3,.4,1) both}
+/* ── 단말마 ──
+   통신이 끊기며 화면이 치지직거린다. 위치는 JS가 매 프레임 transform으로 잡으므로
+   여기서는 .comms 자신의 transform을 절대 건드리지 않는다 — 건드리면 창이
+   제자리에서 튀어나간다. 대신 filter·opacity·clip-path와 자식의 transform만 쓴다. */
+.comms.dying{border-color:#ff2b4a;
+  box-shadow:0 10px 34px #000a, inset 0 0 30px #ff2b4a33;
+  animation:commsin .18s cubic-bezier(.2,1.3,.4,1) both, commsdie 2.4s steps(1) infinite}
+.comms.dying .commswho b{background:#ff2b4a;color:#20000a}
+.comms.dying .commsport{animation:commsjolt .19s steps(2) infinite}
+.comms.dying .commsline{color:#ffb3bb;animation:commstear .31s steps(1) infinite}
+@keyframes commsdie{
+  0%,100%{filter:none;opacity:1}
+  5%{filter:invert(1) hue-rotate(40deg);opacity:.82}
+  7%{filter:none;opacity:1}
+  21%{clip-path:inset(30% 0 36% 0);opacity:.9}
+  24%{clip-path:none}
+  46%{filter:brightness(2.6) saturate(2.2);opacity:.68}
+  49%{filter:none;opacity:1}
+  62%{clip-path:inset(6% 0 63% 0)}
+  65%{clip-path:none}
+  84%{filter:invert(1);opacity:.55}
+  87%{filter:none;opacity:1}}
+@keyframes commsjolt{0%{transform:translateX(0)}
+  50%{transform:translateX(-2px) skewX(-5deg)}
+  100%{transform:translateX(1px) skewX(2deg)}}
+@keyframes commstear{0%,100%{text-shadow:none}
+  30%{text-shadow:2px 0 #ff2b4a,-2px 0 #4fd6f7}
+  60%{text-shadow:-3px 0 #ff2b4a,3px 0 #4fd6f7}}
 .comms.out{animation:commsout .3s ease both}
 @keyframes commsin{from{opacity:0;clip-path:polygon(0 8px,8px 0,0 0,0 calc(100% - 8px),0 100%,0 100%)}
   to{opacity:1}}

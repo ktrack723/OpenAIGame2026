@@ -173,7 +173,7 @@ function warpBody(rng, bodies, aMax, spec) {
     pos: orb.pos, vel: orb.vel,
     type,
     // 조르그가 보낸 것은 체력 1 — 제대로 한 번 처박으면 끝난다
-    hp: CFG.ZORG_HP,
+    hp: spec.hp ?? CFG.ZORG_HP,
     zorg: true, warp: 1,            // warp: 1 → 0 으로 렌더러가 실시간 감쇠시킨다
   })
   if (spec.role === 'battery') { b.role = 'battery'; b.isTarget = true }
@@ -218,15 +218,28 @@ export function reinforce(rng, bodies, earth, ante, stageIdx) {
   // 가볍게 잡으면 12Mt에서 Δv 28~57 — "한 대 치면 실제로 날아가는" 표적이 된다.
   const fortMuFor = () => CFG.FORT_MU_MIN + rng.next() * (CFG.FORT_MU_SPAN + 14 * ante)
 
+  // ── 난이도 ──
+  // 2스테이지부터 **대형 요새**가 섞여 온다. 체력 2라 한 번 처박아서는 안
+  // 부서지고 그만큼 크다. 판이 거듭될수록 그 수가 늘어, "이번 판은 지난 판보다
+  // 무겁다"가 목표 카운터가 아니라 **공 하나를 더 굴려야 한다**로 나타난다.
+  //   판 1: 0기 · 판 2~3: 1기 · 판 4~5: 2기 · 판 6~7: 3기 …
+  const heavies = Math.min(fort, Math.floor((stageIdx + 1) / 2))
+
   for (let i = 0; i < fort; i++) {
+    const heavy = i < heavies
     const name = `Zorg ${ZORG_NAMES[rng.int(0, ZORG_NAMES.length - 1)]}-${stageIdx + 1}${i ? String.fromCharCode(97 + i) : ''}`
     // 요새는 반격탄을 쏘므로 그 자체가 위협이다 — 이게 반드시 없애야 할 표적.
     // 금속으로 지어진 요새는 잘 안 밀린다(태그가 둘 붙는다) — 종류가 곧 공략법이다.
     const type = FORT_TYPES[rng.int(0, FORT_TYPES.length - 1)]
+    const spec = {
+      name, type, role: 'battery', band,
+      mu: fortMuFor() * (heavy ? CFG.FORT_HEAVY_MU : 1),
+      hp: heavy ? CFG.FORT_HEAVY_HP : CFG.ZORG_HP,
+    }
     let b = null
     const pool2 = bodies.concat(added)
     for (let t = 0; t < 2 && !b; t++) {
-      b = warpBody(rng, pool2, aMax, { mu: fortMuFor(), name, type, role: 'battery', band })
+      b = warpBody(rng, pool2, aMax, spec)
       // 마지막 시도는 검사를 건너뛴다 — 못 찾고 요새를 아예 안 보내는 것보다 낫다
       if (b && t === 0 && !reachable(pool2.concat([b]), earth, b)) b = null
     }

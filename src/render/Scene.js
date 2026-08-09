@@ -168,6 +168,31 @@ export class SceneView {
     this.tintGlow.renderOrder = 9; this.tintDisc.renderOrder = 11; this.tintLink.renderOrder = 10
     for (const o of [this.tintGlow, this.tintDisc, this.tintLink]) { o.visible = false; this.scene.add(o) }
 
+    // ── 본성 표식 ──
+    // 조르그 요새는 겉보기에 다 똑같은데, 그중 하나(본성)만 지구를 겨눠 광선을
+    // 충전한다. 그걸 먼저 부수면 충전이 취소되고 지휘권이 다음 요새로 넘어간다
+    // (game.recordKill → pickHomeworld) — 즉 **어느 요새를 먼저 치느냐**가 수다.
+    // 그런데 화면에 그 구분이 없어서 툴팁을 열기 전엔 알 수가 없었다.
+    // 광선과 같은 색으로 두 겹 링을 둘러 "이놈이 쏘는 놈"을 한눈에 박아 둔다.
+    // 표적 레티클(붉은색, 반경 2.1배)이 이미 요새마다 붙으므로 색도 자리도
+    // 그것과 겹치면 안 된다 — 호박색으로, 그 바깥에서 반대로 돈다.
+    this.homeMark = new THREE.Group()
+    for (const [r0, r1, n, gap] of [[2.46, 2.66, 3, 0.34], [2.78, 2.86, 12, 0.6]]) {
+      const step = Math.PI * 2 / n
+      for (let i = 0; i < n; i++) {
+        const m = new THREE.Mesh(
+          new THREE.RingGeometry(r0, r1, 12, 1, i * step, step * (1 - gap)),
+          new THREE.MeshBasicMaterial({
+            color: 0xf5b544, transparent: true, opacity: 0.9,
+            depthTest: false, depthWrite: false, side: THREE.DoubleSide,
+          }))
+        m.renderOrder = 14
+        this.homeMark.add(m)
+      }
+    }
+    this.homeMark.visible = false
+    this.scene.add(this.homeMark)
+
     this.aim = new AimHelper(this.scene, this.rig, this.discGeo)
 
     // 전면 섬광 — 핵을 "과장"하는 가장 싼 수단. 폭발 프레임에 화면 전체가 탄다
@@ -453,11 +478,26 @@ export class SceneView {
 
   syncBodies(dt) {
     const g = this.game
+    // 표식 맥동용 시계. 여기서 굴리지 않으면 아래의 Math.sin(this.lockT …)이
+    // 전부 NaN이 되어 락온 링·유폭 반경·본성 표식의 맥동이 죽는다.
+    this.lockT = (this.lockT ?? 0) + dt
     this.reapMissing()
     // 조준 중이면 "지금 화면의 어느 공을 치는가"도 같이 켠다 —
     // 락온은 미래 위치에 찍히므로, 현재 위치의 그 공도 물어 줘야 눈이 이어진다.
     const aimHit = g.canAim ? g.predictPath().hit : null
     for (const o of [this.tintGlow, this.tintDisc, this.tintLink]) o.visible = false
+    // 본성 표식 — 지금 광선을 쥔 요새 하나에만 붙는다(승계되면 따라 옮겨 간다)
+    const home = g.homeworld
+    this.homeMark.visible = !!home && home.alive
+    if (this.homeMark.visible) {
+      this.homeMark.position.set(home.pos.x, home.pos.y, 1)
+      this.homeMark.scale.setScalar(this.markerRadius(home))
+      this.homeMark.rotation.z -= dt * 0.32
+      // 충전·비행 중에는 밝게 — "지금 이놈이 쏘고 있다"가 바로 읽힌다
+      const lit = g.laserCharging || g.laserFlying
+      const pulse = lit ? 0.82 + 0.18 * Math.sin(this.lockT * 4) : 0.55
+      for (const m of this.homeMark.children) m.material.opacity = pulse
+    }
     for (const b of g.bodies) {
       let fx = this.bodyFx.get(b.id)
       if (!fx) fx = this.makeBodyFx(b)

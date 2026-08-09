@@ -7,8 +7,14 @@ import { hitRadiusOf } from '../game/config.js'
 //
 // 얼굴 셋을 돌려 쓰고 대사 아홉 줄에서 뽑는다. 같은 얼굴·같은 대사가 연달아
 // 나오지 않게만 막는다(연달아 나오면 "돌려 쓴다"가 그대로 들킨다).
+//
+// ── 단말마 ──
+// 요새가 부서지는 순간에는 **따로 만든 창**이 뜬다. 화면이 치지직거리며
+// 끊기고, 부서지고 나서도 몇 초 더 남는다 — 통신이 끊긴 뒤에도 마지막 신호가
+// 남아 있는 것처럼. 이건 평소 잡담과 성격이 다르므로 대사도 따로 쓴다.
 
 const HOLD = 4.2          // 떠 있는 시간(초)
+const DEATH_HOLD = 3.6    // 단말마 — 요새가 이미 없어진 뒤에도 이만큼 남는다
 const GAP_MIN = 13, GAP_MAX = 24
 const FIRST_MIN = 5, FIRST_MAX = 10
 
@@ -55,6 +61,16 @@ const LINES = [
   '지구인. 아직 살아 있나.',
 ]
 
+// 단말마 — 끊기는 통신이다. 문장이 끝까지 가지 않는다.
+const DEATH_LINES = [
+  '격벽이— 계산이 틀렸— 어떻게—',
+  '통신 두절— 여기는— 여기는—',
+  '본대에… 전해라… 지구인은…',
+  '이 궤도는… 우리 것이… 었…',
+  '아직… 끝나지 않는… 다…',
+  '경보— 노심— 지지—직—',
+]
+
 const pick = (arr, not) => {
   let i = Math.floor(Math.random() * arr.length)
   if (arr.length > 1 && i === not) i = (i + 1 + Math.floor(Math.random() * (arr.length - 1))) % arr.length
@@ -69,7 +85,10 @@ export class Comms {
     this.left = 0            // 남은 체류 시간 (0이면 안 떠 있다)
     this.face = -1
     this.line = -1
+    this.dline = -1
     this.body = null
+    this.dying = false
+    this.forts = new Set()   // 지난 프레임에 살아 있던 요새 — 사라지면 단말마다
 
     const el = document.createElement('div')
     el.className = 'comms'
@@ -105,23 +124,37 @@ export class Comms {
   open() {
     const b = this.speaker()
     if (!b) { this.t = 2; return }      // 화면 밖이면 조금 뒤에 다시 본다
+    this.show(b, LINES[this.line = pick(LINES, this.line)], false, HOLD)
+  }
+
+  // 지금 당장 한 마디 — 예고편이 박자를 잡아 부른다.
+  say() { if (!this.dying) this.open() }
+
+  // 단말마. 이미 부서진 요새를 화자로 쓰므로 alive 검사를 하지 않는다.
+  die(b) {
+    this.show(b, DEATH_LINES[this.dline = pick(DEATH_LINES, this.dline)], true, DEATH_HOLD)
+  }
+
+  show(b, line, dying, hold) {
     this.body = b
+    this.dying = dying
     this.face = pick(FACES, this.face)
-    this.line = pick(LINES, this.line)
     this.faceEl.innerHTML = FACES[this.face]
     this.whoEl.textContent = b.name
-    this.lineEl.textContent = LINES[this.line]
+    this.lineEl.textContent = line
     this.el.hidden = false
     this.el.classList.remove('out')
+    this.el.classList.toggle('dying', dying)
     this.el.classList.add('in')
-    this.left = HOLD
+    this.left = hold
     this.place()
   }
 
   close() {
     this.left = 0
     this.body = null
-    this.el.classList.remove('in')
+    this.dying = false
+    this.el.classList.remove('in', 'dying')
     this.el.classList.add('out')
     this.t = GAP_MIN + Math.random() * (GAP_MAX - GAP_MIN)
     clearTimeout(this.hideT)
@@ -142,19 +175,41 @@ export class Comms {
   }
 
   // 매 프레임 main 루프가 불러 준다. dt는 실시간(초).
+  // 이번 프레임에 부서진 요새 — 지난 프레임의 명단과 비교해 찾는다.
+  // 게임 쪽에 손대지 않고도 "죽는 순간"을 잡을 수 있는 유일하게 깔끔한 자리다.
+  reaped() {
+    const alive = this.game.bodies.filter(b => b.alive && b.role === 'battery')
+    const now = new Set(alive.map(b => b.id))
+    let gone = null
+    for (const b of this.game.bodies) {
+      if (b.role === 'battery' && this.forts.has(b.id) && !now.has(b.id)) { gone = b; break }
+    }
+    this.forts = now
+    return gone
+  }
+
   update(dt) {
     const g = this.game
+    const dead = this.reaped()
     // 조준 모드·게임 오버·모성 난사 중에는 안 뜬다.
-    const ok = g.mode === 'observe' && !g.doom && !g.runOver && !g.won && !g.lost
+    // 승리(won)는 막지 않는다 — 마지막 요새가 부서지는 그 순간이 곧 승리라,
+    // 여기서 막으면 정작 제일 보여 주고 싶은 단말마가 통째로 사라진다.
+    const ok = g.mode === 'observe' && !g.doom && !g.runOver && !g.lost
     if (!ok) { if (this.left > 0) this.close(); return }
+
+    // 단말마가 최우선 — 잡담 중이었어도 끊고 들어온다.
+    if (dead) { this.die(dead); return }
 
     if (this.left > 0) {
       this.left -= dt
-      if (!this.body.alive) return this.close()   // 말하던 요새가 부서지면 끊긴다
+      // 잡담은 화자가 부서지면 끊긴다. 단말마는 그 부서진 화자가 하는 말이라
+      // 살아 있는지 묻지 않는다 — 통신이 끊긴 뒤에도 신호는 몇 초 더 남는다.
+      if (!this.dying && !this.body.alive) return this.close()
       this.place()
       if (this.left <= 0) this.close()
       return
     }
+    if (g.won) return          // 이긴 뒤에는 새 잡담을 시작하지 않는다
     this.t -= dt
     if (this.t <= 0) this.open()
   }

@@ -110,7 +110,9 @@ export class Markers {
     const nAlive = game.aliveTargets
     const suffix = game.targets.length > 1 ? ` (남은 요새 ${nAlive})` : ''
     const thp = t.hp ?? 3, tmax = t.hpMax ?? 3
-    this.setLabel('target', `☠ 표적  ${t.name} · 체력 ${thp}/${tmax}${suffix}`, '#ffc9cf', 'rgba(58,10,17,.92)')
+    // 본성(◈)은 광선을 쥔 요새다 — 표적이 그놈이면 이름 옆에 박아 둔다
+    const home = t === game.homeworld ? ' ◈본성' : ''
+    this.setLabel('target', `☠ 표적  ${t.name}${home} · 체력 ${thp}/${tmax}${suffix}`, '#ffc9cf', 'rgba(58,10,17,.92)')
     this.setLabel('earth', `◉ 지구 · 발사대 (체력 ${game.earth.hp ?? 3}/${game.earth.hpMax ?? 3})`, '#bfdbfe', 'rgba(23,37,84,.92)')
 
     const tr = radiusOfRender(t), er = radiusOfRender(e)
