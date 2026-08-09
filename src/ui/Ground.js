@@ -101,6 +101,9 @@ const SAY = {
   ] },
 }
 
+// 조르그 광선에 대한 반응 — 예고편에서는 이 셋만 입을 다문다.
+const LASER_KINDS = new Set(['laserCharge', 'laserHit', 'laserMiss'])
+
 const pick = (arr, not) => {
   let i = Math.floor(Math.random() * arr.length)
   if (arr.length > 1 && i === not) i = (i + 1 + Math.floor(Math.random() * (arr.length - 1))) % arr.length
@@ -142,6 +145,11 @@ export class Ground {
     const s = SAY[e.kind]
     if (!s) return
     if (e.kind === 'laserHit' && e.sun) return    // 태양이 막은 건 아무것도 안 없앤다
+    // 예고편이 화면을 잡고 있는 동안(game.cinematic)은 **조르그 광선에 대해
+    // 아무 말도 하지 않는다.** ③은 저쪽의 막이다 — 거기서 이쪽이 끼어들어
+    // 위력에 감탄하면 정작 보여 주려던 한 방이 해설에 묻힌다.
+    // 이쪽 목소리는 ⑤에서 탄두가 나갈 때 처음 들어온다(그때는 cinematic이 꺼진다).
+    if (LASER_KINDS.has(e.kind) && this.game.cinematic) return
     this.raise(e.kind, s.prio)
   }
 
