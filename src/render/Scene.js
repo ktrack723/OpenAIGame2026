@@ -660,6 +660,18 @@ export class SceneView {
   }
 
   syncMissiles() {
+    // 배열에서 걷힌 탄의 메시도 같이 치운다 — 안 두면 판이 끝날 때까지
+    // 안 보이는 메시가 씬에 쌓인다(게임 쪽이 다 쓴 탄을 지우기 시작했다).
+    if (this.missileFx.size > this.game.missiles.length) {
+      const live = new Set(this.game.missiles)
+      for (const [m, fx] of this.missileFx) {
+        if (live.has(m)) continue
+        this.scene.remove(fx.mesh, fx.glow)
+        for (const o of fx.mesh.children) o.material.dispose()
+        fx.glow.material.dispose()
+        this.missileFx.delete(m)
+      }
+    }
     for (const m of this.game.missiles) {
       let fx = this.missileFx.get(m)
       if (!fx) {
@@ -775,11 +787,14 @@ export class SceneView {
       this.ribbon(b.trail, w, hot ? 0xffffff : this.toneOf(b), { opacity: hot ? 1 : 0.75, z: -2, depth: true })
     }
 
-    // 미사일 궤적 — 빗나간 샷은 흐리게 스테이지 끝까지 남긴다 (§14.4)
+    // 미사일 궤적 — 결판난 샷은 잠깐 남았다 흐려지며 걷힌다.
+    // (걷는 시계는 game.fadeSpentShots가 실시간으로 센다.)
     for (const m of g.missiles) {
       if (m.path.length < 2) continue
+      const k = m.alive ? 1 : Math.max(0, 1 - m.fade / CFG.SHOT_TRAIL_FADE)
+      if (k <= 0) continue
       this.ribbon(m.path, m.alive ? 3.6 : 2.2, m.alive ? 0xffffff : 0x7c8798,
-        { opacity: m.alive ? 0.95 : 0.36, z: 1, depth: true })
+        { opacity: m.alive ? 0.95 : 0.36 * k, z: 1, depth: true })
     }
 
     // 조준선 + 큐 예측 (§14.3 개정)
