@@ -218,6 +218,10 @@ export function makeHud(game, view) {
 
   addEventListener('keydown', (e) => {
     if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return
+    // 개막 중에는 키도 같이 잠근다. 화면에서 패널을 걷고 버튼을 disabled로
+    // 만들어도 키보드는 그대로 살아 있어서, 막 뒤에서 SPACE로 발사하거나
+    // SHIFT로 시간을 흘려보낼 수 있었다 — 막이 있으나 마나였다.
+    if (game.warpCurtain) return
     // TAB — 두 모드를 오간다. 관측 중에도 유일하게 살아 있는 키다.
     if (e.code === 'Tab') { e.preventDefault(); game.toggleMode(); el._sync(); return }
     if (e.key === 'Shift') startWait()
@@ -332,7 +336,8 @@ export function updateHud(el, game) {
   // ── 조작을 걷어내는 두 순간 — 둘 다 **페이드**다 ──────────────
   // ① 판이 시작될 때: 조르그가 워프해 들어오는 동안은 아직 내 차례가 아니다.
   //    화면이 뜨자마자 패널부터 들이밀면 "무슨 일이 벌어지는지"를 못 본다.
-  //    워프가 끝나는 순간 조준 UI가 떠오른다.
+  //    스폰이 **전부** 끝나고 한 박자 더 지난 뒤에 조준 UI가 떠오른다.
+  //    판마다 똑같다 — 1스테이지도, 다음 침공도.
   // ② 승부가 갈린 순간: 결과 메시지가 뜨기 **전에** 먼저 조작을 끈다.
   //    이겼는지 졌는지 이미 정해졌는데 버튼이 살아 있으면 거짓말이다.
   const decided = game.runOver || game.won || game.lost
@@ -345,6 +350,9 @@ export function updateHud(el, game) {
     el._obsBar.classList.toggle('veil', veil)
     // 버튼은 시각적으로만 지우는 게 아니라 실제로 잠근다
     for (const btn of el.querySelectorAll('button')) btn.disabled = veil
+    // 막이 걷힐 때 전부 다시 열어 버렸으므로, 조준 가능 여부에 따른 잠금은
+    // 아래에서 다시 계산하게 한다(안 그러면 발사 불가 상태에서도 버튼이 산다).
+    el._aimable = undefined
   }
   if (observing) {
     // 버튼 하나에 접어 넣는 최소 정보: 배속 · 남은 시한 · 레이저 경보
@@ -367,7 +375,7 @@ export function updateHud(el, game) {
     return   // 패널이 숨겨져 있으므로 나머지 갱신은 통째로 건너뛴다
   }
 
-  const aimable = game.canAim
+  const aimable = game.canAim && !veil
   if (el._aimable !== aimable) {
     el._aimable = aimable
     for (const id of CTRL_IDS) el.querySelector(id).disabled = !aimable
