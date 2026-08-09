@@ -76,6 +76,11 @@ export class Icons {
 
   update(game, rig, dt, renderRadius) {
     this.t += dt
+    // 판이 열리는 순간과 예고편 도입부에는 배지도 해골도 없다 — 성계만 보인다.
+    if (game.bare) {
+      for (const e of this.sprites.values()) { e.cat.visible = false; if (e.hostile) e.hostile.visible = false }
+      return
+    }
     const ppw = rig.worldPerPx
     const size = VIS.ICON_PX * ppw
     const seen = new Set()
