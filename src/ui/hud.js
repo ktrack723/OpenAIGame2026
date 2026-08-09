@@ -310,6 +310,9 @@ const FAIL_WHY = {
 // 패배 화면을 올리기까지 기다리는 실시간(ms). 지구 화구가 피었다 잦아드는
 // 시간이다 — 이보다 짧으면 자기가 어떻게 죽었는지 못 보고 패널만 본다.
 const OVER_DELAY = 2200
+// 판이 시작될 때 조작을 덮어 두는 시간(ms). 조르그가 워프해 들어오는 걸
+// 보라고 주는 시간이다 — 그게 끝나면 조준 UI가 떠오른다.
+const WARP_VEIL_MS = 3000
 
 const CTRL_IDS = ['#fire', '#findPrev', '#findNext']
 
@@ -327,6 +330,27 @@ export function updateHud(el, game) {
     el._cine = cine
     el.hidden = observing
     el._obsBar.hidden = !observing || cine
+  }
+
+  // ── 조작을 걷어내는 두 순간 — 둘 다 **페이드**다 ──────────────
+  // ① 판이 시작될 때: 조르그가 워프해 들어오는 동안은 아직 내 차례가 아니다.
+  //    화면이 뜨자마자 패널부터 들이밀면 "무슨 일이 벌어지는지"를 못 본다.
+  //    워프가 끝나는 순간 조준 UI가 떠오른다.
+  // ② 승부가 갈린 순간: 결과 메시지가 뜨기 **전에** 먼저 조작을 끈다.
+  //    이겼는지 졌는지 이미 정해졌는데 버튼이 살아 있으면 거짓말이다.
+  const decided = game.runOver || game.won || game.lost
+  // 워프인은 증원 수만큼 길어진다(후반엔 열 기가 넘어 8초 이상 걸린다).
+  // 그동안 계속 조작을 잠글 수는 없으므로 앞머리만 덮는다.
+  if (game.warpPending && el._warpAt === undefined) el._warpAt = performance.now()
+  if (!game.warpPending) el._warpAt = undefined
+  const notYet = !decided && game.warpPending && performance.now() - el._warpAt < WARP_VEIL_MS
+  const veil = decided || notYet
+  if (el._veil !== veil) {
+    el._veil = veil
+    el.classList.toggle('veil', veil)
+    el._obsBar.classList.toggle('veil', veil)
+    // 버튼은 시각적으로만 지우는 게 아니라 실제로 잠근다
+    for (const btn of el.querySelectorAll('button')) btn.disabled = veil
   }
   if (observing) {
     // 버튼 하나에 접어 넣는 최소 정보: 배속 · 남은 시한 · 레이저 경보
@@ -448,7 +472,7 @@ export function updateHud(el, game) {
     el.querySelector('#lcdSub').textContent = sub
       || `작약 ${game.yieldMt}Mt · Δv=${CFG.NUKE_IMPULSE}×${game.yieldMt}/질량 · 폭풍 ${(CFG.BLAST_R * game.yieldMt).toFixed(0)} GU`
     fireBtn.classList.toggle('danger', p.outcome === 'earth')
-    fireBtn.disabled = game.inFlight
+    fireBtn.disabled = game.inFlight || veil
     fireBtn.querySelector('.ftext').textContent = game.inFlight ? '재장전 대기 — 비행 중'
       : p.outcome === 'earth' ? 'ABORT — 지구 직격' : 'FIRE'
   } else {

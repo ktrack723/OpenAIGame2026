@@ -15,8 +15,11 @@ import { hitRadiusOf } from '../game/config.js'
 
 const HOLD = 4.2          // 떠 있는 시간(초)
 const DEATH_HOLD = 3.6    // 단말마 — 요새가 이미 없어진 뒤에도 이만큼 남는다
-const GAP_MIN = 13, GAP_MAX = 24
-const FIRST_MIN = 5, FIRST_MAX = 10
+// 다음 교신까지 — **일정 주기 ± 알파**다. 완전 무작위(13~24초)로 뒀더니 언제
+// 올지 짐작이 안 돼서 "가끔 뜨는 것" 이상으로 안 읽혔다. 주기를 정해 두고
+// 그 언저리에서 흔들면, 자주 오면서도 기계적이지 않다.
+const GAP = 7.5, GAP_JITTER = 2.5     // 5~10초
+const FIRST = 3.5, FIRST_JITTER = 1.5 // 첫 교신 2~5초
 
 // ── 얼굴 셋 ──
 // 실루엣부터 다르게 잡았다: 넓은 머리(지휘관) / 바이저(포격수) / 겹눈(정찰).
@@ -81,7 +84,7 @@ export class Comms {
   constructor(game, view) {
     this.game = game
     this.view = view
-    this.t = FIRST_MIN + Math.random() * (FIRST_MAX - FIRST_MIN)
+    this.t = FIRST + (Math.random() * 2 - 1) * FIRST_JITTER
     this.left = 0            // 남은 체류 시간 (0이면 안 떠 있다)
     this.face = -1
     this.line = -1
@@ -159,7 +162,7 @@ export class Comms {
     this.dying = false
     this.el.classList.remove('in', 'dying')
     this.el.classList.add('out')
-    this.t = GAP_MIN + Math.random() * (GAP_MAX - GAP_MIN)
+    this.t = GAP + (Math.random() * 2 - 1) * GAP_JITTER
     clearTimeout(this.hideT)
     this.hideT = setTimeout(() => { this.el.hidden = true }, 320)
   }
