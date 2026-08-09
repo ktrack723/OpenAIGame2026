@@ -19,8 +19,12 @@ import { effDv } from '../game/roles.js'
 //      **레이저를 충전 중이던** 조르그 본성을 그대로 들이받는다.
 //   → 요새 격파 · 레이저 침묵 → 로고.
 //
-// ①~③은 판을 그냥 굴리기만 하면 되지만, ④부터는 궤적을 수치로 푼 무대가
-// 필요하다. 그래서 ③ → ④ 사이는 하드컷이다 — 거기서 판을 새로 세운다.
+// **끊는 데가 없다.** 무대는 시작하기 전에 한 번 풀어 두고, ①~③ 동안에는
+// 판을 아예 세워 둔다(game.paused). 그래서 ④에서 판을 다시 세울 일이 없고,
+// 카메라도 튀지 않는다 — 처음부터 끝까지 한 화면이다.
+// 세워 두면 행성이 안 도는데, 이 화각에서 행성은 초당 화면의 1.5%쯤 움직이므로
+// 6초를 세워도 눈에 띄지 않는다. 대신 궤적 풀이가 6초 뒤에도 그대로 맞는다.
+// 광선만 예외로 tickLaser를 직접 굴려 준다 — 판은 멈춰 있고 광선만 난다.
 //
 // 그려 놓은 그림이 아니다. 실제 게임을 굴린다 — 같은 렌더러, 같은 HUD, 같은
 // 폭발, 같은 물리. 이 파일이 하는 일은 **판을 세우는 것 하나**다. 세팅이 끝나면
@@ -335,7 +339,7 @@ function castOf(g) {
 // 판을 처음부터 다시 세우고 이번 장면을 짠다.
 function setUp(g, mode) {
   g.resetRun()
-  g.stepWarpIns(99)     // 조르그 증원 워프를 즉시 끝내 놓는다
+  g.stepWarpIns(1e9)    // 조르그 증원 워프를 즉시 끝내 놓는다(예고편이 직접 연출한다)
   g.fx.length = 0
   g.mode = mode
   g._predKey = null
@@ -370,9 +374,11 @@ function setUp(g, mode) {
 const WARP_LINE = '네놈만 없으면 태양계는 우리 것이다.'
 
 // 광선 한 발을 **지금 당장** 쏘되, 지구는 비껴 가게 한다.
-// 예고편에서 지구가 죽으면 거기서 이야기가 끝나 버린다. 그렇다고 안 쏘면
-// "저게 뭘 하는 물건인지"를 못 보여 준다 — 그래서 쏘고, 빗나가게 한다.
-// 진로를 튼 뒤로는 전부 게임이 굴린다(닿는 첫 천체는 그대로 소멸한다).
+// 예고편에서 지구가 죽으면 거기서 이야기가 끝난다. 그렇다고 안 쏘면 "저게 뭘
+// 하는 물건인지"를 못 보여 준다 — 그래서 쏘고, **곁을 돌던 다른 행성**에
+// 맞힌다. 빗나가기만 하면 아무 일도 안 일어나 밋밋하고, 행성 하나가 통째로
+// 소멸하면 "닿는 건 체력과 무관하게 없어진다"가 한 방에 읽힌다.
+// 진로를 정한 뒤로는 전부 게임이 굴린다.
 function fireBeamPast(g) {
   const L = g.laser
   L.state = LASER_IDLE; L.t = 0; L.nextAt = 0
@@ -384,13 +390,43 @@ function fireBeamPast(g) {
   g.toast = null; g.toastT = 0
 
   const e = g.earth
+  // 지구가 그 진로 위에 있는가 — 있으면 안 된다.
+  const clearsEarth = (ux, uy) => {
+    const px = e.pos.x - L.ox, py = e.pos.y - L.oy
+    const along = px * ux + py * uy
+    if (along <= 0) return true                   // 뒤에 있다
+    return Math.abs(ux * py - uy * px) > hitRadiusOf(e) * 1.6
+  }
+
+  // 곁을 돌던 행성 중 하나를 고른다. 너무 가까우면 광선이 날아가는 게 안 보이고,
+  // 너무 멀면 화면 밖에서 터진다. 태양에 가로막히는 것도 뺀다.
+  const cands = []
+  for (const b of g.bodies) {
+    if (!b.alive || b === e || b === L.from || b.type === 'debris' || b.role === 'void') continue
+    const dx = b.pos.x - L.ox, dy = b.pos.y - L.oy
+    const d = Math.hypot(dx, dy)
+    if (d < 420 || d > 2400) continue
+    const ux = dx / d, uy = dy / d
+    if (!clearsEarth(ux, uy)) continue
+    // 태양 원반을 지나면 거기서 끊긴다 — 그 앞의 행성은 못 맞힌다
+    const t = -L.ox * ux - L.oy * uy
+    if (t > 0 && t < d && Math.hypot(-L.ox - ux * t, -L.oy - uy * t) < CFG.R_STAR) continue
+    cands.push({ b, d, ux, uy })
+  }
+  if (cands.length) {
+    // 가운데쯤 되는 거리를 고른다 — 날아가는 게 보이면서 화면 안에 든다
+    cands.sort((p, q) => Math.abs(p.d - 1200) - Math.abs(q.d - 1200))
+    const pick = cands[0]
+    L.ux = pick.ux; L.uy = pick.uy
+    return true
+  }
+
+  // 마땅한 표적이 없으면 최소한 지구만은 비껴 가게 튼다
   const px = e.pos.x - L.ox, py = e.pos.y - L.oy
-  const along = px * L.ux + py * L.uy              // 진행 방향 성분
-  const miss = Math.abs(L.ux * py - L.uy * px)     // 진로에서 지구까지의 수직거리
+  const along = px * L.ux + py * L.uy
+  const miss = Math.abs(L.ux * py - L.uy * px)
   const need = hitRadiusOf(e) * 2.4
   if (along > 1 && miss < need) {
-    // 지구가 앞쪽에 너무 가까이 있다 — 그만큼 진로를 옆으로 튼다.
-    // 지구가 진로의 어느 쪽에 있는지(외적 부호) 보고 반대로 돌린다.
     const side = (L.ux * py - L.uy * px) >= 0 ? -1 : 1
     const rot = side * Math.asin(Math.min(0.6, (need - miss) / along))
     const c = Math.cos(rot), sn = Math.sin(rot)
@@ -460,17 +496,17 @@ export class Attract {
   after(ms, fn) { this.timers.push(setTimeout(fn, ms)) }
 
   // ── ① 평화 ──
+  // 시작하기 전에 무대를 통째로 풀어 둔다. 그러고 판을 세워(paused) 놓으므로
+  // ④까지 아무것도 다시 세울 필요가 없다 — 씬이 하나로 이어진다.
   start() {
     const g = this.game
-    g.resetRun()
-    // 모드는 **resetRun 뒤에** 건다 — loadStage가 mode를 'aim'으로 되돌리는데,
-    // 조준 모드는 진행 버튼을 누르지 않으면 시계가 멈춰 있어서 성계가 얼어붙는다.
-    g.setMode('observe')      // UI 없이 화면만, 그리고 판이 흐른다
     g.cinematic = true
-    g.obsSpeed = 1            // 2× — 아무 일도 없는 성계가 천천히 돈다
-    // 증원 워프는 loadStage가 0.5초 뒤로 예약해 둔다. 그대로 두면 "평화"가
-    // 반 초 만에 끝나므로 밀어 두었다가 ②에서 한꺼번에 불러들인다.
-    for (const b of g.bodies) if (b.warpIn > 0) b.warpIn = 1e9
+    this.shot = setUp(g, 'observe')
+    if (!this.shot) return this.finish()      // 이 시드로는 장면이 안 나온다 — 조용히 넘어간다
+    g.paused = true                           // 여기서부터 ④까지 판은 정지
+    // 조르그는 아직 안 왔다. ②에서 워프해 들어온다.
+    this.zorg = this.shot.F
+    this.zorg.alive = false
     this.phase = 'peace'
     this.bar(0.03)
     this.after(PEACE_MS, () => this.warpIn())
@@ -482,9 +518,11 @@ export class Attract {
   warpIn() {
     if (this.done || this.phase !== 'peace') return
     this.phase = 'warp'
-    const g = this.game
-    g.stepWarpIns(1e9)        // 게임 자신의 워프인 연출이 그대로 터진다
-    this.zorg = g.bodies.find(b => b.alive && b.role === 'battery') ?? null
+    const g = this.game, z = this.zorg
+    // 게임이 증원을 불러들일 때와 같은 연출이다(stepWarpIns가 하는 그대로).
+    z.alive = true; z.warp = 1
+    g.addFx({ kind: 'warp', x: z.pos.x, y: z.pos.y, r: hitRadiusOf(z), fort: true })
+    g.homeworld = z
     this.bar(0.1)
     this.after(WARP_LINE_MS, () => this.comms?.say(WARP_LINE))
     this.after(WARP_MS, () => this.beams())
@@ -500,7 +538,7 @@ export class Attract {
     this.after(BEAM_MS, () => this.predict())
   }
 
-  // ── ④ 예측 — 여기서 판을 새로 세운다(하드컷) ──
+  // ── ④ 예측 — 같은 화면, 같은 판. 조준 가이드만 켠다 ──
   predict() {
     if (this.done || this.phase !== 'beam') return
     this.phase = 'aim'
@@ -508,15 +546,10 @@ export class Attract {
     // 예측선은 조준 모드에서만 그려진다(canAim). 조준 패널은 cinematic이 걷어낸다.
     g.setMode('aim')
     g.cinematic = true
-    this.shot = setUp(g, 'aim')
-    if (!this.shot) return this.finish()      // 이 시드로는 장면이 안 나온다 — 조용히 넘어간다
-
     // 남은 충전 시간. 장면 전체가 인게임 25초 남짓이므로, 32초를 남겨 두면
     // 카운트다운이 내내 줄어들다가 큐볼이 요새를 부수는 순간 끊긴다.
     armLaser(g, 32)
     this.comms?.close()
-    this.view.clearFx()
-    this.cam.x = null         // 하드컷 — 카메라를 새 무대에 곧바로 붙인다
     this.bar(0.3)
     this.after(AIM_MS, () => this.launch())
   }
@@ -524,6 +557,7 @@ export class Attract {
   launch() {
     if (this.done || this.phase !== 'aim') return
     this.phase = 'fly'
+    this.game.paused = false      // 여기서부터 판이 흐른다
     this.game.cinematic = false   // 여기서부터는 관측 바를 보여 준다(배속·레이저 카운트다운)
     this.game.fire()              // 진짜 발사 — 게임이 스스로 관측 모드로 넘어간다
     this.bar(0.2)
@@ -559,6 +593,8 @@ export class Attract {
       if (z) pts.push({ x: z.pos.x, y: z.pos.y, r: 300 })
       else pts.push({ x: 0, y: 0, r: g.aMax * 1.02 })
     } else if (this.phase === 'beam') {
+      // 판은 세워 둔 채 광선만 굴린다 — 그래야 ④의 궤적 풀이가 그대로 맞는다
+      g.tickLaser(CFG.DT * Math.min(8, Math.round(dt / CFG.DT)))
       // 총구와 지구, 그리고 날아가는 광선의 머리를 한 프레임에
       const h = g.homeworld
       if (h && h.alive) pts.push({ x: h.pos.x, y: h.pos.y, r: 220 })
@@ -604,6 +640,7 @@ export class Attract {
   showLogo() {
     if (this.done || this.phase === 'logo') return
     this.phase = 'logo'
+    this.game.paused = false
     // 모드는 그대로 둔다 — 여기서 조준 모드로 돌리면 로고 뒤로 HUD 패널이
     // 다시 튀어나온다. 배속만 1×로 내려 판을 잔잔하게 만든다.
     this.game.advancing = false
@@ -618,6 +655,7 @@ export class Attract {
     if (this.done) return
     this.done = true
     this.game.cinematic = false
+    this.game.paused = false
     this.comms?.close()
     for (const t of this.timers) clearTimeout(t)
     removeEventListener('keydown', this.onKey)

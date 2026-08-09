@@ -96,7 +96,7 @@ export class Game {
     const t = this.target
     this.aim = Math.atan2(t.pos.y - this.earth.pos.y, t.pos.x - this.earth.pos.x)
     this.power = 30; this.yieldMt = CFG.YIELD_DEFAULT
-    this.mode = 'aim'; this.advancing = false; this.time = 0
+    this.mode = 'aim'; this.advancing = false; this.time = 0; this.paused = false
     this.obsSpeed = 1   // OBS_SPEEDS 인덱스 — 기본 2×
     this.toast = null; this.toastT = 0
     this.winBanked = false; this.timeWarn = 0
@@ -196,6 +196,10 @@ export class Game {
   toggleMode() { this.setMode(this.mode === 'aim' ? 'observe' : 'aim') }
 
   effTimeScale() {
+    // 연출이 판을 붙잡고 있는 동안(오프닝 예고편의 도입부)은 아무것도 안 흐른다.
+    // 조준 모드로 세우는 것과 다른 이유가 있다 — 조준 모드는 조준 가이드를
+    // 같이 켜 버리는데, 그 구간은 화면에 아무 UI도 없어야 한다.
+    if (this.paused) return 0
     if (this.lost || this.won) return 0   // 클리어 후에는 시계를 세운다
     if (this.doom) return 1               // 모성이 오는 동안엔 1×로만 흐른다 (조작 불가)
     if (this.mode === 'aim') {

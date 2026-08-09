@@ -355,6 +355,12 @@ pre{white-space:pre-wrap;line-height:1.55;color:#9fd0c4;margin:0;font-size:11px;
 .obsbar{position:fixed;left:50%;bottom:max(22px,env(safe-area-inset-bottom));transform:translateX(-50%);
   z-index:4;display:flex;align-items:stretch;gap:8px}
 .obsbar[hidden]{display:none}
+/* ── 조작을 걷어내는 순간 ──
+   ① 조르그가 워프해 들어오는 동안(아직 내 차례가 아니다)
+   ② 승부가 갈린 순간(결과 메시지가 뜨기 전에 먼저 끈다)
+   둘 다 딱 끊지 않고 사라졌다 떠오른다. 버튼은 hud.js가 실제로 잠근다. */
+.hud,.obsbar{transition:opacity .5s ease, transform .5s ease}
+.hud.veil,.obsbar.veil{opacity:0;pointer-events:none;transform:translateY(10px)}
 .aimbtn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
   padding:13px 30px;border:1px solid #2f7f9c;border-radius:0;cursor:pointer;
   background:linear-gradient(180deg,rgba(14,53,73,.94),rgba(7,32,46,.94));backdrop-filter:blur(10px);
