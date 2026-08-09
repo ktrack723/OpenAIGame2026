@@ -107,7 +107,9 @@ export class Comms {
   }
 
   // 지금 말을 걸 수 있는 요새 — 살아 있고 화면 안에 있는 것. 본성 우선.
-  speaker() {
+  // any=true면 화면 밖이라도 아무나 잡는다(예고편이 박자를 잡아 부를 때).
+  // 창 자체는 place()가 화면 안으로 끌어다 놓으므로 가리키는 데가 없진 않다.
+  speaker(any = false) {
     const g = this.game
     const forts = g.bodies.filter(b => b.alive && b.role === 'battery')
     if (!forts.length) return null
@@ -116,19 +118,20 @@ export class Comms {
       const s = rig.worldToScreen(b.pos.x, b.pos.y)
       return s.x > 90 && s.x < innerWidth - 90 && s.y > 120 && s.y < innerHeight - 120
     })
-    const pool = onScreen.length ? onScreen : []
+    const pool = onScreen.length ? onScreen : (any ? forts : [])
     if (!pool.length) return null
     return pool.find(b => b === g.homeworld) ?? pool[0]
   }
 
-  open() {
-    const b = this.speaker()
+  open(line = null, any = false) {
+    const b = this.speaker(any)
     if (!b) { this.t = 2; return }      // 화면 밖이면 조금 뒤에 다시 본다
-    this.show(b, LINES[this.line = pick(LINES, this.line)], false, HOLD)
+    this.show(b, line ?? LINES[this.line = pick(LINES, this.line)], false, HOLD)
   }
 
   // 지금 당장 한 마디 — 예고편이 박자를 잡아 부른다.
-  say() { if (!this.dying) this.open() }
+  // 대사를 넘기면 그 줄을 그대로 말한다(예고편의 첫 대사처럼 정해진 것이 있다).
+  say(line = null) { if (!this.dying) this.open(line, true) }
 
   // 단말마. 이미 부서진 요새를 화자로 쓰므로 alive 검사를 하지 않는다.
   die(b) {

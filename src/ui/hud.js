@@ -409,7 +409,7 @@ export function updateHud(el, game) {
       `조준선에서 지구까지 ${game.laserMiss.toFixed(0)} GU — `
       + (game.laserSafe ? '이대로면 빗나간다.' : `아직 맞는다(${hitRadiusOf(game.earth).toFixed(0)} GU 넘겨야 산다).`)
       + ' 조르그는 지구가 원래 궤도를 돈다고 보고 겨눈다 — 폭풍으로 밀면 그만큼 조준이 틀어진다.'
-      + ' 행성으로 ◇ 선을 막아도 되고(그 행성은 소멸), **탄두를 선 위에 걸쳐 두면 요격**된다.'
+      + ' 행성으로 ◇ 선을 막아도 되고(그 행성은 소멸), 탄두를 선 위에 걸쳐 두면 요격된다.'
   } else if (game.laserFlying) {
     lm.hidden = false
     lm.classList.remove('ok')

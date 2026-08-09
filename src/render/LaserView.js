@@ -1,13 +1,18 @@
 import * as THREE from 'three'
-import { CFG } from '../game/config.js'
+import { CFG, hitRadiusOf } from '../game/config.js'
 
 // ─── 조르그 레이저 연출 ─────────────────────────────────────────
 // **단순하게.** 예전엔 흐르는 빗금 + 맥동 + 색 변화 + 번짐을 한꺼번에 얹었더니
 // 빨리 감기로 보면 화면이 정신없어서 정작 "어디가 위험한가"가 안 읽혔다.
 // 움직이는 것은 하나만 둔다.
 //
-// 충전 중 — 화면에 뜨는 것은 딱 둘이다.
-//   ① 조준선: 총구에서 조준점을 지나 사거리 끝까지. **가늘고 정지해 있다.**
+// 충전 중 — 화면에 뜨는 것은 셋이다.
+//   ⓪ 위험 회랑: 총구에서 조준점을 지나 사거리 끝까지 뻗는 **띠**. 폭은
+//      지구 판정 지름 그대로다 — 즉 "이 띠 안에 지구가 들어가 있으면 죽는다"가
+//      말 그대로 폭으로 그려진다(laser.js가 L.miss > hitRadiusOf(earth)로 재는
+//      바로 그 값이다). 얇은 선 하나로는 "선 위"만 위험해 보여서 정작 폭이
+//      있다는 게 안 읽혔다. 두껍지 않게, 아주 옅게 깐다.
+//   ① 조준선: 그 띠 한가운데를 지나는 가는 선. **정지해 있다.**
 //      광선은 조준점에서 멈추지 않고 직진하므로 선도 거기서 안 끊는다.
 //   ② 조준점: 마름모 표식. 조르그가 겨눈 한 점이고, 지구를 밀면 지구가
 //      여기서 미끄러져 나간다. **색이 두 상태로만 갈린다** — 붉은색이면
@@ -46,10 +51,11 @@ function sunBlock(L) {
 export class LaserView {
   constructor(scene, rig) {
     this.scene = scene; this.rig = rig
+    this.band = quad(0xff4d6d, 0.10)      // ⓪ 위험 회랑 — 지구 판정 지름만큼의 폭
     this.line = quad(0xff4d6d, 0.34)      // ① 조준선 — 정지, 가늘게
     this.bolt = quad(0xff2d4d, 1)         // 비행 탄두
     this.boltCore = quad(0xffffff, 1)
-    this.parts = [this.line, this.bolt, this.boltCore]
+    this.parts = [this.band, this.line, this.bolt, this.boltCore]
     for (const o of this.parts) { o.renderOrder = 18; scene.add(o) }
 
     // ② 조준점 — 마름모 하나. 얇은 링을 4각형으로 굽는다.
@@ -140,7 +146,12 @@ export class LaserView {
       //   단 **태양에 가로막히면 거기서 끊는다.** 태양은 안 움직이므로 이 절단은
       //   언제나 참이고, 선이 태양 앞에서 멎는 것만으로 "저건 막힌다"가 읽힌다.
       //   (행성은 95초 동안 움직이므로 미리 끊어 주면 거짓말이 된다.)
-      this.place(this.line, L.ox, L.oy, ang, sunBlock(L) ?? L.range, Math.max(1.4 * ppw, 2), 6.9)
+      const reach = sunBlock(L) ?? L.range
+      // ⓪ 위험 회랑 — 지구 판정 지름이 곧 폭이다. 화면에서 최소 3px은 되게.
+      const w = Math.max(hitRadiusOf(game.earth) * 2, 3 * ppw)
+      this.place(this.band, L.ox, L.oy, ang, reach, w, 6.8)
+      this.band.material.opacity = 0.09 + 0.05 * u
+      this.place(this.line, L.ox, L.oy, ang, reach, Math.max(1.4 * ppw, 2), 6.9)
       this.line.material.opacity = 0.34
       // ② 조준점 — 유일하게 움직이는 것. 충전이 찰수록 조여든다.
       // 조준점 색은 두 상태뿐이다: 붉은색 = 이대로면 맞는다 / 청록 = 빗나간다.
@@ -149,6 +160,7 @@ export class LaserView {
       this.markRing.material.color.setHex(tone)
       this.markDot.material.color.setHex(tone)
       this.line.material.color.setHex(tone)
+      this.band.material.color.setHex(tone)
       const mr = Math.max(9, 22 * ppw) * (1.6 - 0.6 * u)
       this.markGrp.position.set(L.ax, L.ay, 7.2)
       this.markGrp.scale.setScalar(mr)
@@ -167,6 +179,12 @@ export class LaserView {
     if (L.state === 'travel') {
       const ang = Math.atan2(L.uy, L.ux)
       this.line.material.color.setHex(0xff4d6d)
+      // 아직 안 지나간 앞쪽이 위험한 자리다 — 회랑을 탄두 앞으로만 깔아 둔다
+      const w = Math.max(hitRadiusOf(game.earth) * 2, 3 * ppw)
+      const hx = L.ox + L.ux * L.head, hy = L.oy + L.uy * L.head
+      this.place(this.band, hx, hy, ang, Math.max(0, L.range - L.head), w, 6.8)
+      this.band.material.color.setHex(0xff4d6d)
+      this.band.material.opacity = 0.11
       // 지나간 자리는 흐릿하게 남겨 "어디서 왔는지"만 남긴다
       this.place(this.line, L.ox, L.oy, ang, L.head, Math.max(1.4 * ppw, 2), 6.9)
       this.line.material.opacity = 0.22
