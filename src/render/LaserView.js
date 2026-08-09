@@ -113,20 +113,23 @@ export class LaserView {
     const ppw = this.rig.worldPerPx
     let i = 0
     for (const b of D.beams) {
+      if (b.gone) continue
       const ang = Math.atan2(b.uy, b.ux)
       const trail = this.doomBolt(i++)
       this.place(trail, D.x, D.y, ang, b.head, Math.max(1.6 * ppw, 2.4), 6.9)
       trail.material.color.setHex(0xff2d4d)
       trail.material.opacity = b.dead ? 0.12 : 0.26
-      if (b.dead) continue
-      const tail = Math.min(b.head, Math.max(90, 150 * ppw))
-      const hx = D.x + b.ux * (b.head - tail), hy = D.y + b.uy * (b.head - tail)
+      // 막대는 꼬리(back)에서 머리(head)까지. 머리가 박혀 멎은 뒤에는 꼬리만
+      // 다가오므로 막대가 앞에서부터 잡아먹히며 짧아진다.
+      const lit = b.head - b.back
+      if (lit <= 0) continue
+      const hx = D.x + b.ux * b.back, hy = D.y + b.uy * b.back
       const head = this.doomBolt(i++)
-      this.place(head, hx, hy, ang, tail, Math.max(8 * ppw, 11), 7)
+      this.place(head, hx, hy, ang, lit, Math.max(8 * ppw, 11), 7)
       head.material.color.setHex(0xff2d4d)
       head.material.opacity = 1
       const core = this.doomBolt(i++)
-      this.place(core, hx, hy, ang, tail, Math.max(3 * ppw, 4), 7.2)
+      this.place(core, hx, hy, ang, lit, Math.max(3 * ppw, 4), 7.2)
       core.material.color.setHex(0xffffff)
       core.material.opacity = 1
     }
@@ -136,7 +139,11 @@ export class LaserView {
     const L = game.laser
     this.hideAll()
     if (game.doom) { this.showDoom(game.doom); return }   // 모성이 왔으면 그것만 그린다
-    if (!L || game.runOver) return
+    if (!L) return
+    // 판이 끝나면 조준선도 회랑도 걷는다. 다만 **이미 박힌 광선의 꼬리**는
+    // 예외다 — 지구를 부순 그 한 발이 화면에서 툭 사라지면 무엇이 지구를
+    // 관통했는지가 안 남는다. 0.18초, 마저 들어가는 것만 그린다.
+    if (game.runOver && L.state !== 'spent') return
     const ppw = this.rig.worldPerPx
 
     if (L.state === 'charge') {
@@ -176,23 +183,32 @@ export class LaserView {
       return
     }
 
-    if (L.state === 'travel') {
+    // 'spent' = 머리가 이미 박혔고 꼬리만 남은 구간. 그림은 travel과 같은 규칙을
+    // 쓴다 — 다른 건 머리가 안 움직인다는 것뿐이고, 그래서 막대가 짧아진다.
+    if (L.state === 'travel' || L.state === 'spent') {
+      const spent = L.state === 'spent'
       const ang = Math.atan2(L.uy, L.ux)
       this.line.material.color.setHex(0xff4d6d)
-      // 아직 안 지나간 앞쪽이 위험한 자리다 — 회랑을 탄두 앞으로만 깔아 둔다
-      const w = Math.max(hitRadiusOf(game.earth) * 2, 3 * ppw)
-      const hx = L.ox + L.ux * L.head, hy = L.oy + L.uy * L.head
-      this.place(this.band, hx, hy, ang, Math.max(0, L.range - L.head), w, 6.8)
-      this.band.material.color.setHex(0xff4d6d)
-      this.band.material.opacity = 0.11
+      // 아직 안 지나간 앞쪽이 위험한 자리다 — 회랑을 탄두 앞으로만 깔아 둔다.
+      // 이미 박힌 뒤에는 앞쪽이랄 게 없으므로 회랑도 걷는다.
+      if (!spent) {
+        const w = Math.max(hitRadiusOf(game.earth) * 2, 3 * ppw)
+        const hx = L.ox + L.ux * L.head, hy = L.oy + L.uy * L.head
+        this.place(this.band, hx, hy, ang, Math.max(0, L.range - L.head), w, 6.8)
+        this.band.material.color.setHex(0xff4d6d)
+        this.band.material.opacity = 0.11
+      }
       // 지나간 자리는 흐릿하게 남겨 "어디서 왔는지"만 남긴다
       this.place(this.line, L.ox, L.oy, ang, L.head, Math.max(1.4 * ppw, 2), 6.9)
-      this.line.material.opacity = 0.22
-      // 탄두 — 짧은 막대 하나. 이게 유일하게 움직인다.
-      const tail = Math.min(L.head, Math.max(90, 150 * ppw))
-      const bx = L.ox + L.ux * (L.head - tail), by = L.oy + L.uy * (L.head - tail)
-      this.place(this.bolt, bx, by, ang, tail, Math.max(9 * ppw, 12), 7)
-      this.place(this.boltCore, bx, by, ang, tail, Math.max(3 * ppw, 4), 7.2)
+      this.line.material.opacity = spent ? 0.14 : 0.22
+      // 탄두 — 꼬리(back)에서 머리(head)까지의 막대. 이게 유일하게 움직인다.
+      // 머리가 무언가에 박혀 멎어도 꼬리는 같은 속도로 계속 들어오므로,
+      // 막대는 그 자리에서 **앞에서부터 잡아먹히며** 짧아지다 사라진다.
+      const lit = L.head - L.back
+      if (lit <= 0) return
+      const bx = L.ox + L.ux * L.back, by = L.oy + L.uy * L.back
+      this.place(this.bolt, bx, by, ang, lit, Math.max(9 * ppw, 12), 7)
+      this.place(this.boltCore, bx, by, ang, lit, Math.max(3 * ppw, 4), 7.2)
     }
   }
 }

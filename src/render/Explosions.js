@@ -33,7 +33,8 @@ export class Explosions {
       else if (e.kind === 'swing') {
         this.parts.shock(e.x, e.y, Math.max(24, (e.r ?? 10) * CFG.SWING_ZONE * 0.5), 0x67e8f9, 0.6)
         this.parts.burst(e.x, e.y, { n: 26, color: 0x67e8f9, speed: 110, size: 8, ttl: 0.7 })
-      } else if (e.kind === 'bump') this.bump(e)
+      } else if (e.kind === 'boost') this.boost(e)
+      else if (e.kind === 'bump') this.bump(e)
       else if (e.kind === 'belt') this.belt(e)
       else if (e.kind === 'sun') {
         this.parts.burst(e.x, e.y, { n: 160, color: 0xffa53b, speed: 260, size: 16, ttl: 1.4 })
@@ -43,6 +44,21 @@ export class Explosions {
       }
     }
     q.length = 0
+  }
+
+  // ─── 요새의 회피 분사 ────────────────────────────────────────
+  // 폭발이 아니다 — **밀어내는 힘**이다. 그래서 터지는 그림을 안 쓰고
+  // 배기 방향(e.a = 밀린 반대쪽)으로만 길게 뿜는다. 그 꼬리가 곧 "저쪽으로
+  // 비켜났다"는 표시라, 어느 쪽으로 궤도가 틀어졌는지가 불꽃만 보고도 읽힌다.
+  boost(e) {
+    const P = this.parts, R = Math.max(30, (e.r ?? 24) * 1.2)
+    P.puff(e.x, e.y, { r0: R * 0.1, r1: R * 0.7, ttl: 0.35, color: 0xff9ad5, alpha: 0.8 })
+    P.burst(e.x, e.y, { n: 130, color: 0xff5c9e, speed: 420, size: 12, ttl: 0.9, spread: 0.55, dir: e.a })
+    P.burst(e.x, e.y, { n: 60, color: 0xffffff, speed: 680, size: 8, ttl: 0.45, spread: 0.32, dir: e.a })
+    P.spikes(e.x, e.y, { n: 10, color: 0xffd7ec, speed: 900, size: 7, ttl: 0.4 })
+    P.shock(e.x, e.y, R, 0xff5c9e, 0.5, { thin: true, from: 0.1, to: 2.2, alpha: 0.75 })
+    this.rig.hit(7)
+    this.flash(0.12, '#ffe0f0')
   }
 
   // ─── 당구 충돌 — 부서지지 않고 튕겼다 ────────────────────────

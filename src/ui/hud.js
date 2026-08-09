@@ -296,6 +296,9 @@ function predLine(game, p) {
       const warn = [
         h.earthInBlast ? '⚠ 폭풍 반경에 지구가 들어간다' : '',
         h.role === 'armor' ? `무겁다 — 임펄스 ${(CFG.ARMOR_DV * 100).toFixed(0)}%만 먹었다` : '',
+        // 저쪽에 아직 카드가 한 장 남았다. 결과를 대신 읽어 주지는 않는다 —
+        // "피할 수 있다"까지만 말하고, 정말 피하는지는 쏴 봐야 안다.
+        h.boost ? '⚠ 추진기 미사용 — 이 요새는 한 번 비켜설 수 있다' : '',
         h.willEject ? `↩ 벨트까지 날아갔다 되돌아온다 (${h.vAfter.toFixed(0)}>${h.vEsc.toFixed(0)})` : '',
       ].filter(Boolean).join(' · ')
       return [h.earthInBlast ? 'warn' : 'hit', tag,
