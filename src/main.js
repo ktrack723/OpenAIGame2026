@@ -4,6 +4,7 @@ import { makeHud, updateHud } from './ui/hud.js'
 import { Inspector } from './ui/Inspector.js'
 import { Intro } from './ui/Intro.js'
 import { Attract } from './ui/Attract.js'
+import { Comms } from './ui/Comms.js'
 import { Victory } from './ui/Victory.js'
 
 // 시드: ?seed= 지정 시 그 값, 아니면 데일리 시드 (고정 dt + 시드 PRNG → 결정론, §4.2)
@@ -25,9 +26,13 @@ const victory = new Victory(game, () => game.nextStage())
 window.__game = game; window.__view = view; window.__victory = victory
 document.querySelector('.boot')?.remove()
 
+// 조르그 교신 — 관측 모드에서 가끔 저쪽 얼굴이 요새 위에 떠서 한 마디 던진다.
+const comms = new Comms(game, view)
+
 // 오프닝 — 두 단계다.
-// ① 예고편(약 8.5초): **실제 게임을 굴려서** 컷 여섯을 보여 준다. 그려 놓은 그림이
-//    아니라 같은 렌더러·같은 HUD·같은 폭발이다. 끝나면 판을 리셋하고 로고를 박는다.
+// ① 예고편: **실제 게임을 굴려서** 한 번의 발사가 끝까지 굴러가는 걸 보여 준다.
+//    그려 놓은 그림이 아니라 같은 렌더러·같은 HUD·같은 폭발이다.
+//    끝나면 판을 리셋하고 로고를 박는다.
 // ② 튜토리얼: 규칙을 한 컷씩, 누르는 사람 속도로.
 // ?nointro=1 로 둘 다 끌 수 있다(반복 플레이·자동 검증용).
 let attract = null
@@ -40,6 +45,7 @@ function loop(now) {
   const dt = Math.min(0.1, (now - last) / 1000); last = now
   attract?.frame(dt)                  // 예고편이 카메라를 잡고 있는 동안만
   game.tick(dt); view.render(); updateHud(hud, game); inspector.update()
+  if (!attract) comms.update(dt)      // 예고편 중에는 교신을 끼워 넣지 않는다
   // 판을 이긴 순간 축하 장면을 연다(한 번만). 닫으면 다음 침공이 온다.
   if (game.won && !game.runOver && !victory.shown && !attract) { victory.shown = true; victory.open() }
   if (!game.won) victory.shown = false

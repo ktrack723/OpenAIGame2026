@@ -67,8 +67,8 @@ function follow(rig, cam, pts, dt) {
   const tx = ca * u.x + cb * n.x, ty = ca * u.y + cb * n.y
   // 하한과 여백을 넉넉히 둔다. 스윙바이 천체(목성)는 표식 링이 판정 원의 두
   // 배라, 너무 당기면 화면이 행성 하나로 꽉 차 정작 휘어 도는 궤적이 안 보인다.
-  const reach = Math.max(470, (a1 - a0) / 2 * 1.28)
-  const radial = Math.max(360, (b1 - b0) / 2 * 1.28)
+  const reach = Math.max(640, (a1 - a0) / 2 * 1.4)
+  const radial = Math.max(490, (b1 - b0) / 2 * 1.4)
   if (cam.x === null) { cam.x = tx; cam.y = ty; cam.reach = reach; cam.radial = radial }
   else {
     const k = 1 - Math.pow(0.02, Math.min(0.12, dt))
@@ -331,7 +331,8 @@ function setUp(g, mode) {
   g.fx.length = 0
   g.mode = mode
   g._predKey = null
-  g.obsSpeed = 3        // 관측 8× — 미사일이 나는 동안엔 게임이 4×로 낮춰 준다
+  g.obsSpeed = 3        // 관측 8× — 처음부터 끝까지. 미사일이 나는 동안엔
+                        // 게임이 스스로 4×로 낮춘다(제대로 보라고).
   g.yieldMt = CFG.YIELD_MAX
 
   const cast = castOf(g)
@@ -472,12 +473,7 @@ export class Attract {
       this.bar(0.2 + 0.5 * Math.min(1, m.age / 20))
     } else if (s.F.alive) {
       // 밀려난 큐볼이 요새로 굴러가는 구간
-      if (this.phase === 'fly') {
-        this.phase = 'run'; this.bar(0.72)
-        // 여기부터가 이 장면의 결말이다. 배속을 2×로 내려 천천히 보여 준다
-        // (관측 배속은 원래 플레이어가 고르는 값이다).
-        g.obsSpeed = 1
-      }
+      if (this.phase === 'fly') { this.phase = 'run'; this.bar(0.72) }
       if (s.C.alive) pts.push({ x: s.C.pos.x, y: s.C.pos.y, r: hitRadiusOf(s.C) * 2.2 })
       pts.push({ x: s.F.pos.x, y: s.F.pos.y, r: hitRadiusOf(s.F) * 3.4 })
       this.runT = (this.runT ?? 0) + dt
