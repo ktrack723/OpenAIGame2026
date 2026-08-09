@@ -34,6 +34,14 @@ export class CameraRig {
     }
   }
 
+  // 위의 역변환 — 월드 좌표 위에 DOM을 얹을 때 쓴다(조르그 교신창).
+  worldToScreen(wx, wy) {
+    return {
+      x: ((wx - this.center.x) / this.halfW + 1) / 2 * innerWidth,
+      y: (1 - (wy - this.center.y) / this.halfH) / 2 * innerHeight,
+    }
+  }
+
   // HUD 패널에 가려지지 않는 실제 가시 영역 (월드 좌표)
   visibleRect() {
     const w = this.worldPerPx

@@ -38,7 +38,11 @@ h1{margin:0;color:var(--cy);letter-spacing:.34em;font-size:15px;font-weight:800;
 #tagNote{font-size:9.5px;font-weight:700;color:var(--dim);letter-spacing:.04em}
 
 /* ── 작전 목표 ── */
-.objname{color:#eaf7ff;font-size:13px;font-weight:700;line-height:1.45;font-family:var(--mono)}
+/* 목표 줄은 목표까지의 거리·방위가 매 프레임 바뀌어 한 줄↔두 줄을 오간다.
+   그 한 줄 때문에 아래의 각도 버튼이 통째로 밀려 "꾹 누르고 있던 버튼이
+   발밑에서 사라지는" 일이 생긴다. 줄 수를 아래위로 못 박아 높이를 고정한다. */
+.objname{color:#eaf7ff;font-size:13px;font-weight:700;line-height:1.45;font-family:var(--mono);
+  min-height:calc(2 * 1.45em);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .objprog{margin:6px 0 4px;height:4px;background:#08131d;border:1px solid var(--line2)}
 .objprog i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--cy),var(--gr));
   box-shadow:0 0 10px #4fd6f7aa;transition:width .3s ease}
@@ -54,7 +58,8 @@ h1{margin:0;color:var(--cy);letter-spacing:.34em;font-size:15px;font-weight:800;
 .clockv{color:var(--cy);font-size:17px;font-weight:800;font-variant-numeric:tabular-nums;font-family:var(--mono)}
 .clockbar{height:5px;background:#08131d;border:1px solid var(--line2)}
 .clockbar i{display:block;height:100%;width:100%;background:linear-gradient(90deg,#1b7f9e,var(--cy));transition:width .2s linear}
-.clocknote{margin-top:5px;color:var(--dim);font-size:10.5px}
+.clocknote{margin-top:5px;color:var(--dim);font-size:10.5px;line-height:1.4;
+  min-height:calc(2 * 1.4em);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .mod.warn{border-color:#7a5310}
 .mod.warn .clockv{color:var(--am)}
 .mod.warn .clockbar i{background:linear-gradient(90deg,#8a5a10,var(--am))}
@@ -75,7 +80,9 @@ h1{margin:0;color:var(--cy);letter-spacing:.34em;font-size:15px;font-weight:800;
 .mod.alarm.ok .modhead,.mod.alarm.ok .clockv{color:var(--cy)}
 .mod.alarm.ok .modhead .tick{background:var(--cy);box-shadow:0 0 10px var(--cy)}
 .mod.alarm.ok .alarmtext{color:#bfe9f8}
-.alarmtext{color:#ffc9cf;font-size:11px;line-height:1.5}
+/* 경보 문구는 안전/위험에 따라 길이가 바뀐다 — 그때마다 아래가 밀리지 않게 못 박는다 */
+.alarmtext{color:#ffc9cf;font-size:11px;line-height:1.5;
+  min-height:calc(6 * 1.5em);display:-webkit-box;-webkit-line-clamp:6;-webkit-box-orient:vertical;overflow:hidden}
 @keyframes alarmpulse{0%,100%{box-shadow:0 0 0 #0000}50%{box-shadow:0 0 22px #ff5c6a55,inset 0 0 22px #ff5c6a22}}
 
 /* ── 스테퍼 — 모바일에서 슬라이더는 정밀 조작이 안 된다 ──
@@ -106,12 +113,20 @@ h1{margin:0;color:var(--cy);letter-spacing:.34em;font-size:15px;font-weight:800;
   font-family:var(--mono)}
 .lcdscan{position:absolute;inset:0;pointer-events:none;opacity:.5;
   background:repeating-linear-gradient(180deg,#0000 0 2px,#00000066 2px 3px)}
-.lcdline{display:flex;align-items:baseline;gap:8px;font-size:12px;line-height:1.35}
+/* ── 예측 창 높이 고정 ──
+   각도를 한 칸 돌릴 때마다 예측 문구가 바뀌는데, 그 길이에 따라 창이
+   늘었다 줄었다 하면서 바로 아래 FIRE·시간 진행 버튼을 밀어냈다.
+   (계측: 각도 90칸을 훑는 동안 LCD 높이 53~85px, 두 버튼이 33px씩 튐.)
+   글자 수가 아니라 **줄 수**를 고정한다 — 위로는 min-height, 아래로는 클램프. */
+.lcdline{display:flex;align-items:baseline;gap:8px;font-size:12px;line-height:1.35;
+  min-height:calc(3 * 1.35em)}
 .lcdline b{flex:0 0 auto;padding:1px 5px;font-size:9.5px;font-weight:800;letter-spacing:.12em;
   background:var(--gr);color:#02150c}
-.lcdline span{color:var(--gr);text-shadow:0 0 8px #5ef2a488;word-break:keep-all}
+.lcdline span{color:var(--gr);text-shadow:0 0 8px #5ef2a488;word-break:keep-all;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .lcdline span:after{content:'_';animation:blink 1.1s steps(1) infinite;margin-left:2px}
-.lcdsub{margin-top:4px;font-size:10px;color:#2f9c6b;text-shadow:0 0 6px #5ef2a444;line-height:1.4}
+.lcdsub{margin-top:4px;font-size:10px;color:#2f9c6b;text-shadow:0 0 6px #5ef2a444;line-height:1.4;
+  min-height:calc(2 * 1.4em);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 @keyframes blink{0%,50%{opacity:1}51%,100%{opacity:0}}
 .lcd.warn{border-color:#5a4410;box-shadow:inset 0 0 22px #6b4a08, inset 0 0 8px #000}
 .lcd.warn .lcdline b{background:var(--am);color:#1a1000}
@@ -280,6 +295,35 @@ pre{white-space:pre-wrap;line-height:1.55;color:#9fd0c4;margin:0;font-size:11px;
 /* ── 관측 모드의 유일한 UI ──
    패널이 통째로 사라진 화면에서 "돌아가는 길"이 하나는 보여야 한다.
    크게, 화면 아래 가운데에, 손가락으로도 눌리게. */
+/* ── 조르그 교신 ──
+   관측 모드에서 가끔 요새 위에 저쪽 얼굴이 떠서 한 마디 던진다.
+   위치는 JS가 매 프레임 transform으로 잡으므로 여기서는 모양만 정한다. */
+.comms{position:fixed;left:0;top:0;z-index:5;pointer-events:none;
+  display:flex;align-items:stretch;gap:0;max-width:min(340px,calc(100vw - 24px));
+  background:linear-gradient(180deg,#2a0a18ee,#160510f2);border:1px solid #ff5c9e66;
+  box-shadow:0 10px 34px #000a, inset 0 0 26px #ff5c9e1f;
+  clip-path:polygon(0 8px,8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%)}
+.comms[hidden]{display:none}
+.commsport{position:relative;flex:0 0 auto;width:64px;padding:6px;overflow:hidden;
+  background:#12040c;border-right:1px solid #ff5c9e44;display:flex;align-items:center}
+.commsport svg{display:block;width:52px;height:52px}
+.commsscan{position:absolute;inset:0;pointer-events:none;opacity:.55;
+  background:repeating-linear-gradient(180deg,#0000 0 2px,#00000088 2px 3px)}
+.commsbody{padding:7px 11px 9px;min-width:0}
+.commswho{display:flex;align-items:baseline;gap:6px;font-family:var(--mono);
+  font-size:8.5px;letter-spacing:.16em;color:#ff9ec4}
+.commswho b{background:#ff5c9e;color:#1a0009;padding:1px 4px;font-weight:800}
+.commsline{margin-top:3px;color:#ffd9e6;font-size:12px;line-height:1.4;word-break:keep-all}
+.comms.in{animation:commsin .26s cubic-bezier(.2,1.3,.4,1) both}
+.comms.out{animation:commsout .3s ease both}
+@keyframes commsin{from{opacity:0;clip-path:polygon(0 8px,8px 0,0 0,0 calc(100% - 8px),0 100%,0 100%)}
+  to{opacity:1}}
+@keyframes commsout{to{opacity:0;filter:brightness(2.2)}}
+@media (max-width:700px){
+  .comms{max-width:calc(100vw - 20px)}
+  .commsline{font-size:11.5px}
+}
+
 .obsbar{position:fixed;left:50%;bottom:max(22px,env(safe-area-inset-bottom));transform:translateX(-50%);
   z-index:4;display:flex;align-items:stretch;gap:8px}
 .obsbar[hidden]{display:none}
