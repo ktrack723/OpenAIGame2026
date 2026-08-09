@@ -45,7 +45,10 @@ export function createSystem(seed) {
 // 그래서 요새는 **반드시 어떤 공의 옆자리**에 워프시킨다. 겹치지도 않고
 // 외따로 떨어지지도 않은 자리 — 그게 "이 요새는 저 공으로 친다"가 성립하는
 // 유일한 배치다. 중립 천체는 이 제약 없이 아무 데나 놓는다.
-function freeOrbit(rng, bodies, aMax, mu, nearBand = 0, band = null) {
+// rNew — 새로 놓을 공의 **실제** 반지름. 질량에서 뽑지 않고 받아 쓴다:
+// 대형 요새는 체력만큼 덩치도 키워 놓았으므로(FORT_HEAVY_R) radiusOf(mu)로
+// 다시 계산하면 실제보다 작은 공으로 자리를 잡아, 이웃 궤도에 너무 붙는다.
+function freeOrbit(rng, bodies, aMax, rNew, nearBand = 0, band = null) {
   const live = bodies.filter(b => b.alive && b.type !== 'debris')
   const radii = live.map(b => Math.hypot(b.pos.x, b.pos.y))
   // 이웃 후보 = **실제로 밀 수 있는 공**. 두 가지를 뺀다:
@@ -56,7 +59,6 @@ function freeOrbit(rng, bodies, aMax, mu, nearBand = 0, band = null) {
   const cueRadii = live
     .filter(b => !b.isEarth && nukeDv(CFG.YIELD_MAX, b.mu) >= CFG.FORT_CUE_MIN_DV)
     .map(b => Math.hypot(b.pos.x, b.pos.y))
-  const rNew = radiusOf(mu)
   // ── 카이퍼 벨트 안쪽으로 못 박는다 ──────────────────────────
   // 벨트는 장식이 아니라 **판의 벽**이다(physics.beltBounce). 그 바깥은 판 밖이고,
   // 거기 워프해 들어온 적은 첫 프레임부터 벽에 튕기며 굴러 들어온다.
@@ -158,22 +160,27 @@ const fortBand = (earth) => {
 function warpBody(rng, bodies, aMax, spec) {
   const type = spec.type ?? pickBiome(rng, 0.5)
   const mu = spec.mu * (TYPE_MU_MUL[type] ?? 1) * CFG.MU_SCALE   // 얼음은 가볍다 + 전역 배율
+  // 덩치는 질량에서 오되, 대형 요새는 거기에 한 겹 더 얹는다(rMul).
+  // **체력이 곧 크기**여야 "저건 두 방짜리"가 한눈에 읽힌다.
+  const radius = radiusOf(mu) * (spec.rMul ?? 1)
   // 요새는 ① 지구 궤도 대역 안에서 ② 밀 수 있는 공 옆자리에 놓는다.
   // 못 찾으면 제약을 하나씩 풀어 재시도 — 요새를 아예 안 보내는 것보다는 낫다.
   const orb = (spec.role === 'battery'
-    ? freeOrbit(rng, bodies, aMax, mu, CFG.FORT_NEAR_BAND, spec.band)
-      ?? freeOrbit(rng, bodies, aMax, mu, 0, spec.band)
+    ? freeOrbit(rng, bodies, aMax, radius, CFG.FORT_NEAR_BAND, spec.band)
+      ?? freeOrbit(rng, bodies, aMax, radius, 0, spec.band)
     : null)
-    ?? freeOrbit(rng, bodies, aMax, mu)
+    ?? freeOrbit(rng, bodies, aMax, radius)
   if (!orb) return null
   const b = makeBody({
     id: nextId(),
     name: spec.name,
-    mu, radius: radiusOf(mu),
+    mu, radius,
     pos: orb.pos, vel: orb.vel,
     type,
     // 조르그가 보낸 것은 체력 1 — 제대로 한 번 처박으면 끝난다
     hp: spec.hp ?? CFG.ZORG_HP,
+    // 회피 분사 — 3스테이지부터 요새에만 하나씩 실린다(일회성)
+    boost: spec.boost ?? 0,
     zorg: true, warp: 1,            // warp: 1 → 0 으로 렌더러가 실시간 감쇠시킨다
   })
   if (spec.role === 'battery') { b.role = 'battery'; b.isTarget = true }
@@ -235,6 +242,9 @@ export function reinforce(rng, bodies, earth, ante, stageIdx) {
       name, type, role: 'battery', band,
       mu: fortMuFor() * (heavy ? CFG.FORT_HEAVY_MU : 1),
       hp: heavy ? CFG.FORT_HEAVY_HP : CFG.ZORG_HP,
+      rMul: heavy ? CFG.FORT_HEAVY_R : 1,
+      // 회피 분사는 3스테이지부터. 한 판에 한 번, 요새마다 하나씩.
+      boost: stageIdx >= CFG.FORT_DODGE_STAGE ? 1 : 0,
     }
     let b = null
     const pool2 = bodies.concat(added)

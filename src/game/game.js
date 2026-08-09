@@ -10,7 +10,7 @@ import { CAUSE_KO, makeGoal } from './objectives.js'
 import { bearing } from '../core/angle.js'
 import { createSystem, pickHomeworld, reinforce } from './system.js'
 import { makeBody } from './body.js'
-import { chargeLeft, impactLeft, makeDoom, makeLaser, stepDoom, stepLaser, LASER_CHARGE, LASER_TRAVEL } from './laser.js'
+import { chargeLeft, impactLeft, makeDoom, makeLaser, stepDoom, stepLaser, stepSpent, LASER_CHARGE, LASER_TRAVEL } from './laser.js'
 import * as Aim from './aim.js'
 
 // 관측 모드 배속 단계 — 화면의 배속 버튼이 이 사이를 돈다
@@ -107,6 +107,7 @@ export class Game {
     this.power = 30; this.yieldMt = CFG.YIELD_DEFAULT
     this.mode = 'aim'; this.advancing = false; this.time = 0; this.paused = false
     this.warpHold = this.warpHold ?? false; this.openT = 0
+    this.dodgeT = 0   // 요새 회피 판정 주기 타이머
     this.obsSpeed = 1   // OBS_SPEEDS 인덱스 — 기본 2×
     this.toast = null; this.toastT = 0
     this.winBanked = false; this.timeWarn = 0
@@ -286,12 +287,16 @@ export class Game {
     // 장면을 오버레이 뒤에서 놓친다.
     if (!this.warpHold && this.openT < this.openHold) this.openT += dtFrame
     this.stepWarpIns(dtFrame)
+    // 이미 박힌 광선의 꼬리는 판이 멈춰 있어도 끝까지 들어간다 — 광선이 지구를
+    // 부순 그 순간에도(그때 판이 서 버린다) 빛은 마저 빨려 들어가야 한다.
+    stepSpent(this.laser, dtFrame)
     let acc = Math.min(0.1, dtFrame) * this.effTimeScale()
     while (acc >= CFG.DT) { this.step(CFG.DT); acc -= CFG.DT }
   }
 
   step(dt) {
     stepBodies(this.bodies, dt)
+    this.stepDodge(dt)
     for (const m of this.missiles) {
       if (!m.alive) continue
       stepMissile(m, this.bodies, dt)
@@ -313,6 +318,56 @@ export class Game {
     this.time += dt
     this.warnTime()
     this.checkEnd()
+  }
+
+  // ─── 요새의 회피 분사 ───────────────────────────────────────
+  // 3스테이지부터 조르그 요새는 추진기를 하나씩 달고 온다. **한 판에 한 번**,
+  // 제 몸에 꽂힐 궤도로 탄이 들어오는 걸 확인한 순간 쓴다.
+  //
+  // 왜 일회성인가 — 매번 피하면 그 요새는 못 맞히는 표적이 되고, 그러면
+  // 조준 자체가 무의미해진다. 한 번뿐이면 판이 이렇게 읽힌다: **첫 발은 추진기를
+  // 빼는 데 쓰고, 두 번째 발로 잡는다.** 탄은 무제한이고 자원은 시간이므로
+  // 값은 시한으로 치른다 — 이 게임이 이미 쓰고 있는 화폐 그대로다.
+  //
+  // 미는 방향은 두 조건이 정한다: 탄의 **진입 방향에 직각**(정면으로 도망가면
+  // 그대로 따라잡힌다 — 옆으로 비켜야 빗나간다)이고, 그 두 직각 중
+  // **태양 반대쪽**. 안쪽으로 피하면 태양 우물로 떨어져 스스로 죽으므로,
+  // 조르그가 고를 수 있는 쪽은 애초에 바깥 하나뿐이다.
+  //
+  // 위협 판정은 탄을 실제로 굴려 본다(Aim.firstImpact). 매 스텝 돌리기엔
+  // 비싸므로 FORT_DODGE_TICK 간격으로만 묻는다 — 앞서 보는 시간이 10초인데
+  // 0.3초 늦게 아는 것은 아무 차이도 만들지 않는다.
+  stepDodge(dt) {
+    this.dodgeT -= dt
+    if (this.dodgeT > 0) return
+    this.dodgeT = CFG.FORT_DODGE_TICK
+    // 아직 안 쓴 추진기가 하나도 없으면 물어볼 것도 없다. 한 번의 판정이
+    // 1.5ms짜리라 이 두 줄이 곧 "2스테이지까지는 공짜"를 만든다.
+    if (!this.bodies.some(b => b.boost && b.alive && b.role === 'battery')) return
+    for (const m of this.missiles) {
+      if (!m.alive) continue
+      const hit = Aim.firstImpact(this, m, CFG.FORT_DODGE_LEAD)
+      const b = hit?.body
+      if (!b || !b.boost || !b.alive || b.role !== 'battery') continue
+      this.dodgeBoost(b, hit.vx, hit.vy)
+    }
+  }
+
+  dodgeBoost(b, vx, vy) {
+    const s = Math.hypot(vx, vy) || 1
+    let nx = -vy / s, ny = vx / s                   // 탄의 진입 방향에 직각 (둘 중 하나)
+    // 태양에서 멀어지는 쪽을 고른다 — 안쪽 직각이면 뒤집는다
+    if (nx * b.pos.x + ny * b.pos.y < 0) { nx = -nx; ny = -ny }
+    // 세기는 제 질량에 비례한 추력이다. 질량으로 나누면 결국 Δv는 지금 속도의
+    // 일정 비율이 되고, 그래서 무거운 요새도 가벼운 요새와 같은 만큼 궤도가
+    // 틀어진다 — 덩치가 곧 무적이 되지 않는다.
+    const dv = Math.hypot(b.vel.x, b.vel.y) * CFG.FORT_DODGE_DV
+    b.vel.x += nx * dv; b.vel.y += ny * dv
+    b.boost = 0
+    b.trailFlash = 2.0
+    this.addFx({ kind: 'boost', x: b.pos.x, y: b.pos.y, r: hitRadiusOf(b), a: Math.atan2(-ny, -nx) })
+    this.message = `${b.name}이(가) 추진기를 태웠다 — 태양 반대쪽으로 궤도를 틀었다. 이 요새는 이제 못 피한다`
+    this.setToast(`${b.name} 회피 기동 (일회성 — 다 썼다)`)
   }
 
   // ─── 조르그 레이저 ─────────────────────────────────────────

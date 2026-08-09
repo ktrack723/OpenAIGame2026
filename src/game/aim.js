@@ -78,6 +78,51 @@ export function predictPath(game) {
   return game._pred
 }
 
+// ─── 이 탄은 앞으로 무엇에 꽂히는가 ─────────────────────────────
+// 요새의 회피 판정이 쓰는 질의다. **날고 있는** 탄 하나를 앞으로 굴려 보고
+// 처음 닿는 천체와 그때까지 걸리는 시간을 돌려준다(안 닿으면 null).
+//
+// 왜 직선 예측이 아닌가 — 처음엔 상대 좌표계의 최근접점만 풀었다(공짜다).
+// 그런데 이 게임에서 탄은 직선으로 안 온다: 중력에 휘고 스윙바이로 꺾인다.
+// 계측에서 요새 판정 원 47 GU 안쪽 48 GU까지 스쳐 간 탄을 **끝까지 위협으로
+// 못 봤다** — 매 순간의 속도로 그은 직선은 내내 엉뚱한 데를 가리켰기 때문이다.
+// 그래서 예측선과 같은 적분기를 쓴다. 대신 해상도를 크게 낮췄다: 답이
+// "닿는가/언제"뿐이고 탄은 한 번에 한 발뿐이라(inFlight) 초당 몇 번이면 된다.
+// 해상도는 "10초 뒤에 판정 원 30 GU 안으로 들어오는가"를 틀리지 않을 만큼만.
+// 처음엔 1/12초로 잡았다가 계측에서 위협을 **5~7초 전에야** 알아봤다 —
+// 적분 오차가 10초 동안 쌓여 판정 원을 비껴갔고, 그만큼 회피할 시간이 없었다.
+// 1/30초로 조이니 예정대로 10초 전에 잡는다. 탄은 한 번에 한 발뿐이고
+// (inFlight) 이 질의는 초당 세 번이라 이 해상도가 프레임을 먹지 않는다.
+const THREAT_DT = 1 / 30, THREAT_BODY_EVERY = 5
+export function firstImpact(game, m, horizon) {
+  const sim = cloneBodies(game.bodies)
+  const probe = {
+    pos: { ...m.pos }, vel: { ...m.vel }, age: 0, pathN: 0, path: [],
+    minSunDist: Infinity, prev: { ...m.pos },
+  }
+  const steps = Math.round(horizon / THREAT_DT)
+  for (let i = 0; i < steps; i++) {
+    if (bodyTurn(i, THREAT_BODY_EVERY)) stepBodies(sim, THREAT_DT * THREAT_BODY_EVERY)
+    stepMissile(probe, sim, THREAT_DT)
+    for (const o of sim) {
+      if (!o.alive) continue
+      if (!segHitsCircle(probe.prev.x, probe.prev.y, probe.pos.x, probe.pos.y, o.pos.x, o.pos.y, hitRadiusOf(o))) continue
+      // 복제본이 아니라 **판 위의 그 공**을 돌려준다 — 부르는 쪽이 밀어야 한다.
+      // vx/vy는 **닿는 그 순간의** 상대 진입 속도다. 지금 이 순간의 속도가 아니라
+      // 이걸 써야 "타격 지점에 직각"이 참이 된다 — 탄은 오는 동안 휘기 때문에
+      // 둘이 크게 다르고, 지금 속도로 직각을 잡으면 엉뚱한 쪽으로 비켜선다.
+      return {
+        body: game.bodies.find(b => b.id === o.id) ?? null, t: (i + 1) * THREAT_DT,
+        vx: probe.vel.x - o.vel.x, vy: probe.vel.y - o.vel.y,
+      }
+    }
+    const r = Math.hypot(probe.pos.x, probe.pos.y)
+    if (r < CFG.R_STAR + 8) return null            // 태양에 삼켜진다
+    if (r >= beltRadius(game.aMax)) beltBounce(probe, beltRadius(game.aMax))
+  }
+  return null
+}
+
 // ─── 접촉각 탐색 (§14.3) ────────────────────────────────────
 // 계측 결과 360° 중 뭔가에 닿는 각도가 99칸뿐이고, 그중 67칸이 지구였다.
 // 즉 각도를 한 칸씩 돌리는 시간의 대부분이 "여긴 아님"을 확인하는 데 쓰인다.
@@ -178,5 +223,10 @@ export function impactInfo(game, o, point, simEarth) {
     volatileR: o.role === 'volatile' ? volatileRadius(o) : 0,
     // 체력 — 이 한 방으로는 안 부서진다. 몇 번 더 처박아야 하는지가 정보다.
     hp: o.hp ?? CFG.PLANET_HP, hpMax: o.hpMax ?? CFG.PLANET_HP,
+    // 아직 안 쓴 회피 분사가 남아 있는가. 예측은 "이 탄이 어디에 닿는가"까지만
+    // 말하는데, 요새는 그 계산을 보고 **비켜설 수 있다** — 그러면 예측이 거짓말이
+    // 된다. 결과를 대신 예측해 주지는 않되(그건 규칙 위반이다), 저쪽에 아직
+    // 카드가 한 장 남아 있다는 사실만은 쏘기 전에 알려 준다.
+    boost: o.boost ?? 0,
   }
 }

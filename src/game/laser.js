@@ -29,6 +29,12 @@ import { cloneBodies, segCircleEntry, segHitsCircle, stepBodies } from './physic
 export const LASER_IDLE = 'idle'
 export const LASER_CHARGE = 'charge'
 export const LASER_TRAVEL = 'travel'
+// ④ 소진 — 머리가 멎은 뒤 **꼬리가 그 자리까지 들어오는** 동안.
+//    광선은 길이 LASER_BOLT짜리 덩어리다. 머리가 행성에 박혔다고 그 뒤에
+//    이미 나와 있던 빛까지 같이 사라질 이유는 없다 — 앞에서부터 빨려 들어가며
+//    짧아지다가 없어진다. 판정은 이미 끝났고(hit 이벤트는 벌써 나갔다)
+//    여기서 도는 것은 꼬리 하나뿐이다.
+export const LASER_SPENT = 'spent'
 
 // 조준점을 다시 푸는 간격(인게임 초). 매 스텝 풀면 95초짜리 예측을 초당 120번
 // 도는 셈이라 낭비다 — 지구를 민 결과는 0.5초 안에 화면에 뜨면 충분하다.
@@ -45,6 +51,7 @@ export function makeLaser(rng) {
     ux: 0, uy: 0,      // 발사 방향 (발사 순간 고정)
     aimDist: 0,        // 총구 → 조준점 거리
     head: 0,           // 비행 중 광선 머리가 나아간 거리
+    back: 0,           // 꼬리가 나아간 거리 — 머리가 멎어도 이건 계속 간다
     range: 0,
     ghost: null,       // 지구의 **원래 궤도** — 조준점은 이걸 굴려서 잡는다
     miss: 0,           // 광선 중심선에서 지구까지의 예상 수직거리
@@ -130,7 +137,7 @@ export function stepLaser(L, game, dt) {
     if (!src || !src.alive) { L.nextAt = L.t + 20; return null }   // 본성이 없으면 조용하다
     L.state = LASER_CHARGE; L.t = 0
     L.from = src; L.ox = src.pos.x; L.oy = src.pos.y
-    L.head = 0; L.refresh = 0
+    L.head = 0; L.back = 0; L.refresh = 0
     L.range = game.aMax * CFG.LASER_RANGE_MUL
     // 지구의 **원래 궤도** 사본. 이제부터 진짜 지구가 이것과 벌어지는 만큼
     // 조르그의 조준이 틀어진다.
@@ -151,37 +158,61 @@ export function stepLaser(L, game, dt) {
     solveAim(L, game)
     const d = L.aimDist || 1
     L.ux = (L.ax - L.ox) / d; L.uy = (L.ay - L.oy) / d
-    L.state = LASER_TRAVEL; L.t = 0; L.head = 0
+    L.state = LASER_TRAVEL; L.t = 0; L.head = 0; L.back = 0
     return { kind: 'fire', src: L.from }
   }
 
   if (L.state === LASER_TRAVEL) {
     const h0 = L.head
     L.head = Math.min(L.range, h0 + CFG.LASER_SPEED * dt)
+    // 꼬리는 머리보다 LASER_BOLT만큼 뒤에서 따라온다. 총구를 막 떠난 동안은
+    // 0에 붙어 있어서(음수가 안 된다) 막대가 총구에서 자라 나오는 것으로 보인다.
+    L.back = Math.max(0, L.head - CFG.LASER_BOLT)
     const x0 = L.ox + L.ux * h0, y0 = L.oy + L.uy * h0
     const x1 = L.ox + L.ux * L.head, y1 = L.oy + L.uy * L.head
     // ── 요격 — 천체 판정보다 먼저다. 탄두가 앞을 막고 있으면 거기서 끝난다 ──
     for (const m of game.missiles) {
       if (!m.alive) continue
       if (!segHitsCircle(x0, y0, x1, y1, m.pos.x, m.pos.y, CFG.LASER_INTERCEPT_R)) continue
-      L.state = LASER_IDLE; L.t = 0; L.nextAt = nextPeriod(L)
-      L.head = Math.hypot(m.pos.x - L.ox, m.pos.y - L.oy)
+      spend(L, Math.hypot(m.pos.x - L.ox, m.pos.y - L.oy))
       return { kind: 'intercept', missile: m, x: m.pos.x, y: m.pos.y }
     }
     // 총구가 된 본성은 첫 구간에서만 제외한다(제 몸에서 나가는 중이다)
     const hit = sweep(game, x0, y0, x1, y1, h0 < hitRadiusOf(L.from) * 2 ? L.from : null)
     if (hit) {
-      L.state = LASER_IDLE; L.t = 0; L.nextAt = nextPeriod(L)
-      L.head = Math.hypot(hit.x - L.ox, hit.y - L.oy)
+      spend(L, Math.hypot(hit.x - L.ox, hit.y - L.oy))
       return { kind: 'hit', body: hit.body, x: hit.x, y: hit.y }
     }
     if (L.head >= L.range) {
-      L.state = LASER_IDLE; L.t = 0; L.nextAt = nextPeriod(L)
+      spend(L, L.range)
       return { kind: 'expire', x: x1, y: y1 }
     }
     return null
   }
+
   return null
+}
+
+// ── 소진 — 판정은 끝났고 꼬리만 남았다 ──────────────────────────
+// 머리는 박힌 자리에 못 박혀 있고 꼬리만 같은 속도로 다가온다. 둘이 만나면
+// 광선이 다 들어간 것이고, 그때 비로소 다음 조준까지의 시계가 돈다.
+//
+// **실시간으로 돈다**(stepWarpIns와 같은 이유다). 인게임 시계로 돌리면 광선이
+// 지구를 부순 바로 그 순간 판이 멈추므로(won/lost → effTimeScale 0) 꼬리가
+// 화면에 반쯤 걸린 채로 영영 굳는다 — 마지막 한 발일수록 끝까지 들어가야 한다.
+export function stepSpent(L, dtReal) {
+  if (!L || L.state !== LASER_SPENT) return
+  L.back = Math.min(L.head, L.back + CFG.LASER_SPEED * dtReal)
+  if (L.back >= L.head) { L.state = LASER_IDLE; L.t = 0; L.nextAt = nextPeriod(L) }
+}
+
+// 머리를 그 자리에 못 박고 소진 상태로 넘긴다. 다음 조준까지의 시계(nextAt)는
+// 꼬리가 다 들어온 뒤에 돌기 시작한다 — 광선이 아직 화면에 있는 동안 다음
+// 충전이 시작되면 같은 본성에서 두 줄기가 겹친다.
+function spend(L, head) {
+  L.head = head
+  L.back = Math.min(L.back, head)
+  L.state = LASER_SPENT
 }
 
 function nextPeriod(L) {
@@ -233,26 +264,35 @@ export function stepDoom(D, game, dt) {
   while (D.spawned < CFG.DOOM_BEAMS && D.t >= D.spawned * CFG.DOOM_GAP) {
     const last = D.spawned === CFG.DOOM_BEAMS - 1
     const a = last ? doomAimEarth(D, game.earth) : D.spawned * 2.399963 + D.volley * 0.37
-    D.beams.push({ ux: Math.cos(a), uy: Math.sin(a), head: 0, dead: false })
+    // dead = 머리가 멎었다 / gone = 꼬리까지 다 들어왔다. 본성의 광선과 같은 규칙이다.
+    D.beams.push({ ux: Math.cos(a), uy: Math.sin(a), head: 0, back: 0, dead: false, gone: false })
     ev.push({ kind: 'beam', a })
     D.spawned++
   }
   for (const b of D.beams) {
-    if (b.dead) continue
+    if (b.gone) continue
+    // 머리가 이미 멎었으면 꼬리만 그 자리까지 밀려 들어온다(본성 광선과 같다)
+    if (b.dead) {
+      b.back = Math.min(b.head, b.back + CFG.LASER_SPEED * dt)
+      if (b.back >= b.head) b.gone = true
+      continue
+    }
     const h0 = b.head
     b.head = Math.min(D.range, h0 + CFG.LASER_SPEED * dt)
+    b.back = Math.max(0, b.head - CFG.LASER_BOLT)
     const hit = sweep(game, D.x + b.ux * h0, D.y + b.uy * h0,
       D.x + b.ux * b.head, D.y + b.uy * b.head, D.ship)
     if (hit) {
       b.dead = true
       b.head = Math.hypot(hit.x - D.x, hit.y - D.y)
+      b.back = Math.min(b.back, b.head)
       ev.push({ kind: 'hit', body: hit.body, x: hit.x, y: hit.y })
     } else if (b.head >= D.range) b.dead = true
   }
   // ── 한 차례가 끝났다 ──
   // 지구가 아직 살아 있으면 **또 쏜다.** 끝은 시간이 아니라 지구가 정한다.
   // (행성이 대신 막아 준 만큼 더 사는 것 — 다만 결말은 정해져 있다.)
-  if (D.spawned >= CFG.DOOM_BEAMS && D.beams.every(b => b.dead)) {
+  if (D.spawned >= CFG.DOOM_BEAMS && D.beams.every(b => b.gone)) {
     if (!game.earth.alive || D.volley + 1 >= CFG.DOOM_MAX_VOLLEY) { D.done = true; return ev }
     if (D.t >= CFG.DOOM_BEAMS * CFG.DOOM_GAP + CFG.DOOM_VOLLEY) {
       D.volley++
