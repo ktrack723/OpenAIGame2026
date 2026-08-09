@@ -35,9 +35,17 @@ const comms = new Comms(game, view)
 //    끝나면 판을 리셋하고 로고를 박는다.
 // ② 튜토리얼: 규칙을 한 컷씩, 누르는 사람 속도로.
 // ?nointro=1 로 둘 다 끌 수 있다(반복 플레이·자동 검증용).
+// 조르그의 첫 워프인은 **튜토리얼을 닫은 뒤에** 시작된다(warpHold). 규칙을
+// 읽는 동안 뒤에서 도착이 끝나 버리면, 첫 판에서 제일 먼저 봐야 할 장면을
+// 오버레이가 통째로 가린다. 닫고 나서 워프가 끝나면 그때 조준 UI가 떠오른다.
 let attract = null
 if (!params.get('nointro')) {
-  attract = new Attract(game, view, () => { attract = null; hud._sync(); new Intro().start() }, comms).start()
+  attract = new Attract(game, view, () => {
+    // 예고편이 판을 되돌린 직후다(resetRun). 여기서 잡아 두면 워프인이
+    // 한 프레임도 흐르지 않은 채 튜토리얼이 열린다.
+    attract = null; game.warpHold = true; hud._sync()
+    new Intro(() => { game.warpHold = false }).start()
+  }, comms).start()
 }
 
 let last = performance.now()

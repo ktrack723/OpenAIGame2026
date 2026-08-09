@@ -19,12 +19,15 @@ import { effDv } from '../game/roles.js'
 //      **레이저를 충전 중이던** 조르그 본성을 그대로 들이받는다.
 //   → 요새 격파 · 레이저 침묵 → 로고.
 //
-// **끊는 데가 없다.** 무대는 시작하기 전에 한 번 풀어 두고, ①~③ 동안에는
-// 판을 아예 세워 둔다(game.paused). 그래서 ④에서 판을 다시 세울 일이 없고,
-// 카메라도 튀지 않는다 — 처음부터 끝까지 한 화면이다.
-// 세워 두면 행성이 안 도는데, 이 화각에서 행성은 초당 화면의 1.5%쯤 움직이므로
-// 6초를 세워도 눈에 띄지 않는다. 대신 궤적 풀이가 6초 뒤에도 그대로 맞는다.
-// 광선만 예외로 tickLaser를 직접 굴려 준다 — 판은 멈춰 있고 광선만 난다.
+// **끊는 데가 없다.** ①부터 ⑥까지 판을 다시 세우는 일이 없고, 카메라도 튀지
+// 않는다 — 처음부터 끝까지 한 화면이다. 그러면서 행성은 내내 공전한다.
+//
+// 이 둘을 같이 하려면 순서를 뒤집어야 한다. 궤적 풀이(solveShot)는 **지금 이
+// 순간의 좌표**를 놓고 푼 답이라, 몇십 초를 흘려보낸 뒤에 쏘면 더는 맞지 않는다
+// (계측: 24초 흘리면 12시드 중 7건, 63초면 1건만 성공). 그래서 무대는 **발사
+// 시점**에 맞춰 풀어 두고, 판을 그만큼 **거꾸로 감아** 거기서 ①을 시작한다.
+// ①~③ 동안 되감은 만큼을 정확히 되밟으면 ④에 도착했을 때 판은 풀이 그대로다.
+// 도약 적분은 시간대칭이라 이 왕복이 정확하다(계측: 복귀오차 8e-13 GU).
 //
 // 그려 놓은 그림이 아니다. 실제 게임을 굴린다 — 같은 렌더러, 같은 HUD, 같은
 // 폭발, 같은 물리. 이 파일이 하는 일은 **판을 세우는 것 하나**다. 세팅이 끝나면
@@ -37,8 +40,20 @@ import { effDv } from '../game/roles.js'
 const PEACE_MS = 1500    // ① 평화
 const WARP_MS = 2100     // ② 워프 + 대사
 const WARP_LINE_MS = 650 // 워프 뒤 대사가 뜨기까지 (카메라가 옮겨 갈 시간)
-const BEAM_MS = 2900     // ③ 광선 몇 발
-const BEAM_GAP = 1350    // 그중 두 번째 발사
+const BEAM_MS = 4000     // ③ 광선 몇 발
+const BEAM_GAP = 2000    // 그중 두 번째 발사
+
+// ①~③이 흘려보낼 **판 시간**(인게임 초). 이만큼 되감아 두고 그만큼 되밟는다.
+// 평화·워프는 빨리 감는다 — 안쪽 행성이 눈에 띄게 돌아 줘야 "살아 있는 성계"로
+// 읽힌다(가장 안쪽 궤도가 한 바퀴 60초쯤이니 21초면 3분의 1 바퀴다).
+// 광선 구간만 실시간이다. 여기서 빨리 감으면 광선이 순간이동해 버린다.
+const ACT_SEC = { peace: 9, warp: 12, beam: 4 }
+
+// 광선의 제물이 무대(지구·스윙바이 천체·큐볼·본성)에서 떨어져 있어야 하는 거리.
+// 크게 잡을 이유가 없다 — 제물이 사라지는 건 무대를 풀 때 이미 계산에 들어가
+// 있으므로(setUp의 2차 풀이), 여기서는 폭발이 무대를 덮지만 않으면 된다.
+const BEAM_SAFE = 220
+const BEAM_FAR = 1700    // 제물까지의 상한 — 한 발이 이 막 안에 닿아야 한다
 const AIM_MS = 1400      // ④ 예측 컷 — 패널 없이 예측선만 보여 주는 시간
 const TAIL_MS = 900      // 요새가 부서진 뒤 여운
 // 안전장치 — 장면이 어그러졌을 때만 걸린다. 정상 진행은 요새가 부서지는
@@ -363,10 +378,38 @@ function setUp(g, mode) {
   const u = longAxis(), n = perp(u)
   const actors = [cast.swing, cast.cue, cast.fort, cast.earth]
   for (const P of stageSpots(g, actors).slice(0, 5)) {
-    const shot = solveShot(g, u, n, P, cast)
-    if (shot) { g.aim = shot.aim; g.power = shot.v0; return shot }
+    let shot = solveShot(g, u, n, P, cast)
+    if (!shot) continue
+    // ③에서 광선이 태울 행성을 먼저 고르고, **없는 셈 치고** 무대를 다시 푼다.
+    // 사라진 행성은 중력도 같이 사라지는데 미사일에는 그게 κ=120배로 실리므로
+    // (§4.3), 있다고 치고 푼 궤적은 ⑤에서 어긋난다 — 계측: 40시드 중 2건이
+    // 큐볼을 요새 옆으로 흘려보냈다. 고른 제물은 shot에 실어 ③이 **그것만**
+    // 쏘게 한다. 다른 걸 태우면 같은 어긋남이 그대로 돌아온다.
+    const doomed = victimsFor(g, cast, shot.F)
+    if (doomed.length) {
+      for (const b of doomed) b.alive = false
+      const again = solveShot(g, u, n, P, cast)
+      for (const b of doomed) b.alive = true
+      if (!again) continue
+      shot = again
+    }
+    shot.doomed = doomed
+    g.aim = shot.aim; g.power = shot.v0
+    return shot
   }
   return null
+}
+
+// ③의 두 발이 태울 행성. 총구는 조르그 본성이다.
+function victimsFor(g, cast, fort) {
+  const keep = [g.earth, fort, cast.swing, cast.cue]
+  const out = []
+  for (let i = 0; i < 2; i++) {
+    const b = pickVictim(g, keep, fort.pos.x, fort.pos.y, out)
+    if (!b) break
+    out.push(b)
+  }
+  return out
 }
 
 // 조르그가 처음 들어와서 하는 말. 이 한 줄이 판의 전제다 —
@@ -378,8 +421,62 @@ const WARP_LINE = '네놈만 없으면 태양계는 우리 것이다.'
 // 하는 물건인지"를 못 보여 준다 — 그래서 쏘고, **곁을 돌던 다른 행성**에
 // 맞힌다. 빗나가기만 하면 아무 일도 안 일어나 밋밋하고, 행성 하나가 통째로
 // 소멸하면 "닿는 건 체력과 무관하게 없어진다"가 한 방에 읽힌다.
-// 진로를 정한 뒤로는 전부 게임이 굴린다.
-function fireBeamPast(g) {
+// 손대면 안 되는 것이 지구만은 아니다. **무대에 세운 배우들**(스윙바이 천체·
+// 큐볼)도 여기서 죽으면 ⑤⑥이 통째로 사라진다. 그런데 이 셋은 하필 총구 곁에
+// 모여 있다 — 표적을 가까이 당길수록 광선이 이들을 스칠 확률이 커진다
+// (계측: 안 막았더니 12시드 중 8건이 스윙바이 천체나 큐볼을 먼저 태웠다).
+// 그래서 진로가 이들을 비껴가는지까지 보고 고른다.
+
+// 표적을 **광선이 닿을 때 있을 자리**로 겨눈다. 판이 흐르고 있으므로 지금
+// 자리를 그대로 쏘면 작은 행성은 판정 반경(수십 GU)만큼 비껴간다.
+function leadUnit(b, ox, oy) {
+  let t = Math.hypot(b.pos.x - ox, b.pos.y - oy) / CFG.LASER_SPEED
+  let px = 0, py = 0
+  for (let k = 0; k < 3; k++) {
+    px = b.pos.x + b.vel.x * t - ox; py = b.pos.y + b.vel.y * t - oy
+    t = Math.hypot(px, py) / CFG.LASER_SPEED
+  }
+  const d = Math.hypot(px, py) || 1
+  return { ux: px / d, uy: py / d, d }
+}
+
+// (ox, oy)에서 쏴서 태울 행성 하나. 판을 전혀 건드리지 않는다 — 무대를 풀기
+// **전에** "누가 없어질지"를 알아야 하기 때문이다.
+// 너무 가까우면 광선이 날아가는 게 안 보이고, 너무 멀면 **날아가는 도중에 이
+// 막이 끝난다** — 예전엔 1200 GU 언저리를 골랐는데 그게 인게임 1.4초라 두 발째가
+// 닿기 전에 ④로 넘어가 버렸다. 그래서 700 GU 언저리로 당긴다(0.8초). 상한
+// 1700 GU는 한 발에 주어진 시간(막 4초를 두 발이 나눠 쓴다)이 정하는 값이다.
+// 여유를 넉넉히 잡는다. 이 계산은 **발사 시점의 판**을 놓고 하는데 실제 발사는
+// 그보다 4초 앞(③)에서 일어나므로, 그 사이 움직인 만큼 진로가 틀어져 있다.
+// 특히 안쪽 궤도의 작은 행성(수성)은 태양 원반을 스치는 각으로 바뀌기 쉬웠다 —
+// 그러면 광선이 태양에 삼켜지고 제물은 살아남는다(계측: 40시드 중 2건).
+function pickVictim(g, keep, ox, oy, taken = []) {
+  const clear = (ux, uy, d) => keep.every(k => {
+    if (!k || !k.alive) return true
+    const px = k.pos.x - ox, py = k.pos.y - oy
+    const along = px * ux + py * uy
+    if (along <= 0 || along > d) return true      // 뒤에 있거나 표적보다 멀다
+    return Math.abs(ux * py - uy * px) > hitRadiusOf(k) * 2.4
+  })
+  const cands = []
+  for (const b of g.bodies) {
+    if (!b.alive || b.type === 'debris' || b.role === 'void') continue
+    if (keep.includes(b) || taken.includes(b)) continue
+    // 무대에서 떨어진 것만 태운다. 사라진 행성은 중력도 같이 사라진다.
+    if (keep.some(k => k.alive && Math.hypot(b.pos.x - k.pos.x, b.pos.y - k.pos.y) < BEAM_SAFE)) continue
+    if (Math.hypot(b.pos.x - ox, b.pos.y - oy) < 300) continue
+    const { ux, uy, d } = leadUnit(b, ox, oy)
+    if (d > BEAM_FAR || !clear(ux, uy, d)) continue
+    // 태양 원반을 지나면 거기서 끊긴다 — 그 앞의 행성은 못 맞힌다
+    const t = -ox * ux - oy * uy
+    if (t > 0 && t < d && Math.hypot(-ox - ux * t, -oy - uy * t) < CFG.R_STAR * 2.5) continue
+    cands.push({ b, d })
+  }
+  cands.sort((p, q) => Math.abs(p.d - 700) - Math.abs(q.d - 700))
+  return cands[0]?.b ?? null
+}
+
+function fireBeamPast(g, keep, want) {
   const L = g.laser
   L.state = LASER_IDLE; L.t = 0; L.nextAt = 0
   g.step(CFG.DT)                                  // → charge (조준점 계산)
@@ -389,51 +486,43 @@ function fireBeamPast(g) {
   if (L.state !== LASER_TRAVEL) return false
   g.toast = null; g.toastT = 0
 
-  const e = g.earth
-  // 지구가 그 진로 위에 있는가 — 있으면 안 된다.
-  const clearsEarth = (ux, uy) => {
-    const px = e.pos.x - L.ox, py = e.pos.y - L.oy
-    const along = px * ux + py * uy
-    if (along <= 0) return true                   // 뒤에 있다
-    return Math.abs(ux * py - uy * px) > hitRadiusOf(e) * 1.6
-  }
-
-  // 곁을 돌던 행성 중 하나를 고른다. 너무 가까우면 광선이 날아가는 게 안 보이고,
-  // 너무 멀면 화면 밖에서 터진다. 태양에 가로막히는 것도 뺀다.
-  const cands = []
-  for (const b of g.bodies) {
-    if (!b.alive || b === e || b === L.from || b.type === 'debris' || b.role === 'void') continue
-    const dx = b.pos.x - L.ox, dy = b.pos.y - L.oy
-    const d = Math.hypot(dx, dy)
-    if (d < 420 || d > 2400) continue
-    const ux = dx / d, uy = dy / d
-    if (!clearsEarth(ux, uy)) continue
-    // 태양 원반을 지나면 거기서 끊긴다 — 그 앞의 행성은 못 맞힌다
-    const t = -L.ox * ux - L.oy * uy
-    if (t > 0 && t < d && Math.hypot(-L.ox - ux * t, -L.oy - uy * t) < CFG.R_STAR) continue
-    cands.push({ b, d, ux, uy })
-  }
-  if (cands.length) {
-    // 가운데쯤 되는 거리를 고른다 — 날아가는 게 보이면서 화면 안에 든다
-    cands.sort((p, q) => Math.abs(p.d - 1200) - Math.abs(q.d - 1200))
-    const pick = cands[0]
-    L.ux = pick.ux; L.uy = pick.uy
-    return true
-  }
-
-  // 마땅한 표적이 없으면 최소한 지구만은 비껴 가게 튼다
-  const px = e.pos.x - L.ox, py = e.pos.y - L.oy
-  const along = px * L.ux + py * L.uy
-  const miss = Math.abs(L.ux * py - L.uy * px)
-  const need = hitRadiusOf(e) * 2.4
-  if (along > 1 && miss < need) {
-    const side = (L.ux * py - L.uy * px) >= 0 ? -1 : 1
-    const rot = side * Math.asin(Math.min(0.6, (need - miss) / along))
-    const c = Math.cos(rot), sn = Math.sin(rot)
-    const ux = L.ux * c - L.uy * sn, uy = L.ux * sn + L.uy * c
+  // 무대를 풀 때 "없는 셈 친" 바로 그 행성을 쏜다. **정해진 제물이 없으면
+  // 아무것도 안 태운다** — 즉석에서 고르면 그게 곧 풀이에 없던 소멸이다.
+  const b = want?.alive ? want : null
+  if (b) {
+    const { ux, uy } = leadUnit(b, L.ox, L.oy)
     L.ux = ux; L.uy = uy
+    return b
   }
+
+  // 마땅한 표적이 없으면 아무것도 못 맞히는 쪽으로 튼다. 한 바퀴를 훑어
+  // 지켜야 할 것들에서 가장 멀리 떨어지는 각을 고른다 — 빈 하늘에 대고 쏘는
+  // 셈이지만, 무대를 태우는 것보다는 낫다.
+  let best = null, bestClear = -Infinity
+  for (let i = 0; i < 72; i++) {
+    const a = i * Math.PI / 36
+    const ux = Math.cos(a), uy = Math.sin(a)
+    let worst = Infinity
+    for (const k of keep) {
+      if (!k || !k.alive) continue
+      const px = k.pos.x - L.ox, py = k.pos.y - L.oy
+      const along = px * ux + py * uy
+      if (along <= 0) continue
+      worst = Math.min(worst, Math.abs(ux * py - uy * px) - hitRadiusOf(k))
+    }
+    if (worst > bestClear) { bestClear = worst; best = { ux, uy } }
+  }
+  if (best) { L.ux = best.ux; L.uy = best.uy }
   return true
+}
+
+// 판을 거꾸로 감는다. 도약 적분(velocity-Verlet)은 시간대칭이라, 같은 dt로
+// 되감았다가 같은 횟수만큼 다시 굴리면 원래 자리로 정확히 돌아온다.
+// 그래서 "발사 시점에 맞춰 푼 무대"를 그대로 두고 그 앞의 몇십 초를 만들어
+// 낼 수 있다 — ①~③ 동안 행성이 진짜로 공전하는 건 이 되감기 덕이다.
+const stepsOf = (sec) => Math.round(sec / CFG.DT)
+function rewind(g, steps) {
+  for (let i = 0; i < steps; i++) stepBodies(g.bodies, -CFG.DT)
 }
 
 // 조르그 본성을 **발사 직전**으로 만든다. 충전 표식과 ZORG BEAM 패널이 뜨고,
@@ -495,19 +584,50 @@ export class Attract {
 
   after(ms, fn) { this.timers.push(setTimeout(fn, ms)) }
 
+  // 한 막을 연다 — 이름, 벽시계 길이, 그동안 흘려보낼 판 시간.
+  act(name, ms) {
+    this.phase = name
+    this.actLeft = Math.round((ACT_SEC[name] ?? 0) / CFG.DT)
+    this.actEnd = performance.now() + ms
+  }
+
+  // 판을 n스텝 굴린다. 예고편이 직접 굴리는 이유는 **몇 스텝을 밟았는지 세야**
+  // 하기 때문이다 — 되감은 만큼을 정확히 되밟아야 ④에서 무대가 풀이 그대로 선다.
+  stepBoard(n) {
+    const g = this.game
+    for (let i = 0; i < n; i++) {
+      // 요새가 부서지면 win()이 걸려 판이 얼어붙는다. 이 판은 finish()에서
+      // 버려지므로 매 스텝 지운다(frame()이 하는 것과 같은 이유).
+      g.won = false; g.lost = false; g.runOver = false; g.failReason = null
+      g.step(CFG.DT)
+    }
+    this.actLeft -= n
+  }
+
+  // 막이 끝날 때 남은 스텝을 털어 무대를 딱 맞춘다. 정상 진행이면 한두 스텝이다.
+  burn() { if (this.actLeft > 0) this.stepBoard(this.actLeft) }
+
   // ── ① 평화 ──
-  // 시작하기 전에 무대를 통째로 풀어 둔다. 그러고 판을 세워(paused) 놓으므로
-  // ④까지 아무것도 다시 세울 필요가 없다 — 씬이 하나로 이어진다.
+  // 무대는 **발사 시점**에 맞춰 풀어 두고, 판을 ①~③이 쓸 만큼 되감아 거기서
+  // 시작한다. 그래서 ④까지 아무것도 다시 세울 필요가 없다 — 씬이 하나로 이어지고,
+  // 그러면서 행성은 내내 공전한다.
   start() {
     const g = this.game
     g.cinematic = true
     this.shot = setUp(g, 'observe')
     if (!this.shot) return this.finish()      // 이 시드로는 장면이 안 나온다 — 조용히 넘어간다
-    g.paused = true                           // 여기서부터 ④까지 판은 정지
-    // 조르그는 아직 안 왔다. ②에서 워프해 들어온다.
+    // 판은 예고편이 직접 굴린다(stepBoard). game.tick은 손을 뗀다.
+    g.paused = true
+    // ②③ 몫을 먼저 되감는다 — 이때는 요새도 판에 있다.
+    rewind(g, stepsOf(ACT_SEC.warp) + stepsOf(ACT_SEC.beam))
+    // ① 몫은 요새를 **빼고** 되감는다. ① 동안 조르그는 아직 안 왔으므로 판에도
+    // 없는데(stepBodies는 죽은 걸 통째로 건너뛴다), 되감을 때만 넣어 두면 앞뒤가
+    // 어긋난다 — 요새는 자기 몫만큼 뒤처져 서고, 큐볼이 그 자리를 스친다.
     this.zorg = this.shot.F
     this.zorg.alive = false
-    this.phase = 'peace'
+    rewind(g, stepsOf(ACT_SEC.peace))
+    for (const b of g.bodies) if (b.trail) b.trail.length = 0   // 거꾸로 그린 꼬리는 버린다
+    this.act('peace', PEACE_MS)
     this.bar(0.03)
     this.after(PEACE_MS, () => this.warpIn())
     this.after(CAP_MS, () => this.showLogo())
@@ -517,8 +637,9 @@ export class Attract {
   // ── ② 워프 — 조르그가 들어오고, 카메라가 그리로 간다 ──
   warpIn() {
     if (this.done || this.phase !== 'peace') return
-    this.phase = 'warp'
     const g = this.game, z = this.zorg
+    this.burn()
+    this.act('warp', WARP_MS)
     // 게임이 증원을 불러들일 때와 같은 연출이다(stepWarpIns가 하는 그대로).
     z.alive = true; z.warp = 1
     g.addFx({ kind: 'warp', x: z.pos.x, y: z.pos.y, r: hitRadiusOf(z), fort: true })
@@ -528,21 +649,38 @@ export class Attract {
     this.after(WARP_MS, () => this.beams())
   }
 
-  // ── ③ 광선 — 몇 발 쏘고, 다 빗나간다 ──
+  // ── ③ 광선 — 몇 발 쏘고, 지구는 비껴 간다 ──
   beams() {
     if (this.done || this.phase !== 'warp') return
-    this.phase = 'beam'
+    this.burn()
+    this.act('beam', BEAM_MS)
     this.bar(0.18)
-    fireBeamPast(this.game)
-    this.after(BEAM_GAP, () => { if (this.phase === 'beam') fireBeamPast(this.game) })
+    this.volley(0)
+    this.after(BEAM_GAP, () => { if (this.phase === 'beam') this.volley(1) })
     this.after(BEAM_MS, () => this.predict())
+  }
+
+  // 한 발. fireBeamPast는 상태기를 돌리려고 판을 두 스텝 밀므로 그만큼 예산에서 뺀다.
+  volley(i) {
+    const s = this.shot
+    const keep = [this.game.earth, s.F, s.J, s.C]
+    const hit = fireBeamPast(this.game, keep, s.doomed?.[i])
+    if (hit) this.actLeft = Math.max(0, this.actLeft - 2)
+    this.beamAt = typeof hit === 'object' ? hit : null
   }
 
   // ── ④ 예측 — 같은 화면, 같은 판. 조준 가이드만 켠다 ──
   predict() {
     if (this.done || this.phase !== 'beam') return
+    this.burn()                 // 여기서 판은 풀이가 본 그 자리로 돌아와 있다
     this.phase = 'aim'
+    this.actLeft = 0
     const g = this.game
+    // 아직 날고 있는 광선이 있으면 여기서 결말을 낸다. armLaser가 곧 상태기를
+    // 되돌리므로 그냥 두면 제물이 살아남는데, 무대는 그 둘이 **없다는 전제**로
+    // 푼 것이라 살아남으면 ⑤가 어긋난다. tickLaser는 천체를 건드리지 않으니
+    // 판은 풀이 그대로 남는다.
+    for (let i = 0; i < 4000 && g.laser.state === LASER_TRAVEL; i++) g.tickLaser(CFG.DT)
     // 예측선은 조준 모드에서만 그려진다(canAim). 조준 패널은 cinematic이 걷어낸다.
     g.setMode('aim')
     g.cinematic = true
@@ -583,6 +721,14 @@ export class Attract {
     // 나머지 구간은 화면을 통째로 쓴다.
     g.cinematic = !['fly', 'run', 'end'].includes(this.phase)
 
+    // ①~③ — 판을 예고편이 직접 굴린다. 남은 스텝을 막이 끝날 때까지 고르게
+    // 나눠 밟으므로, 프레임이 느리든 빠르든 ④에 도착하는 순간의 판은 같다.
+    if (this.actLeft > 0) {
+      const leftMs = Math.max(50, this.actEnd - performance.now())
+      const n = Math.min(this.actLeft, Math.max(1, Math.round(this.actLeft / (leftMs / 1000) * dt)))
+      this.stepBoard(n)
+    }
+
     const m = g.missiles.find(x => x.alive)
     const pts = []
     if (this.phase === 'peace') {
@@ -593,12 +739,15 @@ export class Attract {
       if (z) pts.push({ x: z.pos.x, y: z.pos.y, r: 300 })
       else pts.push({ x: 0, y: 0, r: g.aMax * 1.02 })
     } else if (this.phase === 'beam') {
-      // 판은 세워 둔 채 광선만 굴린다 — 그래야 ④의 궤적 풀이가 그대로 맞는다
-      g.tickLaser(CFG.DT * Math.min(8, Math.round(dt / CFG.DT)))
-      // 총구와 지구, 그리고 날아가는 광선의 머리를 한 프레임에
+      // 총구에서 표적까지를 한 화면에. 지구를 상자에 넣으면(1000 GU 밖이다)
+      // 화면이 통째로 물러나 정작 광선이 실오라기로 보인다 — 광선이 지구를
+      // 겨누지 않는 막이므로 굳이 넣지 않는다.
       const h = g.homeworld
-      if (h && h.alive) pts.push({ x: h.pos.x, y: h.pos.y, r: 220 })
-      pts.push({ x: g.earth.pos.x, y: g.earth.pos.y, r: 220 })
+      if (h && h.alive) pts.push({ x: h.pos.x, y: h.pos.y, r: 240 })
+      const b = this.beamAt
+      // 표적은 판정 원보다 넉넉히 잡는다 — 소멸 폭발이 그보다 훨씬 크게 번져서,
+      // 딱 맞춰 담으면 정작 터지는 순간에 화면 모서리로 잘려 나간다.
+      if (b) pts.push({ x: b.pos.x, y: b.pos.y, r: hitRadiusOf(b) * 3.4 })
       const L = g.laser
       if (L.state === LASER_TRAVEL) {
         pts.push({ x: L.ox + L.ux * L.head, y: L.oy + L.uy * L.head, r: 160 })
