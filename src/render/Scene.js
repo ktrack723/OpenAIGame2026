@@ -1,6 +1,5 @@
 import * as THREE from 'three'
 import { CFG, VIS, hitRadiusOf } from '../game/config.js'
-import { ROLES, hasRole, volatileRadius } from '../game/roles.js'
 import { CameraRig } from './CameraRig.js'
 import { Particles } from './Particles.js'
 import { Markers } from './Markers.js'
@@ -15,47 +14,71 @@ import { Icons } from './Icons.js'
 // (용암·해양·독성·생명은 게임 규칙이 없어 없앴다 — Icons.CATEGORY 주석 참고.)
 // 색은 곧 규칙이다: 회색 암석 = 규칙 없음, 하늘색 얼음 = 가벼움,
 // 흰 금속 = 무거움, 노란 가스 = 터짐, 검은 특이점 = 삼킴.
+// 표면 성질(거칠기·금속성·자체발광)은 종류가 정하고, **색만** 팔레트가 흔든다.
 const MATS = {
-  rock: { c: 0x9aa1a8, rough: 0.95, metal: 0.05, emis: 0.00 },
-  ice: { c: 0x8be9ff, rough: 0.25, metal: 0.05, emis: 0.06 },
-  iron: { c: 0xcbd5e1, rough: 0.30, metal: 0.95, emis: 0.00 },
-  gas: { c: 0xffd166, rough: 0.85, metal: 0.00, emis: 0.08 },
-  void: { c: 0x120a1e, rough: 1.00, metal: 0.00, emis: 0.00 },
-  earth: { c: 0x3b82f6, rough: 0.55, metal: 0.10, emis: 0.08 },
-  zorg: { c: 0x4a1240, rough: 0.45, metal: 0.65, emis: 0.30 },   // 조르그 모성
-  debris: { c: 0x8b8f96, rough: 1.00, metal: 0.10, emis: 0.00 },
+  rock: { rough: 0.95, metal: 0.05, emis: 0.00 },
+  ice: { rough: 0.25, metal: 0.05, emis: 0.06 },
+  iron: { rough: 0.30, metal: 0.95, emis: 0.00 },
+  gas: { rough: 0.85, metal: 0.00, emis: 0.08 },
+  void: { rough: 1.00, metal: 0.00, emis: 0.00 },
+  earth: { rough: 0.55, metal: 0.10, emis: 0.08 },
+  zorg: { rough: 0.45, metal: 0.65, emis: 0.30 },   // 조르그 모성
+  debris: { rough: 1.00, metal: 0.10, emis: 0.00 },
 }
 
-// 역할별 외곽 표식 — 점선 링의 조각 수/굵기로 한눈에 구분한다.
-// (색은 roles.js가 정한 그 색을 그대로 쓴다 — HUD 범례와 반드시 같아야 한다.)
-const ROLE_RING = {
-  armor: { n: 8, gap: 0.30, r0: 1.34, r1: 1.62, spin: 0.25 },
-  battery: { n: 3, gap: 0.55, r0: 1.34, r1: 1.74, spin: -0.7 },
-  void: { n: 40, gap: 0.06, r0: 1.20, r1: 1.34, spin: 1.5 },
-  volatile: { n: 5, gap: 0.42, r0: 1.30, r1: 1.66, spin: 0.5 },
-  light: { n: 12, gap: 0.5, r0: 1.22, r1: 1.36, spin: 0.9 },
+// ─── 팔레트 ─────────────────────────────────────────────────────
+// 한 종류에 색을 여러 벌 준다. 스무 개가 전부 같은 공이면 성계가 벽지처럼
+// 보이는데, 그렇다고 색을 마음대로 흔들면 "색 = 규칙"이 깨진다. 그래서
+// **같은 계열 안에서만** 흔든다 — 암석은 회갈색 계열, 얼음은 청록빛 흰색,
+// 금속은 강철빛, 가스는 호박·주황·크림. 종류는 여전히 색으로 읽힌다.
+//
+// **파란색은 지구 하나뿐이다.** 어떤 팔레트도 그 색조로 들어가지 않는다 —
+// 얼음이 제일 가까운데, 그래서 하늘색을 빼고 청록~박하 쪽(색상 165~195°)으로만
+// 골랐다. 지구는 217°의 진한 파랑이라 작게 줄어들어도 헷갈리지 않는다.
+// 무엇을 고르는지는 천체 id로 정해진다(시드가 같으면 매일 같은 성계다).
+const PALETTE = {
+  rock: [0x9aa1a8, 0xb3a493, 0x8d8478, 0xc2b6a4, 0x7f8a8e, 0xa89a86],
+  ice: [0x8be9ff, 0xa8f0e4, 0xd6fbff, 0x7fd4cc, 0xbdf3e8],
+  iron: [0xcbd5e1, 0xb6bfcb, 0xd8d0be, 0xa4aeba, 0xe0e4ea],
+  gas: [0xffd166, 0xf2a65a, 0xe9c9a0, 0xffb59b, 0xf5e3ae, 0xd9a441],
+  void: [0x120a1e],
+  earth: [0x3b82f6],       // 이 파랑은 지구 전용이다
+  zorg: [0x4a1240],
+  debris: [0x8b8f96],
 }
-const colorOf = (t) => (MATS[t] ?? MATS.rock).c
+// 천체 id → 팔레트 번호. 문자열 해시라 시드가 같으면 매번 같은 색이 나온다.
+function paletteIndex(id, type) {
+  const p = PALETTE[type] ?? PALETTE.rock
+  let h = 2166136261
+  for (let i = 0; i < String(id).length; i++) h = Math.imul(h ^ String(id).charCodeAt(i), 16777619)
+  return (h >>> 0) % p.length
+}
+const colorOf = (type, pi = 0) => {
+  const p = PALETTE[type] ?? PALETTE.rock
+  return p[pi % p.length]
+}
 
-// 절차적 표면 텍스처 — 자산 0개로 "돌아가는 구체"를 만들기 위한 최소 노이즈
-function surfaceTexture(type) {
-  const base = new THREE.Color(colorOf(type))
+// 절차적 표면 텍스처 — 자산 0개로 "돌아가는 구체"를 만들기 위한 최소 노이즈.
+// 팔레트 번호까지 씨앗에 넣어 무늬도 같이 갈린다(같은 색 두 개가 나와도 무늬가 다르다).
+function surfaceTexture(type, pi) {
+  const tone = colorOf(type, pi)
+  const base = new THREE.Color(tone)
   const c = document.createElement('canvas'); c.width = 256; c.height = 128
   const g = c.getContext('2d')
   g.fillStyle = `#${base.getHexString()}`; g.fillRect(0, 0, 256, 128)
-  let s = 0
+  let s = pi * 2654435761 >>> 0
   for (const ch of type) s = (s * 31 + ch.charCodeAt(0)) >>> 0
   const rnd = () => ((s = (s * 1103515245 + 12345) >>> 0) / 4294967296)
   if (type === 'gas') {
     for (let y = 0; y < 128; y += 6) {   // 가스행성 = 가로 띠
-      const shade = new THREE.Color(colorOf(type))
+      const shade = new THREE.Color(tone)
       shade.offsetHSL(0, 0, (rnd() - 0.5) * 0.3)
       g.globalAlpha = 0.5; g.fillStyle = `#${shade.getHexString()}`
       g.fillRect(0, y, 256, 3 + rnd() * 4)
     }
   } else {
     for (let i = 0; i < 90; i++) {
-      const shade = new THREE.Color(colorOf(type))
+      const shade = new THREE.Color(tone)
       shade.offsetHSL((rnd() - 0.5) * 0.06, (rnd() - 0.5) * 0.2, (rnd() - 0.5) * 0.34)
       g.globalAlpha = 0.16 + rnd() * 0.4
       g.fillStyle = `#${shade.getHexString()}`
@@ -70,6 +93,19 @@ function surfaceTexture(type) {
   tex.wrapS = THREE.RepeatWrapping
   return tex
 }
+
+// ─── 가스 행성 = 위에서 내려다본 토성 ───────────────────────────
+// 구체를 판정 반경만큼 채우는 대신 **가운데를 줄이고 고리를 깐다.** 판정
+// 반경(=흰 테두리)은 건드리지 않으므로 판 위에서 공이 커지지는 않는다 —
+// 같은 자리에 다른 그림이 들어갈 뿐이다. 고리는 얇은 원판 셋이고, 사이가
+// 비어 있어(카시니 간극) 한눈에 고리로 읽힌다.
+const RING_PX = 2.6                       // 테두리 띠 굵기(화면 px) — 줌과 무관하게 일정
+const GAS_CORE = 0.42                     // 구체 반지름 (판정 반경 대비)
+const GAS_BANDS = [                       // [안쪽, 바깥쪽, 불투명도]
+  [0.56, 0.72, 0.40],                     // 안쪽 희미한 먼지 고리
+  [0.77, 0.97, 0.95],                     // 본 고리 — 여기가 제일 밝다
+  [1.00, 1.06, 0.55],                     // 카시니 간극 바깥의 얇은 고리
+]
 
 // ─── 미사일 형상 ────────────────────────────────────────────────
 // 점 하나로는 "무엇이 날아가는지"가 안 읽힌다. 원뿔 노즈 + 원통 동체 +
@@ -126,7 +162,7 @@ export class SceneView {
 
     this.sphereGeo = new THREE.SphereGeometry(1, 40, 28)
     this.discGeo = new THREE.CircleGeometry(1, 64)
-    this.ringGeo = new THREE.RingGeometry(0.9, 1, 64)
+    this.ringGeos = new Map()   // 안쪽 반경 비율(%) → 링 지오메트리 (공유)
     this.glowTex = glowTexture()
     this.missileGeo = missileParts()
     this.texCache = new Map()
@@ -155,18 +191,19 @@ export class SceneView {
     // 정작 미래의 충돌 지점(빈 우주)에 찍히기 때문이다.
     // 그래서 지금 그 자리에 있는 공 자체를 예측선 색으로 물들인다.
     //   ① 채운 원반 — 공이 통째로 그 색이 된다(가장 먼저 눈에 들어오는 것)
-    //   ② 바깥 번짐 — 줌아웃해서 공이 점만 해져도 색 덩어리로 읽힌다
-    //   ③ 가는 실선 — 지금 위치와 락온(미래 위치)을 잇는다. 이게 없으면
+    //   ② 가는 실선 — 지금 위치와 락온(미래 위치)을 잇는다. 이게 없으면
     //      물든 공과 저쪽의 링이 서로 무관한 두 표시로 보인다.
+    // 예전엔 셋째로 바깥 번짐(2.1배 반경의 흐린 원반)이 있었는데, 그건 원반과
+    // 같은 말을 흐리게 반복하는 것이라 뺐다 — 줌아웃 대응은 구체의 자체발광이
+    // 이미 하고 있다.
     const tintMat = (op) => new THREE.MeshBasicMaterial({
       transparent: true, opacity: op, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending,
     })
-    this.tintGlow = new THREE.Mesh(this.discGeo, tintMat(0.14))
     this.tintDisc = new THREE.Mesh(this.discGeo, tintMat(0.34))
     const linkGeo = new THREE.PlaneGeometry(1, 1); linkGeo.translate(0.5, 0, 0)
     this.tintLink = new THREE.Mesh(linkGeo, tintMat(0.22))
-    this.tintGlow.renderOrder = 9; this.tintDisc.renderOrder = 11; this.tintLink.renderOrder = 10
-    for (const o of [this.tintGlow, this.tintDisc, this.tintLink]) { o.visible = false; this.scene.add(o) }
+    this.tintDisc.renderOrder = 11; this.tintLink.renderOrder = 10
+    for (const o of [this.tintDisc, this.tintLink]) { o.visible = false; this.scene.add(o) }
 
     // ── 본성 표식 ──
     // 조르그 요새는 겉보기에 다 똑같은데, 그중 하나(본성)만 지구를 겨눠 광선을
@@ -298,7 +335,7 @@ export class SceneView {
     this.icons.update(this.game, this.rig, dt, (b) => this.renderRadius(b))
     this.laserView.update(this.game)
     this.orbits.sync(this.game.bodies, this.game.aMax,
-      (b) => b.isEarth ? 0x60a5fa : b.isTarget ? 0x22d3ee : colorOf(b.type))
+      (b) => b.isEarth ? 0x60a5fa : b.isTarget ? 0x22d3ee : this.toneOf(b))
     this.syncMissiles()
     this.syncLines()
     this.markers.update(this.game, this.rig, dt, (b) => this.renderRadius(b))
@@ -345,44 +382,57 @@ export class SceneView {
   }
 
   disposeBodyFx(fx) {
-    for (const o of [fx.mesh, fx.halo, fx.ring]) {
+    for (const o of [fx.mesh, fx.ring]) {
       this.scene.remove(o); o.material.dispose()
     }
     if (fx.hpArc) { this.scene.remove(fx.hpArc); fx.hpArc.geometry.dispose(); fx.hpArc.material.dispose() }
-    if (fx.mod) {
-      for (const m of fx.mod.grp.children) { m.geometry.dispose(); m.material.dispose() }
-      this.scene.remove(fx.mod.grp)
-    }
     if (fx.role) {
-      for (const m of fx.role.grp.children) { m.geometry.dispose(); m.material.dispose() }
-      this.scene.remove(fx.role.grp)
-      for (const o of [fx.role.blast, fx.role.accretion]) {
-        if (!o) continue
-        this.scene.remove(o); o.geometry.dispose(); o.material.dispose()
+      if (fx.role.grp) {
+        for (const m of fx.role.grp.children) { m.geometry.dispose(); m.material.dispose() }
+        this.scene.remove(fx.role.grp)
       }
+      const acc = fx.role.accretion
+      if (acc) { this.scene.remove(acc); acc.geometry.dispose(); acc.material.dispose() }
     }
   }
 
-  texFor(type) {
-    if (!this.texCache.has(type)) this.texCache.set(type, surfaceTexture(type))
-    return this.texCache.get(type)
+  // 테두리 링 — **화면에서 늘 같은 굵기**여야 한다. 예전엔 반경에 비례하는
+  // 띠라 목성 같은 큰 공에서는 두꺼운 회색 벨트가 되어 정작 고리보다 눈에 띄었고,
+  // 작은 공에서는 실처럼 사라졌다. 그래서 필요한 안쪽 반경을 매 프레임 구해
+  // 백분율로 반올림한 지오메트리를 공유한다(많아야 수십 개, 만들고 나면 재사용).
+  ringGeoFor(inner) {
+    const k = Math.round(Math.min(0.96, Math.max(0.45, inner)) * 100)
+    if (!this.ringGeos.has(k)) this.ringGeos.set(k, new THREE.RingGeometry(k / 100, 1, 64))
+    return this.ringGeos.get(k)
+  }
+
+  // 링 하나를 바깥 반경 outer에 맞추되 띠 굵기는 RING_PX(화면 픽셀)로 고정한다.
+  fitRing(ring, outer) {
+    ring.scale.setScalar(outer)
+    const geo = this.ringGeoFor(1 - RING_PX * this.rig.worldPerPx / Math.max(1e-6, outer))
+    if (ring.geometry !== geo) ring.geometry = geo
+  }
+
+  // 그 천체가 실제로 쓰는 색 — 궤도선·트레일이 공과 같은 색이어야 한 몸으로 읽힌다.
+  toneOf(b) { return colorOf(b.type, this.bodyFx.get(b.id)?.pi ?? paletteIndex(b.id, b.type)) }
+
+  texFor(type, pi) {
+    const key = `${type}:${pi}`
+    if (!this.texCache.has(key)) this.texCache.set(key, surfaceTexture(type, pi))
+    return this.texCache.get(key)
   }
 
   makeBodyFx(b) {
     const spec = MATS[b.type] ?? MATS.rock
+    const pi = paletteIndex(b.id, b.type)
+    const tone = colorOf(b.type, pi)
     const mesh = new THREE.Mesh(this.sphereGeo, new THREE.MeshStandardMaterial({
-      map: this.texFor(b.type), color: 0xffffff,
+      map: this.texFor(b.type, pi), color: 0xffffff,
       roughness: spec.rough, metalness: spec.metal,
-      emissive: new THREE.Color(spec.c), emissiveIntensity: spec.emis,
+      emissive: new THREE.Color(tone), emissiveIntensity: spec.emis,
     }))
     mesh.rotation.x = Math.PI / 2 - 0.35   // 극축을 살짝 눕혀 탑다운에서도 자전이 보이게
-    // 중력권 헤일로 — §5.2 스윙바이 존 6R_p (SOI 확대율 κ^(2/5)≈5.1× 가 근거).
-    // 행성의 "당구 쿠션 범위"를 그대로 그린 것이라 판정과 1:1로 일치한다.
-    const halo = new THREE.Mesh(this.discGeo, new THREE.MeshBasicMaterial({
-      color: spec.c, transparent: true, opacity: 0.07, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending,
-    }))
-    halo.renderOrder = 2
-    const ring = new THREE.Mesh(this.ringGeo, new THREE.MeshBasicMaterial({
+    const ring = new THREE.Mesh(this.ringGeoFor(0.9), new THREE.MeshBasicMaterial({
       transparent: true, depthWrite: false, depthTest: false, side: THREE.DoubleSide,
     }))
     ring.renderOrder = 12
@@ -395,62 +445,39 @@ export class SceneView {
     }))
     hpArc.renderOrder = 15
     hpArc.visible = false
-    this.scene.add(mesh, halo, ring, hpArc)
-    const fx = { mesh, halo, ring, hpArc, hpKey: -1, type: b.type, spin: 0.15 + Math.random() * 0.5, role: null }
+    this.scene.add(mesh, ring, hpArc)
+    const fx = { mesh, ring, hpArc, hpKey: -1, type: b.type, pi, spin: 0.15 + Math.random() * 0.5, role: null }
     this.bodyFx.set(b.id, fx)
     if (b.role) this.attachRoleFx(fx, b)
-    if (b.mods && b.mods.length) this.attachModFx(fx, b, b.mods[0])
     return fx
   }
 
-  // 겹쳐 얹은 성질(mods) 표식 — 주 역할 링보다 안쪽에 한 겹 더 두른다
-  attachModFx(fx, b, mod) {
-    const def = ROLES[mod], spec = ROLE_RING[mod]
-    if (!def || !spec) return
-    const grp = new THREE.Group()
-    const step = Math.PI * 2 / spec.n
-    for (let i = 0; i < spec.n; i++) {
-      const m = new THREE.Mesh(
-        new THREE.RingGeometry(spec.r0 - 0.16, spec.r1 - 0.16, 8, 1, i * step, step * (1 - spec.gap)),
-        new THREE.MeshBasicMaterial({
-          color: def.color, transparent: true, opacity: 0.8,
-          depthTest: false, depthWrite: false, side: THREE.DoubleSide,
-        }))
-      m.renderOrder = 13
-      grp.add(m)
-    }
-    this.scene.add(grp)
-    fx.mod = { grp, spin: -(spec.spin || 0.3) }
-  }
-
-  // 역할 표식 — 점선 링 + (휘발성은) 유폭 반경 원.
-  // 유폭 반경은 상수라 미리 그려 줄 수 있고, 그래야 연쇄를 계획할 수 있다.
+  // 역할에 딸린 **그림**을 붙인다. 예전엔 여기서 태그마다 점선 링을 둘렀는데,
+  // 그건 그림이 아니라 UI였다 — 공 스무 개가 저마다 회전하는 파선 고리를 두르면
+  // 판 위에 정보가 아니라 무늬만 남는다. 태그는 색·무늬·배지(Icons)가 이미
+  // 말하고 있으므로 링은 걷어냈고, 여기 남은 둘은 **그 천체 자체의 생김새**다.
+  //   가스 행성 — 위에서 내려다본 고리
+  //   특이점    — 강착원반
+  // 유폭 반경 원은 조준이 그 공을 물었을 때만 켠다(syncBodies) — 늘 켜 두면
+  // 가스 행성 넷이 성계에 커다란 원 넷을 상시로 그린다.
   attachRoleFx(fx, b) {
-    const def = ROLES[b.role], spec = ROLE_RING[b.role]
-    if (!def || !spec) return
-    const grp = new THREE.Group()
-    const step = Math.PI * 2 / spec.n
-    for (let i = 0; i < spec.n; i++) {
-      const m = new THREE.Mesh(
-        new THREE.RingGeometry(spec.r0, spec.r1, 8, 1, i * step, step * (1 - spec.gap)),
-        new THREE.MeshBasicMaterial({
-          color: def.color, transparent: true, opacity: 0.85,
+    if (b.role === 'volatile') {
+      const grp = new THREE.Group()
+      const tone = colorOf(b.type, fx.pi)
+      for (const [r0, r1, o] of GAS_BANDS) {
+        const m = new THREE.Mesh(new THREE.RingGeometry(r0, r1, 96), new THREE.MeshBasicMaterial({
+          color: tone, transparent: true, opacity: o,
           depthTest: false, depthWrite: false, side: THREE.DoubleSide,
         }))
-      m.renderOrder = 13
-      grp.add(m)
-    }
-    grp.renderOrder = 13
-    this.scene.add(grp)
-    fx.role = { grp, spin: spec.spin }
-    if (b.role === 'volatile') {   // 유폭 반경 — 여기까지 밀린다
-      const vr = new THREE.Mesh(new THREE.RingGeometry(0.99, 1, 96), new THREE.MeshBasicMaterial({
-        color: def.color, transparent: true, opacity: 0.22,
-        depthTest: false, depthWrite: false, side: THREE.DoubleSide,
-      }))
-      vr.renderOrder = 2
-      this.scene.add(vr)
-      fx.role.blast = vr
+        m.renderOrder = 3
+        grp.add(m)
+      }
+      this.scene.add(grp)
+      // 유폭 반경 원은 여기서 안 그린다 — 조준이 그 공을 물었을 때 AimHelper가
+      // 이미 같은 반경에 같은 색으로 그린다(h.volatileR). 여기서도 그리면 같은
+      // 자리에 같은 원이 둘 겹친다.
+      fx.role = { grp, spin: 0.12 }
+      return
     }
     if (b.role === 'void') {   // 강착원반 느낌의 안쪽 발광 링
       const acc = new THREE.Mesh(new THREE.RingGeometry(0.99, 1.12, 72), new THREE.MeshBasicMaterial({
@@ -459,7 +486,7 @@ export class SceneView {
       }))
       acc.renderOrder = 13
       this.scene.add(acc)
-      fx.role.accretion = acc
+      fx.role = { grp: null, spin: 0, accretion: acc }
     }
   }
 
@@ -485,7 +512,7 @@ export class SceneView {
     // 조준 중이면 "지금 화면의 어느 공을 치는가"도 같이 켠다 —
     // 락온은 미래 위치에 찍히므로, 현재 위치의 그 공도 물어 줘야 눈이 이어진다.
     const aimHit = g.canAim && !g.bare ? g.predictPath().hit : null
-    for (const o of [this.tintGlow, this.tintDisc, this.tintLink]) o.visible = false
+    for (const o of [this.tintDisc, this.tintLink]) o.visible = false
     // 본성 표식 — 지금 광선을 쥔 요새 하나에만 붙는다(승계되면 따라 옮겨 간다)
     const home = g.homeworld
     this.homeMark.visible = !!home && home.alive && !g.bare
@@ -503,12 +530,12 @@ export class SceneView {
       if (!fx) fx = this.makeBodyFx(b)
       if (fx.type !== b.type) {   // 합성으로 바이옴이 바뀜 → 재질 교체
         const spec = MATS[b.type] ?? MATS.rock
+        fx.pi = paletteIndex(b.id, b.type)
         const mat = fx.mesh.material
-        mat.map = this.texFor(b.type)
+        mat.map = this.texFor(b.type, fx.pi)
         mat.roughness = spec.rough; mat.metalness = spec.metal
-        mat.emissive.set(spec.c); mat.emissiveIntensity = spec.emis
+        mat.emissive.setHex(colorOf(b.type, fx.pi)); mat.emissiveIntensity = spec.emis
         mat.needsUpdate = true
-        fx.halo.material.color.set(spec.c)
         fx.type = b.type
       }
       const r = this.renderRadius(b)          // 공 = 판정 반경 그대로
@@ -517,32 +544,20 @@ export class SceneView {
       // 아직 워프해 들어오지 않은 증원은 존재하지 않는 것처럼 취급한다
       const waiting = (b.warpIn ?? 0) > 0
       fx.mesh.visible = b.alive && !waiting
-      fx.halo.visible = b.alive && solid && !waiting
       fx.ring.visible = b.alive && solid && !waiting
       // 체력 링은 **여기서** 끈다. 아래 체력 블록은 `if (!b.alive) continue` 뒤에
       // 있어서 죽은 공에는 아예 도달하지 않는다 — 그 탓에 부서진 공의 체력 링만
       // 궤도에 유령처럼 남아 돌고 있었다. 켜는 건 아래, 끄는 건 여기다.
       if (!b.alive || waiting) fx.hpArc.visible = false
-      if (fx.mod) {
-        fx.mod.grp.visible = b.alive
-        if (b.alive) {
-          fx.mod.grp.position.set(b.pos.x, b.pos.y, 1)
-          fx.mod.grp.scale.setScalar(r)
-          fx.mod.grp.rotation.z += fx.mod.spin * dt
-        }
-      }
       if (fx.role) {
-        fx.role.grp.visible = b.alive
-        if (fx.role.blast) fx.role.blast.visible = b.alive
-        if (fx.role.accretion) fx.role.accretion.visible = b.alive
-        if (b.alive) {
-          fx.role.grp.position.set(b.pos.x, b.pos.y, 1)
-          fx.role.grp.scale.setScalar(r)
-          fx.role.grp.rotation.z += fx.role.spin * dt
-          if (fx.role.blast) {
-            fx.role.blast.position.set(b.pos.x, b.pos.y, -4)
-            fx.role.blast.scale.setScalar(volatileRadius(b))
-            fx.role.blast.material.opacity = 0.16 + 0.10 * Math.abs(Math.sin(this.lockT * 2))
+        const show = b.alive && !waiting
+        if (fx.role.grp) fx.role.grp.visible = show
+        if (fx.role.accretion) fx.role.accretion.visible = show
+        if (show) {
+          if (fx.role.grp) {   // 가스 행성의 고리 — 판정 반경에 맞춰 깐다
+            fx.role.grp.position.set(b.pos.x, b.pos.y, 0)
+            fx.role.grp.scale.setScalar(mr)
+            fx.role.grp.rotation.z += fx.role.spin * dt
           }
           if (fx.role.accretion) {
             // 특이점은 삼킬수록 커진다. 구체 반경은 μ^(1/3)이라 완만하게만 자라니,
@@ -570,7 +585,9 @@ export class SceneView {
         fx.mesh.material.emissiveIntensity = spec.emis
       }
       fx.mesh.position.set(b.pos.x, b.pos.y, 0)
-      fx.mesh.scale.setScalar(scale)
+      // 가스 행성은 고리가 판정 반경을 채우므로 구체를 그만큼 줄인다 —
+      // 공이 커지는 게 아니라 같은 자리에 다른 그림이 들어가는 것이다.
+      fx.mesh.scale.setScalar(b.role === 'volatile' ? scale * GAS_CORE : scale)
       fx.mesh.rotation.y += fx.spin * dt
 
       // 핵을 맞을 때마다 그을음이 남는다(부서지진 않는다) + 히트 플래시 (§14.5)
@@ -578,11 +595,8 @@ export class SceneView {
       if (b.hitFlash > 0) c.setRGB(2.4, 2.4, 2.4)
       else { const k = 1 - Math.min(3, b.scorch || 0) * 0.15; c.setRGB(k, k, k) }
 
-      fx.halo.position.set(b.pos.x, b.pos.y, -3)
-      fx.halo.scale.setScalar(b.radius * CFG.SWING_ZONE)
-
       fx.ring.position.set(b.pos.x, b.pos.y, 0)
-      fx.ring.scale.setScalar(mr * 1.22)
+      this.fitRing(fx.ring, mr * 1.22)
       // 목표=시안, 지구=파랑(치면 즉사), 중립=흰색(자유롭게 쓰는 큐볼).
       // 캐롬 스테이지의 목표는 보라색 — "직격이 안 통하는 공"이라는 뜻이다.
       if (b.isEarth) { fx.ring.material.color.setHex(0x60a5fa); fx.ring.material.opacity = 0.9 }
@@ -597,19 +611,14 @@ export class SceneView {
         const pulse = 0.5 + 0.5 * Math.sin(this.lockT * 5)
         fx.ring.material.color.setHex(tone)
         fx.ring.material.opacity = 1
-        fx.ring.scale.setScalar(mr * (1.30 + 0.06 * Math.sin(this.lockT * 5)))
-        // ① 공을 덮는 원반 ② 그 바깥 번짐
+        this.fitRing(fx.ring, mr * (1.30 + 0.06 * Math.sin(this.lockT * 5)))
+        // ① 공을 덮는 원반
         this.tintDisc.position.set(b.pos.x, b.pos.y, 1.2)
         this.tintDisc.scale.setScalar(mr)
         this.tintDisc.material.color.setHex(tone)
         this.tintDisc.material.opacity = 0.26 + 0.16 * pulse
         this.tintDisc.visible = true
-        this.tintGlow.position.set(b.pos.x, b.pos.y, -2)
-        this.tintGlow.scale.setScalar(mr * (2.1 + 0.25 * pulse))
-        this.tintGlow.material.color.setHex(tone)
-        this.tintGlow.material.opacity = 0.10 + 0.06 * pulse
-        this.tintGlow.visible = true
-        // ③ 지금 위치 → 락온(미래 위치)을 잇는 실선
+        // ② 지금 위치 → 락온(미래 위치)을 잇는 실선
         const dx = aimHit.x - b.pos.x, dy = aimHit.y - b.pos.y
         const d = Math.hypot(dx, dy)
         if (d > mr * 0.6) {
@@ -625,7 +634,7 @@ export class SceneView {
       if (targeted !== !!fx.tinted) {
         fx.tinted = targeted
         const spec = MATS[b.type] ?? MATS.rock
-        fx.mesh.material.emissive.setHex(targeted ? (PRED_TONE[aimHit.outcome] ?? 0x67e8f9) : spec.c)
+        fx.mesh.material.emissive.setHex(targeted ? (PRED_TONE[aimHit.outcome] ?? 0x67e8f9) : colorOf(b.type, fx.pi))
         fx.mesh.material.emissiveIntensity = targeted ? 0.5 : spec.emis
       }
 
@@ -763,7 +772,7 @@ export class SceneView {
       // 기본 화각에서의 비율을 그대로 유지하면 어느 줌에서도 같은 그림이 된다.
       const px = this.renderRadius(b) / this.rig.worldPerPx      // 화면에서의 공 반지름
       const w = Math.max(2, Math.min(hot ? 9 : 5.5, px * (hot ? 0.73 : 0.45)))
-      this.ribbon(b.trail, w, hot ? 0xffffff : colorOf(b.type), { opacity: hot ? 1 : 0.75, z: -2, depth: true })
+      this.ribbon(b.trail, w, hot ? 0xffffff : this.toneOf(b), { opacity: hot ? 1 : 0.75, z: -2, depth: true })
     }
 
     // 미사일 궤적 — 빗나간 샷은 흐리게 스테이지 끝까지 남긴다 (§14.4)

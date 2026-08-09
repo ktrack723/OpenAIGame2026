@@ -1,8 +1,12 @@
 import * as THREE from 'three'
-import { hasRole } from '../game/roles.js'
 
-// 목표/지구를 한눈에: 라벨 + 조준 레티클 + 화면 밖 방향 화살표 + 발사 회랑.
-// "조르그 행성이 어딘지 모르겠다"를 없애는 게 이 파일의 유일한 목적이다.
+// 목표와 지구를 한눈에: **이름표 하나와 화면 밖 방향 화살표 하나씩.**
+// "조르그 행성이 어딘지 모르겠다"를 없애는 게 이 파일의 유일한 목적이고,
+// 그 목적에 필요한 최소가 이 둘이다.
+//
+// 예전엔 여기서 회전하는 코너 브래킷(레티클)도 같이 그렸는데, 표적 하나에
+// 표시가 넷이 붙어 있었다 — 분홍으로 맥동하는 테두리, 해골 배지, 이름표,
+// 그리고 레티클. 같은 말을 네 번 하는 것이라 레티클을 걷었다.
 
 const LABEL_H = 26   // 라벨 표시 높이(CSS px) — 줌과 무관하게 일정하게 유지
 
@@ -43,27 +47,11 @@ function arrowMesh(color) {
   return m
 }
 
-// 4개 코너 브래킷 — 회전하며 목표를 물고 있는 조준 레티클
-function reticle(color) {
-  const grp = new THREE.Group()
-  for (let i = 0; i < 4; i++) {
-    const geo = new THREE.RingGeometry(0.9, 1, 24, 1, i * Math.PI / 2 + 0.32, Math.PI / 2 - 0.64)
-    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
-      color, transparent: true, opacity: 0.95, depthTest: false, depthWrite: false, side: THREE.DoubleSide,
-    }))
-    m.renderOrder = 19
-    grp.add(m)
-  }
-  return grp
-}
-
 export class Markers {
   constructor(scene) {
     this.scene = scene
     this.targetLabel = null; this.earthLabel = null
     this.targetArrow = arrowMesh(0x22d3ee); this.earthArrow = arrowMesh(0x60a5fa)
-    this.reticles = []            // 목표가 둘 이상인 안테가 있다 — 전부 물어준다
-    this.corridor = null
     scene.add(this.targetArrow, this.earthArrow)
     this.names = { target: null, earth: null }
     this.t = 0
@@ -106,7 +94,7 @@ export class Markers {
 
   // 화면에서 통째로 걷는다 — 판이 열리는 순간과 예고편 도입부는 성계만 보인다.
   hide() {
-    for (const o of [this.targetLabel, this.earthLabel, this.targetArrow, this.earthArrow, ...this.reticles])
+    for (const o of [this.targetLabel, this.earthLabel, this.targetArrow, this.earthArrow])
       if (o) o.visible = false
   }
 
@@ -127,23 +115,5 @@ export class Markers {
     const tr = radiusOfRender(t), er = radiusOfRender(e)
     this.place(this.targetLabel, this.targetArrow, t, rig, tr)
     this.place(this.earthLabel, this.earthArrow, e, rig, er)
-
-    // 레티클 — 목표마다 하나씩. 반경의 2.1배에서 천천히 회전 + 맥동
-    const tone = 0xf43f5e
-    game.targets.forEach((b, i) => {
-      if (!this.reticles[i]) { this.reticles[i] = reticle(tone); this.scene.add(this.reticles[i]) }
-      const grp = this.reticles[i]
-      grp.visible = b.alive
-      if (!b.alive) return
-      const s = radiusOfRender(b) * (2.1 + 0.16 * Math.sin(this.t * 3))
-      grp.position.set(b.pos.x, b.pos.y, 6)
-      grp.scale.set(s, s, 1)
-      grp.rotation.z = this.t * 0.6
-      for (const m of grp.children) {
-        m.material.color.setHex(tone)
-        m.material.opacity = 0.55 + 0.4 * Math.abs(Math.sin(this.t * 3))
-      }
-    })
-    for (let i = game.targets.length; i < this.reticles.length; i++) this.reticles[i].visible = false
   }
 }
