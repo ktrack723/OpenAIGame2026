@@ -46,9 +46,11 @@ function loop(now) {
   attract?.frame(dt)                  // 예고편이 카메라를 잡고 있는 동안만
   game.tick(dt); view.render(); updateHud(hud, game); inspector.update()
   if (!attract) comms.update(dt)      // 예고편 중에는 교신을 끼워 넣지 않는다
-  // 판을 이긴 순간 축하 장면을 연다(한 번만). 닫으면 다음 침공이 온다.
-  if (game.won && !game.runOver && !victory.shown && !attract) { victory.shown = true; victory.open() }
-  if (!game.won) victory.shown = false
+  // 판을 이긴 순간 축하 장면을 **시간차를 두고** 연다(한 번만).
+  // 바로 띄우면 마지막 요새가 터지는 걸 패널이 덮는다 — 패배 화면과 같은 이유다.
+  // 닫으면 다음 침공이 온다.
+  if (game.won && !game.runOver && !attract) victory.arm(); else if (!game.won) victory.disarm()
+  victory.tick()
   requestAnimationFrame(loop)
 }
 requestAnimationFrame(loop)

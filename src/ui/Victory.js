@@ -28,10 +28,20 @@ const scientist = (x, cls, coat, skin) => `
   <rect x="-9" y="40" width="18" height="3" rx="1.5" fill="#0b1826" opacity=".5"/>
 </g></g>`
 
+// 승리 패널을 올리기까지 기다리는 실시간(ms).
+// 패배 화면(hud.js의 OVER_DELAY = 2200)과 같은 이유다 — 마지막 요새가 터지는
+// 순간에 패널이 덮어 버리면 자기가 **어떻게** 이겼는지를 못 본다. 그동안 판은
+// 이미 멈춰 있고(won → effTimeScale 0) 파티클만 실시간으로 돈다.
+// 패배보다는 짧게 잡았다: 지구 화구는 크고 오래 남지만 요새 하나가 부서지는
+// 건 그보다 빨리 잦아든다.
+const OPEN_DELAY = 1500
+
 export class Victory {
   constructor(game, onContinue) {
     this.game = game
     this.onContinue = onContinue
+    this.shown = false
+    this.armedAt = undefined
     const el = document.createElement('div')
     el.className = 'victory'
     el.hidden = true
@@ -93,6 +103,16 @@ export class Victory {
       if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); this.close() }
     }
     addEventListener('keydown', this.onKey)
+  }
+
+  // 이긴 순간 main 루프가 걸어 둔다. 실제로 뜨는 건 OPEN_DELAY 뒤다.
+  arm() { if (this.armedAt === undefined) this.armedAt = performance.now() }
+  disarm() { this.armedAt = undefined; this.shown = false }
+  tick() {
+    if (this.shown || this.armedAt === undefined) return
+    if (performance.now() - this.armedAt < OPEN_DELAY) return
+    this.shown = true
+    this.open()
   }
 
   open() {

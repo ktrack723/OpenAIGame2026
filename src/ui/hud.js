@@ -317,11 +317,16 @@ export function updateHud(el, game) {
   if (el._stageIdx !== game.stageIdx) { el._stageIdx = game.stageIdx; el._sync() }
 
   // ── 모드 전환 — 관측 중에는 패널을 통째로 감추고 버튼 하나만 남긴다 ──
-  const observing = (game.mode === 'observe' || !!game.doom) && !game.runOver
-  if (el._observing !== observing) {
+  // cinematic: 오프닝 예고편의 "예측선만" 컷. 예측선은 조준 모드에서만 그려지는데
+  // (canAim), 그 컷은 조준 패널을 안 보여 주는 게 요점이라 모드는 조준으로 두고
+  // 패널과 관측 바를 둘 다 걷어낸다.
+  const cine = !!game.cinematic
+  const observing = ((game.mode === 'observe' || !!game.doom) && !game.runOver) || cine
+  if (el._observing !== observing || el._cine !== cine) {
     el._observing = observing
+    el._cine = cine
     el.hidden = observing
-    el._obsBar.hidden = !observing
+    el._obsBar.hidden = !observing || cine
   }
   if (observing) {
     // 버튼 하나에 접어 넣는 최소 정보: 배속 · 남은 시한 · 레이저 경보
