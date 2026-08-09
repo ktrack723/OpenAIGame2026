@@ -8,9 +8,12 @@ import { effDv } from '../game/roles.js'
 // 짧은 컷을 여러 개 이어 붙이지 않는다. **한 번의 발사가 끝까지 굴러가는 것**을
 // 처음부터 끝까지 한 호흡으로 보여 준다:
 //
-//   조준(예측선이 휘어진 궤적을 그린다) → 발사 → 가스 행성을 끼고 스윙바이
-//   → 돌아 나와 행성 한 대를 핵으로 후려침 → 밀려난 그 행성이 굴러가
-//   → **레이저를 충전 중이던** 조르그 본성을 그대로 들이받음
+//   ① 예측 — 조준 패널 없이 **예측선만.** 지구에서 나간 선이 가스 행성을
+//      끼고 휘어 돌아 표적에 꽂히는 게 한 화면에 그려진다. 이 게임이 무엇을
+//      계산해 주는지가 이 한 컷에 다 있다.
+//   ② 발사 + 스윙바이 — 그 선대로 탄두가 실제로 날아 휘어 돈다.
+//   ③ 쾅 — 핵이 행성 한 대를 후려치고, 밀려난 그 행성이 굴러가
+//      **레이저를 충전 중이던** 조르그 본성을 그대로 들이받는다.
 //   → 요새 격파 · 레이저 침묵 → 로고.
 //
 // 그려 놓은 그림이 아니다. 실제 게임을 굴린다 — 같은 렌더러, 같은 HUD, 같은
@@ -21,7 +24,7 @@ import { effDv } from '../game/roles.js'
 // 달라지므로, 스윙바이 궤적과 표적 위치를 **매번 수치로 푼다**(solveShot).
 // 글자는 없다 — 화면에 뜨는 문구는 전부 게임이 스스로 띄우는 HUD다.
 
-const AIM_MS = 950       // 발사 전 조준 — 예측선이 스윙바이 궤적을 그린다
+const AIM_MS = 1400      // ① 예측 컷 — 패널 없이 예측선만 보여 주는 시간
 const TAIL_MS = 900      // 요새가 부서진 뒤 여운
 // 안전장치 — 장면이 어그러졌을 때만 걸린다. 정상 진행은 요새가 부서지는
 // 순간(보통 7~9초)에 끝나므로, 느린 기기에서 잘리지 않게 넉넉히 잡는다.
@@ -29,15 +32,6 @@ const CAP_MS = 18000
 const LOGO_MS = 1500
 
 // ── 화면 ────────────────────────────────────────────────────────
-
-// HUD 패널은 넓은 화면에서 왼쪽에 붙지만, 좁은 화면(모바일)에서는 화면 아래위로
-// **도킹해 절반을 먹는다.** 그런 레이아웃에서는 조준 단계를 건너뛰고 처음부터
-// 관측 모드로 간다 — 조준 UI가 통째로 사라지고 화면 전체가 게임이 된다.
-// (넓은 화면도 발사 순간 게임이 스스로 관측 모드로 넘어간다. 원래 그런 게임이다.)
-const hudDocked = () => {
-  const r = document.querySelector('.hud')?.getBoundingClientRect()
-  return !!r && r.width > 0 && r.width >= innerWidth * 0.7
-}
 
 // 무대를 세울 축 = **화면의 긴 쪽**. 세로 화면에서 궤적을 가로로 눕히면 통째로
 // 줌아웃되어 아무것도 안 보인다.
@@ -183,8 +177,11 @@ function solveShot(g, u, n, P, cast) {
   const outDist = zone + 90
   const at = (d, off) => ({ x: P.x + u.x * d + n.x * off, y: P.y + u.y * d + n.y * off })
 
-  // 발사 속도 — 실제 조작 범위 안(지구 탈출 15.2 초과). 느릴수록 크게 휜다.
-  for (const v0 of [27, 24, 30, 21]) {
+  // 발사 속도 — 실제 조작 범위 안(지구 탈출 15.2 초과, 상한 56).
+  // 빠를수록 덜 휘므로 예전에는 느린 쪽을 먼저 골랐는데, 화면에서는 그게
+  // "한참 기어가는 탄두"로 보였다. 이제 **빠른 쪽부터** 고른다 — 굴절각이
+  // 줄어도 게임이 스윙바이로 인정하는 선(25°)만 넘기면 화면에는 그대로 휘어 돈다.
+  for (const v0 of [36, 33, 30, 27, 24]) {
     const launch = (b) => at(-approach, b)
     const vel = { x: u.x * v0, y: u.y * v0 }
     const flightT = (approach + outDist + hitJ * 5) / (v0 * 0.5)
@@ -417,24 +414,18 @@ export class Attract {
 
   start() {
     const g = this.game
-    // 좁은 화면은 조준 UI가 화면 절반을 먹으므로 처음부터 관측 모드로 간다.
-    const mode = hudDocked() ? 'observe' : 'aim'
-    g.setMode(mode)
-    this.shot = setUp(g, mode)
+    // 조준 모드로 시작한다 — 예측선은 조준 모드에서만 그려진다(canAim).
+    // 조준 패널은 cinematic 플래그로 걷어내므로 좁은 화면에서도 화면을 안 먹는다.
+    g.setMode('aim')
+    g.cinematic = true
+    this.shot = setUp(g, 'aim')
     if (!this.shot) return this.finish()      // 이 시드로는 장면이 안 나온다 — 조용히 넘어간다
 
-    // 충전 시간은 **미사일이 날아가는 내내 보이도록** 넉넉히 남겨 둔다.
-    // 큐볼이 도착하기 전에 광선이 나가 버리면 이야기가 뒤집힌다.
     // 남은 충전 시간. 장면 전체가 인게임 25초 남짓이므로, 32초를 남겨 두면
     // 카운트다운이 내내 줄어들다가 큐볼이 요새를 부수는 순간 끊긴다.
     armLaser(g, 32)
     this.bar(0.06)
-
-    if (mode === 'aim') {
-      // 조준 한 박자 — 예측선이 휘어진 궤적을 그리고 락온 표식이 큐볼에 붙는다
-      this.after(AIM_MS, () => this.launch())
-    } else this.launch()
-
+    this.after(AIM_MS, () => this.launch())
     this.after(CAP_MS, () => this.showLogo())
     return this
   }
@@ -442,7 +433,8 @@ export class Attract {
   launch() {
     if (this.done || this.phase !== 'aim') return
     this.phase = 'fly'
-    this.game.fire()          // 진짜 발사 — 게임이 스스로 관측 모드로 넘어간다
+    this.game.cinematic = false   // 여기서부터는 관측 바를 보여 준다(배속·레이저 카운트다운)
+    this.game.fire()              // 진짜 발사 — 게임이 스스로 관측 모드로 넘어간다
     this.bar(0.2)
   }
 
@@ -458,13 +450,16 @@ export class Attract {
     g.won = false; g.lost = false; g.runOver = false; g.failReason = null
     if (!g.earth.alive) g.earth.alive = true
     if (g.earth.hp <= 0) g.earth.hp = g.earth.hpMax
+    g.cinematic = this.phase === 'aim'
     if (!s || this.phase === 'logo') return
 
     const m = g.missiles.find(x => x.alive)
     const pts = []
     if (this.phase === 'aim') {
-      pts.push({ x: g.earth.pos.x, y: g.earth.pos.y, r: 150 })
-      pts.push({ x: s.J.pos.x, y: s.J.pos.y, r: hitRadiusOf(s.J) * 2.4 })
+      // 예측 컷 — 예측선이 지나갈 자리를 통째로 담는다(발사대 → 스윙바이 → 표적)
+      pts.push({ x: g.earth.pos.x, y: g.earth.pos.y, r: 130 })
+      pts.push({ x: s.J.pos.x, y: s.J.pos.y, r: hitRadiusOf(s.J) * 1.5 })
+      pts.push({ x: s.C.pos.x, y: s.C.pos.y, r: hitRadiusOf(s.C) * 2 })
     } else if (m) {
       // 비행 중 — 탄두와 스윙바이 천체를 물고 간다
       pts.push({ x: m.pos.x, y: m.pos.y, r: 90 })
@@ -505,6 +500,7 @@ export class Attract {
   finish() {
     if (this.done) return
     this.done = true
+    this.game.cinematic = false
     for (const t of this.timers) clearTimeout(t)
     removeEventListener('keydown', this.onKey)
     this.el.classList.add('out')
