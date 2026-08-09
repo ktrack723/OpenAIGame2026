@@ -329,11 +329,17 @@ export function updateHud(el, game) {
   // 패널과 관측 바를 둘 다 걷어낸다.
   const cine = !!game.cinematic
   const observing = ((game.mode === 'observe' || !!game.doom) && !game.runOver) || cine
-  if (el._observing !== observing || el._cine !== cine) {
+  // 관측 바(조준 모드 · 배속)는 **플레이어의 것**이다. 그래서 예고편이 도는
+  // 동안에는 안 띄운다 — 누를 수 없는 버튼이 화면 아래에 앉아 있으면 지금
+  // 조작할 수 있다는 거짓말이 되고, 무엇보다 그 화면은 전부 저쪽 몫이다.
+  // (예고편의 탄두가 나는 구간은 cinematic이 꺼져 있다. 지상 관제가 그때부터
+  //  입을 열어야 하기 때문인데, 그 신호를 바 표시에까지 쓰면 둘이 엉킨다.)
+  const showBar = observing && !cine && !game.trailer
+  if (el._observing !== observing || el._showBar !== showBar) {
     el._observing = observing
-    el._cine = cine
+    el._showBar = showBar
     el.hidden = observing
-    el._obsBar.hidden = !observing || cine
+    el._obsBar.hidden = !showBar
   }
 
   // ── 조작을 걷어내는 두 순간 — 둘 다 **페이드**다 ──────────────
