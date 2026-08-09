@@ -608,6 +608,9 @@ export class Attract {
   start() {
     const g = this.game
     g.cinematic = true
+    // 예고편이 도는 내내 켜져 있는 깃발. cinematic은 ⑤에서 꺼지지만(지상 관제가
+    // 그때부터 말해야 한다) 관측 바는 끝까지 안 나와야 하므로 신호를 따로 둔다.
+    g.trailer = true
     this.shot = setUp(g, 'observe')
     if (!this.shot) return this.finish()      // 이 시드로는 장면이 안 나온다 — 조용히 넘어간다
     // 판은 예고편이 직접 굴린다(stepBoard). game.tick은 손을 뗀다.
@@ -693,7 +696,9 @@ export class Attract {
     if (this.done || this.phase !== 'aim') return
     this.phase = 'fly'
     this.game.paused = false      // 여기서부터 판이 흐른다
-    this.game.cinematic = false   // 여기서부터는 관측 바를 보여 준다(배속·레이저 카운트다운)
+    // 여기서부터 지상 관제가 조르그 광선에 대해 입을 연다(Ground가 cinematic을 본다).
+    // 관측 바는 여전히 안 나온다 — 그건 g.trailer가 끝까지 막는다.
+    this.game.cinematic = false
     this.game.fire()              // 진짜 발사 — 게임이 스스로 관측 모드로 넘어간다
     this.bar(0.2)
     // 탄두가 날기 시작한 뒤 저쪽이 한 마디 한다. 발사와 동시에 띄우면 발사
@@ -714,8 +719,8 @@ export class Attract {
     g.won = false; g.lost = false; g.runOver = false; g.failReason = null
     if (!g.earth.alive) g.earth.alive = true
     if (g.earth.hp <= 0) g.earth.hp = g.earth.hpMax
-    // 관측 바를 보여 주는 건 탄두가 나는 동안뿐이다(배속·레이저 카운트다운).
-    // 나머지 구간은 화면을 통째로 쓴다.
+    // 지상 관제가 조르그 광선에 대해 말할 수 있는 건 탄두가 나는 동안뿐이다.
+    // 나머지 구간은 저쪽(조르그)의 막이라 이쪽이 끼어들면 한 방이 해설에 묻힌다.
     g.cinematic = !['fly', 'run', 'end'].includes(this.phase)
 
     // ①~③ — 판을 예고편이 직접 굴린다. 남은 스텝을 막이 끝날 때까지 고르게
@@ -802,6 +807,7 @@ export class Attract {
     if (this.done) return
     this.done = true
     this.game.cinematic = false
+    this.game.trailer = false
     this.game.paused = false
     this.game.cineBare = false
     this.comms?.close()
