@@ -92,6 +92,8 @@ export class Game {
     // 렌더러가 b.warp를 WARP_TIME에 걸쳐 0으로 내리므로, 마지막 warpIn만 보고
     // 막을 걷으면 요새가 아직 반투명한 채로 조작이 열린다.
     this.spawnEnd = added.length ? CFG.WARP_LEAD + (added.length - 1) * gap + CFG.WARP_TIME : 0
+    // 개막 동안 카메라가 따라다닐 명단. 도착 순서대로다(카메라가 그 순서로 민다).
+    this.arrivals = added
     this.targets = fortresses
     this.goal = makeGoal(fortresses)
     this.homeworld = pickHomeworld(this.bodies)   // 증원이 도착하면 stepWarpIns가 다시 고른다
@@ -175,7 +177,7 @@ export class Game {
     }
     const p = this.launchPos(), v = fromAngle(this.aim, this.power)
     this.missiles.push({
-      pos: { ...p }, vel: v, yld: this.yieldMt, alive: true, chain: 0, nearMiss: 0, age: 0,
+      pos: { ...p }, vel: v, yld: this.yieldMt, alive: true, chain: 0, nearMiss: 0, age: 0, fade: 0,
       path: [{ ...p }], pathN: 0, enc: new Map(), bestDeflection: 0,
       encountered: false, minSunDist: Infinity, hit: null, out: null, lastBelt: -99,
     })
@@ -290,6 +292,7 @@ export class Game {
     // 이미 박힌 광선의 꼬리는 판이 멈춰 있어도 끝까지 들어간다 — 광선이 지구를
     // 부순 그 순간에도(그때 판이 서 버린다) 빛은 마저 빨려 들어가야 한다.
     stepSpent(this.laser, dtFrame)
+    this.fadeSpentShots(dtFrame)
     let acc = Math.min(0.1, dtFrame) * this.effTimeScale()
     while (acc >= CFG.DT) { this.step(CFG.DT); acc -= CFG.DT }
   }
@@ -318,6 +321,23 @@ export class Game {
     this.time += dt
     this.warnTime()
     this.checkEnd()
+  }
+
+  // ─── 다 쓴 탄의 궤적 ─────────────────────────────────────────
+  // 원래는 빗나간 샷의 궤적을 **판이 끝날 때까지** 흐리게 남겼다(§14.4).
+  // 그런데 탄이 무제한이라 한 판에 열댓 발이 나가고, 그 회색 리본이 전부
+  // 그대로 쌓여 판 위에 그물이 걸렸다 — 정작 봐야 할 궤도가 그 밑에 깔린다.
+  // 이제는 결판난 뒤 잠깐 남았다가 흐려지며 걷힌다.
+  //
+  // 실시간(dtFrame)으로 센다. 조준 모드는 판을 세우므로 인게임 시계로 재면
+  // 마지막 궤적이 화면에 그대로 굳어 버린다 — 그게 지금 고치는 그 증상이다.
+  fadeSpentShots(dtFrame) {
+    for (let i = this.missiles.length - 1; i >= 0; i--) {
+      const m = this.missiles[i]
+      if (m.alive) continue
+      m.fade += dtFrame
+      if (m.fade >= CFG.SHOT_TRAIL_FADE) this.missiles.splice(i, 1)
+    }
   }
 
   // ─── 요새의 회피 분사 ───────────────────────────────────────

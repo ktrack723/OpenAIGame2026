@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { CFG, VIS } from '../game/config.js'
+import { CFG, VIS, hitRadiusOf } from '../game/config.js'
 
 // §14.1 카메라 — 탑다운 원근 뷰 + 자동 프레이밍 + 휠/핀치 줌 + 드래그 패닝.
 // 세로 화면(아이패드 세로)에서 옆이 잘리던 버그의 원인은 "높이만 맞추는 핏"이었다.
@@ -71,17 +71,40 @@ export class CameraRig {
     else i.r = Math.min(W * 0.62, W - r.left + gap)
   }
 
+  // ── 개막 프레이밍: 지금 워프해 들어오는 것들 ────────────────
+  // 막이 내려간 동안은 조준선도 발사대도 없다. 그러니 지구와 목표를 잡을
+  // 이유도 없다 — 플레이어가 봐야 하는 건 **지금 도착하는 그것**이다.
+  //
+  // 아직 안 온 것은 프레임에 안 넣는다. 그래서 상자가 한 기씩 도착할 때마다
+  // 자라고, 카메라가 그만큼 밀려간다 — "스폰을 따라 이동한다"가 이 한 줄이다.
+  // (다 온 뒤에는 상자가 안 변하므로 뜸(WARP_SETTLE) 동안 조용히 멎어 있는다.)
+  arrivalPts() {
+    const list = this.game.arrivals
+    if (!list || !list.length) return null
+    const pts = []
+    for (const b of list) {
+      if (b.warpIn > 0) continue
+      pts.push({ x: b.pos.x, y: b.pos.y, r: Math.max(150, hitRadiusOf(b) * 3.4) })
+    }
+    // 첫 한 기가 닿기 전에는 그 자리를 미리 잡아 둔다 — 빈 상자로 튀지 않게
+    if (!pts.length) pts.push({ x: list[0].pos.x, y: list[0].pos.y, r: 260 })
+    return pts
+  }
+
   // ── 자동 프레이밍: 태양·지구·목표·비행 중 미사일이 항상 "보이는 영역" 안 ──
   autoFrame() {
     const g = this.game
-    const pts = [{ x: 0, y: 0, r: CFG.R_STAR * 1.6 }]
-    const push = (b, pad) => { if (b && b.alive) pts.push({ x: b.pos.x, y: b.pos.y, r: b.radius * pad }) }
-    push(g.earth, CFG.SWING_ZONE)
-    push(g.target, CFG.SWING_ZONE + 2)
-    if (g.canAim) { const p = g.launchPos(); pts.push({ x: p.x, y: p.y, r: 60 }) }   // 발사대도 화면 안에
-    for (const m of g.missiles) if (m.alive) pts.push({ x: m.pos.x, y: m.pos.y, r: 70 })
-    // 폭발은 이 게임의 보상이다 — 화면 밖에서 터지면 못 본다. 잠깐 프레임에 붙잡아 둔다.
-    if (this.focusPt && this.focusPt.t > 0) pts.push(this.focusPt)
+    let pts = g.warpCurtain ? this.arrivalPts() : null
+    if (!pts) {
+      pts = [{ x: 0, y: 0, r: CFG.R_STAR * 1.6 }]
+      const push = (b, pad) => { if (b && b.alive) pts.push({ x: b.pos.x, y: b.pos.y, r: b.radius * pad }) }
+      push(g.earth, CFG.SWING_ZONE)
+      push(g.target, CFG.SWING_ZONE + 2)
+      if (g.canAim) { const p = g.launchPos(); pts.push({ x: p.x, y: p.y, r: 60 }) }   // 발사대도 화면 안에
+      for (const m of g.missiles) if (m.alive) pts.push({ x: m.pos.x, y: m.pos.y, r: 70 })
+      // 폭발은 이 게임의 보상이다 — 화면 밖에서 터지면 못 본다. 잠깐 프레임에 붙잡아 둔다.
+      if (this.focusPt && this.focusPt.t > 0) pts.push(this.focusPt)
+    }
     let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity
     for (const p of pts) {
       x0 = Math.min(x0, p.x - p.r); x1 = Math.max(x1, p.x + p.r)
@@ -149,15 +172,23 @@ export class CameraRig {
   }
 
   // ── 입력: 휠 / 드래그 / 두 손가락 핀치 ───────────────────────
+  // 개막 중에는 전부 막는다. 그 구간의 카메라는 **연출이 몰고 있고**(도착하는
+  // 요새를 따라간다), 그 사이에 플레이어가 끌거나 줌하면 자동 프레이밍이
+  // 꺼져서 정작 무엇이 왔는지를 놓친다. 화면에서 조작 패널을 걷는 것과 같은
+  // 이유다 — 아직 내 차례가 아니다.
+  get locked() { return !!this.game.warpCurtain }
+
   bindInput() {
     const el = this.dom
     el.style.touchAction = 'none'
     el.addEventListener('wheel', (e) => {
       e.preventDefault()
+      if (this.locked) return
       this.zoomBy(Math.pow(1.0016, -e.deltaY), e.clientX, e.clientY)
     }, { passive: false })
 
     el.addEventListener('pointerdown', (e) => {
+      if (this.locked) return
       el.setPointerCapture?.(e.pointerId)
       this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
       this.dragged = false
@@ -187,6 +218,7 @@ export class CameraRig {
     el.addEventListener('contextmenu', (e) => e.preventDefault())
     addEventListener('keydown', (e) => {
       if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return
+      if (this.locked) return
       if (e.key === '+' || e.key === '=') this.zoomBy(VIS.ZOOM_STEP)
       else if (e.key === '-' || e.key === '_') this.zoomBy(1 / VIS.ZOOM_STEP)
       else if (e.key === '0') this.snapToAuto()
@@ -229,6 +261,9 @@ export class CameraRig {
     this.aspect = Math.max(0.2, innerWidth / Math.max(1, innerHeight))
     this.updateInsets()
     if (this.focusPt && this.focusPt.t > 0) this.focusPt.t -= dt
+    // 개막이 시작되면 자동 프레이밍을 되돌린다. 지난 판에서 플레이어가 끌어
+    // 놓은 카메라를 그대로 두면 새 요새가 화면 밖에서 도착한다.
+    if (this.locked) this.auto = true
     if (this.auto) {   // 자동 모드: 목표 프레임으로 부드럽게 수렴 (스윙바이 리드 포함)
       const f = this.autoFrame(), k = 1 - Math.pow(0.002, dt)
       this.center.x += (f.cx - this.center.x) * k

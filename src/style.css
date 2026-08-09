@@ -461,12 +461,14 @@ pre{white-space:pre-wrap;line-height:1.55;color:#9fd0c4;margin:0;font-size:11px;
 .dsci.b{animation-duration:4.1s;animation-delay:.4s}
 .dsci.c{animation-duration:3.8s;animation-delay:.8s}
 @keyframes dsag{0%,100%{transform:translateY(0)}50%{transform:translateY(1.5px)}}
+/* 두 조각이 계속 멀어진다. 어긋난 높이(SHEAR)와 벌어진 틈(GAP)은 그림 자체에
+   박혀 있으므로, 여기는 "느리게 더 벌어진다"만 얹는다.
+   ※ CSS transform 은 SVG transform 속성을 덮어쓴다. 어긋남은 안쪽 <g>의
+     속성이고 이 애니메이션은 바깥 <g>에 걸린다 — 겹치면 안 된다. */
 .dsplit{animation:dapartL 7s ease-out infinite}
 .dsplit.b{animation-name:dapartR}
-@keyframes dapartL{0%{transform:translateX(0);opacity:1}100%{transform:translateX(-7px);opacity:.75}}
-@keyframes dapartR{0%{transform:translateX(0);opacity:1}100%{transform:translateX(7px);opacity:.75}}
-.dglow{animation:dcore 2.6s ease-in-out infinite}
-@keyframes dcore{0%,100%{opacity:.55}50%{opacity:1}}
+@keyframes dapartL{0%{transform:translateX(0);opacity:1}100%{transform:translateX(-13px);opacity:.7}}
+@keyframes dapartR{0%{transform:translateX(0);opacity:1}100%{transform:translateX(13px);opacity:.7}}
 .dbeam{animation:dflick 1.7s steps(1) infinite}
 @keyframes dflick{0%,72%{opacity:1}73%,100%{opacity:.25}}
 .deye{animation:dstare 3.2s ease-in-out infinite}
@@ -478,7 +480,7 @@ pre{white-space:pre-wrap;line-height:1.55;color:#9fd0c4;margin:0;font-size:11px;
 .gameover.doom{border-color:#6b2472;box-shadow:0 0 80px #a21caf55, inset 0 0 60px #2a0a3a88}
 .gameover p{margin:0 0 18px;color:#e7b7bc;font-size:12.5px;line-height:1.65;font-family:var(--mono)}
 @media (prefers-reduced-motion:reduce){
-  .gameover,.dsci,.dsplit,.dglow,.dbeam,.deye,.dalarm{animation:none}
+  .gameover,.dsci,.dsplit,.dbeam,.deye,.dalarm{animation:none}
 }
 .gameover .firebtn{border-color:#a02630;background:linear-gradient(180deg,#4a0e16,#2a070c);color:#ffd9dc;font-size:14px}
 .gameover .firebtn:hover{background:linear-gradient(180deg,#7d1521,#4a0e16);box-shadow:0 0 26px #ff5c6a66}
