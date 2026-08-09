@@ -97,7 +97,7 @@ export class Game {
     this.aim = Math.atan2(t.pos.y - this.earth.pos.y, t.pos.x - this.earth.pos.x)
     this.power = 30; this.yieldMt = CFG.YIELD_DEFAULT
     this.mode = 'aim'; this.advancing = false; this.time = 0; this.paused = false
-    this.warpHold = this.warpHold ?? false
+    this.warpHold = this.warpHold ?? false; this.curtainT = 0
     this.obsSpeed = 1   // OBS_SPEEDS 인덱스 — 기본 2×
     this.toast = null; this.toastT = 0
     this.winBanked = false; this.timeWarn = 0
@@ -176,7 +176,10 @@ export class Game {
     this.setMode('observe')
   }
 
-  addFx(e) { if (this.fx.length < 96) this.fx.push(e) }
+  // 연출 이벤트 큐. onFx는 **읽기 전용 방청석**이다 — 지상 관제(Ground)가
+  // 발사·명중·격파 같은 순간을 여기서 주워 듣는다. 렌더러가 매 프레임 fx를
+  // 비워 버리므로 큐를 나중에 보는 걸로는 못 잡는다.
+  addFx(e) { this.onFx?.(e); if (this.fx.length < 96) this.fx.push(e) }
 
   // ─── 두 가지 모드 ───────────────────────────────────────────
   // **조준 모드** — 판이 멈춘다. 미사일이 날아가는 중이라도 멈춘다.
@@ -243,8 +246,22 @@ export class Game {
     }
   }
 
+  // ─── 막 ───────────────────────────────────────────────────────
+  // 판이 열리고 조르그가 들어오는 동안은 아직 내 차례가 아니다. 조작 패널도,
+  // 이름표도, 레티클도 없이 성계만 보여 준다 — 궤도와 카이퍼 벨트까지가 전부다.
+  // 시계를 stepWarpIns와 **같은 클럭**으로 센다. 벽시계로 재면 프레임이 느린
+  // 기기에서 워프가 끝나기도 전에 막이 걷혔다(계측: 워프 잔여 0.2초에 걷힘).
+  get warpCurtain() {
+    if (this.lost || this.won || this.runOver) return false
+    return this.warpPending && (this.warpHold || this.curtainT < CFG.WARP_CURTAIN)
+  }
+  // 화면에서 UI를 통째로 걷는 구간 — 예고편 도입부(cineBare)와 판이 열리는 순간.
+  get bare() { return !!this.cineBare || this.warpCurtain }
+
   tick(dtFrame) {
     if (this.toastT > 0) this.toastT -= dtFrame
+    if (!this.warpPending) this.curtainT = 0
+    else if (!this.warpHold) this.curtainT += dtFrame
     this.stepWarpIns(dtFrame)
     let acc = Math.min(0.1, dtFrame) * this.effTimeScale()
     while (acc >= CFG.DT) { this.step(CFG.DT); acc -= CFG.DT }

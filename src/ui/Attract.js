@@ -10,7 +10,8 @@ import { effDv } from '../game/roles.js'
 //
 //   ① 평화 — 아무 일도 없는 성계. 공들이 제 궤도를 돈다.
 //   ② 워프 — 조르그가 들어온다. 카메라가 그리로 옮겨 가고, 저쪽이 한 마디 한다.
-//   ③ 광선 — 지구를 겨눠 몇 발 쏜다. 빗나간다. **아직은.**
+//   ③ 광선 — 한 발 쏜다. 지구는 비껴 가고, 곁을 돌던 행성이 통째로 사라진다.
+//      **저게 다음엔 지구로 온다.**
 //   ④ 예측 — 조준 패널 없이 **예측선만.** 지구에서 나간 선이 가스 행성을
 //      끼고 휘어 돌아 표적에 꽂히는 게 한 화면에 그려진다. 이 게임이 무엇을
 //      계산해 주는지가 이 한 컷에 다 있다.
@@ -40,14 +41,13 @@ import { effDv } from '../game/roles.js'
 const PEACE_MS = 1500    // ① 평화
 const WARP_MS = 2100     // ② 워프 + 대사
 const WARP_LINE_MS = 650 // 워프 뒤 대사가 뜨기까지 (카메라가 옮겨 갈 시간)
-const BEAM_MS = 4000     // ③ 광선 몇 발
-const BEAM_GAP = 2000    // 그중 두 번째 발사
+const BEAM_MS = 3000     // ③ 광선 한 발
 
 // ①~③이 흘려보낼 **판 시간**(인게임 초). 이만큼 되감아 두고 그만큼 되밟는다.
 // 평화·워프는 빨리 감는다 — 안쪽 행성이 눈에 띄게 돌아 줘야 "살아 있는 성계"로
 // 읽힌다(가장 안쪽 궤도가 한 바퀴 60초쯤이니 21초면 3분의 1 바퀴다).
 // 광선 구간만 실시간이다. 여기서 빨리 감으면 광선이 순간이동해 버린다.
-const ACT_SEC = { peace: 9, warp: 12, beam: 4 }
+const ACT_SEC = { peace: 9, warp: 12, beam: 3 }
 
 // 광선의 제물이 무대(지구·스윙바이 천체·큐볼·본성)에서 떨어져 있어야 하는 거리.
 // 크게 잡을 이유가 없다 — 제물이 사라지는 건 무대를 풀 때 이미 계산에 들어가
@@ -400,16 +400,10 @@ function setUp(g, mode) {
   return null
 }
 
-// ③의 두 발이 태울 행성. 총구는 조르그 본성이다.
+// ③의 한 발이 태울 행성. 총구는 조르그 본성이다.
 function victimsFor(g, cast, fort) {
-  const keep = [g.earth, fort, cast.swing, cast.cue]
-  const out = []
-  for (let i = 0; i < 2; i++) {
-    const b = pickVictim(g, keep, fort.pos.x, fort.pos.y, out)
-    if (!b) break
-    out.push(b)
-  }
-  return out
+  const b = pickVictim(g, [g.earth, fort, cast.swing, cast.cue], fort.pos.x, fort.pos.y)
+  return b ? [b] : []
 }
 
 // 조르그가 처음 들어와서 하는 말. 이 한 줄이 판의 전제다 —
@@ -443,9 +437,8 @@ function leadUnit(b, ox, oy) {
 // (ox, oy)에서 쏴서 태울 행성 하나. 판을 전혀 건드리지 않는다 — 무대를 풀기
 // **전에** "누가 없어질지"를 알아야 하기 때문이다.
 // 너무 가까우면 광선이 날아가는 게 안 보이고, 너무 멀면 **날아가는 도중에 이
-// 막이 끝난다** — 예전엔 1200 GU 언저리를 골랐는데 그게 인게임 1.4초라 두 발째가
-// 닿기 전에 ④로 넘어가 버렸다. 그래서 700 GU 언저리로 당긴다(0.8초). 상한
-// 1700 GU는 한 발에 주어진 시간(막 4초를 두 발이 나눠 쓴다)이 정하는 값이다.
+// 막이 끝난다** — 예전엔 1200 GU 언저리를 골랐는데 그게 인게임 1.4초였다.
+// 그래서 700 GU 언저리로 당긴다(0.8초). 상한 1700 GU는 막 3초가 정하는 값이다.
 // 여유를 넉넉히 잡는다. 이 계산은 **발사 시점의 판**을 놓고 하는데 실제 발사는
 // 그보다 4초 앞(③)에서 일어나므로, 그 사이 움직인 만큼 진로가 틀어져 있다.
 // 특히 안쪽 궤도의 작은 행성(수성)은 태양 원반을 스치는 각으로 바뀌기 쉬웠다 —
@@ -625,6 +618,9 @@ export class Attract {
     // 어긋난다 — 요새는 자기 몫만큼 뒤처져 서고, 큐볼이 그 자리를 스친다.
     this.zorg = this.shot.F
     this.zorg.alive = false
+    // ①은 아무 일도 없는 성계다. 이름표도 레티클도 없이 궤도와 벨트만 남긴다 —
+    // 조르그가 들어오기 전까지는 화면에 표적이라는 개념 자체가 없어야 한다.
+    g.cineBare = true
     rewind(g, stepsOf(ACT_SEC.peace))
     for (const b of g.bodies) if (b.trail) b.trail.length = 0   // 거꾸로 그린 꼬리는 버린다
     this.act('peace', PEACE_MS)
@@ -638,6 +634,7 @@ export class Attract {
   warpIn() {
     if (this.done || this.phase !== 'peace') return
     const g = this.game, z = this.zorg
+    g.cineBare = false          // 여기서부터 화면에 이름표와 레티클이 돌아온다
     this.burn()
     this.act('warp', WARP_MS)
     // 게임이 증원을 불러들일 때와 같은 연출이다(stepWarpIns가 하는 그대로).
@@ -655,16 +652,15 @@ export class Attract {
     this.burn()
     this.act('beam', BEAM_MS)
     this.bar(0.18)
-    this.volley(0)
-    this.after(BEAM_GAP, () => { if (this.phase === 'beam') this.volley(1) })
+    this.volley()
     this.after(BEAM_MS, () => this.predict())
   }
 
   // 한 발. fireBeamPast는 상태기를 돌리려고 판을 두 스텝 밀므로 그만큼 예산에서 뺀다.
-  volley(i) {
+  volley() {
     const s = this.shot
     const keep = [this.game.earth, s.F, s.J, s.C]
-    const hit = fireBeamPast(this.game, keep, s.doomed?.[i])
+    const hit = fireBeamPast(this.game, keep, s.doomed?.[0])
     if (hit) this.actLeft = Math.max(0, this.actLeft - 2)
     this.beamAt = typeof hit === 'object' ? hit : null
   }
@@ -790,6 +786,7 @@ export class Attract {
     if (this.done || this.phase === 'logo') return
     this.phase = 'logo'
     this.game.paused = false
+    this.game.cineBare = false
     // 모드는 그대로 둔다 — 여기서 조준 모드로 돌리면 로고 뒤로 HUD 패널이
     // 다시 튀어나온다. 배속만 1×로 내려 판을 잔잔하게 만든다.
     this.game.advancing = false
@@ -805,6 +802,7 @@ export class Attract {
     this.done = true
     this.game.cinematic = false
     this.game.paused = false
+    this.game.cineBare = false
     this.comms?.close()
     for (const t of this.timers) clearTimeout(t)
     removeEventListener('keydown', this.onKey)

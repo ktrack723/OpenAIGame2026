@@ -104,8 +104,17 @@ export class Markers {
     }
   }
 
+  // 화면에서 통째로 걷는다 — 판이 열리는 순간과 예고편 도입부는 성계만 보인다.
+  hide() {
+    for (const o of [this.targetLabel, this.earthLabel, this.targetArrow, this.earthArrow, ...this.reticles])
+      if (o) o.visible = false
+  }
+
   update(game, rig, dt, radiusOfRender) {
     this.t += dt
+    if (game.bare) return this.hide()
+    for (const o of [this.targetLabel, this.earthLabel, this.targetArrow, this.earthArrow])
+      if (o) o.visible = true
     const t = game.target, e = game.earth
     const nAlive = game.aliveTargets
     const suffix = game.targets.length > 1 ? ` (남은 요새 ${nAlive})` : ''

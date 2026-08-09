@@ -121,7 +121,8 @@ export class Inspector {
   }
 
   update() {
-    const b = this.current()
+    // 판이 열리는 순간과 예고편 도입부에는 아무 창도 안 뜬다
+    const b = this.game.bare ? null : this.current()
     if (!b) { if (!this.el.hidden) this.el.hidden = true; return }
     if (this.el._id !== b.id || this.el._hp !== b.hp || this.el._yld !== this.game.yieldMt) {
       this.el._id = b.id; this.el._hp = b.hp; this.el._yld = this.game.yieldMt

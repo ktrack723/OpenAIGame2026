@@ -200,7 +200,8 @@ export class Comms {
     // 조준 모드·게임 오버·모성 난사 중에는 안 뜬다.
     // 승리(won)는 막지 않는다 — 마지막 요새가 부서지는 그 순간이 곧 승리라,
     // 여기서 막으면 정작 제일 보여 주고 싶은 단말마가 통째로 사라진다.
-    const ok = g.mode === 'observe' && !g.doom && !g.runOver && !g.lost
+    // 판이 열리는 순간과 예고편 도입부(bare)에는 화면에 아무 UI도 없어야 한다.
+    const ok = g.mode === 'observe' && !g.bare && !g.doom && !g.runOver && !g.lost
     if (!ok) { if (this.left > 0) this.close(); return }
 
     // 단말마가 최우선 — 잡담 중이었어도 끊고 들어온다.

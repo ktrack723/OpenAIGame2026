@@ -5,6 +5,7 @@ import { Inspector } from './ui/Inspector.js'
 import { Intro } from './ui/Intro.js'
 import { Attract } from './ui/Attract.js'
 import { Comms } from './ui/Comms.js'
+import { Ground } from './ui/Ground.js'
 import { Victory } from './ui/Victory.js'
 
 // 시드: ?seed= 지정 시 그 값, 아니면 데일리 시드 (고정 dt + 시드 PRNG → 결정론, §4.2)
@@ -26,8 +27,11 @@ const victory = new Victory(game, () => game.nextStage())
 window.__game = game; window.__view = view; window.__victory = victory
 document.querySelector('.boot')?.remove()
 
-// 조르그 교신 — 관측 모드에서 가끔 저쪽 얼굴이 요새 위에 떠서 한 마디 던진다.
+// 두 목소리. 조르그는 요새 **위**에서 타이머로 잡담을 던지고, 지상 관제는
+// 지구 **아래**에서 사건이 벌어질 때만 보고한다 — 발사·스윙바이·명중·격파.
+// 붙는 자리가 갈려 있어서 둘이 동시에 떠도 겹치지 않는다.
 const comms = new Comms(game, view)
+const ground = new Ground(game, view)
 
 // 오프닝 — 두 단계다.
 // ① 예고편: **실제 게임을 굴려서** 한 번의 발사가 끝까지 굴러가는 걸 보여 준다.
@@ -54,6 +58,7 @@ function loop(now) {
   attract?.frame(dt)                  // 예고편이 카메라를 잡고 있는 동안만
   game.tick(dt); view.render(); updateHud(hud, game); inspector.update()
   comms.update(dt)                    // 예고편 중에도 돈다 — 박자는 예고편이 잡는다
+  ground.update(dt)
   // 판을 이긴 순간 축하 장면을 **시간차를 두고** 연다(한 번만).
   // 바로 띄우면 마지막 요새가 터지는 걸 패널이 덮는다 — 패배 화면과 같은 이유다.
   // 닫으면 다음 침공이 온다.

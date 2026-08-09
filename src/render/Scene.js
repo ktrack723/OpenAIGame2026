@@ -302,7 +302,7 @@ export class SceneView {
     this.syncMissiles()
     this.syncLines()
     this.markers.update(this.game, this.rig, dt, (b) => this.renderRadius(b))
-    this.pad.visible = this.game.canAim
+    this.pad.visible = this.game.canAim && !this.game.bare
     if (this.pad.visible) {
       const p = this.game.launchPos()
       this.pad.position.set(p.x, p.y, 4)
@@ -484,11 +484,11 @@ export class SceneView {
     this.reapMissing()
     // 조준 중이면 "지금 화면의 어느 공을 치는가"도 같이 켠다 —
     // 락온은 미래 위치에 찍히므로, 현재 위치의 그 공도 물어 줘야 눈이 이어진다.
-    const aimHit = g.canAim ? g.predictPath().hit : null
+    const aimHit = g.canAim && !g.bare ? g.predictPath().hit : null
     for (const o of [this.tintGlow, this.tintDisc, this.tintLink]) o.visible = false
     // 본성 표식 — 지금 광선을 쥔 요새 하나에만 붙는다(승계되면 따라 옮겨 간다)
     const home = g.homeworld
-    this.homeMark.visible = !!home && home.alive
+    this.homeMark.visible = !!home && home.alive && !g.bare
     if (this.homeMark.visible) {
       this.homeMark.position.set(home.pos.x, home.pos.y, 1)
       this.homeMark.scale.setScalar(this.markerRadius(home))
@@ -747,7 +747,7 @@ export class SceneView {
     const g = this.game
 
     // 발사 회랑 — 지구에서 목표까지의 직선
-    if (g.earth.alive && g.target.alive)
+    if (!g.bare && g.earth.alive && g.target.alive)
       this.ribbon([g.earth.pos, g.target.pos], 2, 0x22d3ee, { fade: false, opacity: 0.2, z: -5, tailWidth: 1, depth: true })
 
     // 궤도 트레일 — 플레이어 임펄스 직후 강조 (P4, §14.2). 공 뒤로 지나간다.
@@ -756,7 +756,14 @@ export class SceneView {
       if (!b.trail || b.trail.length < 2) continue
       if (b.type === 'debris') continue   // 충돌 한 번에 8~10개가 생긴다 — 궤적까지 그리면 판이 안 보인다
       const hot = b.trailFlash > 0
-      this.ribbon(b.trail, hot ? 9 : 5.5, hot ? 0xffffff : colorOf(b.type), { opacity: hot ? 1 : 0.75, z: -2, depth: true })
+      // 폭은 픽셀 고정이 아니라 **그 공에 대한 비율**로 묶는다.
+      // 레이저 착탄은 터진 자리를 프레임에 붙잡느라(rig.focus) 화면을 확 뒤로
+      // 빼는데, 그때 행성은 12px에서 6px로 줄어드는 반면 리본은 5.5px 그대로라
+      // 성계가 통째로 트레일 다발로 보였다(계측: 리본/행성 비율 0.45 → 0.86).
+      // 기본 화각에서의 비율을 그대로 유지하면 어느 줌에서도 같은 그림이 된다.
+      const px = this.renderRadius(b) / this.rig.worldPerPx      // 화면에서의 공 반지름
+      const w = Math.max(2, Math.min(hot ? 9 : 5.5, px * (hot ? 0.73 : 0.45)))
+      this.ribbon(b.trail, w, hot ? 0xffffff : colorOf(b.type), { opacity: hot ? 1 : 0.75, z: -2, depth: true })
     }
 
     // 미사일 궤적 — 빗나간 샷은 흐리게 스테이지 끝까지 남긴다 (§14.4)
@@ -767,7 +774,7 @@ export class SceneView {
     }
 
     // 조준선 + 큐 예측 (§14.3 개정)
-    if (g.canAim) {
+    if (g.canAim && !g.bare) {
       const p = g.launchPos()
       this.ribbon([g.earth.pos, p], 2, 0x3b82f6, { fade: false, opacity: 0.35, z: -3, tailWidth: 1, depth: true })
       const pred = g.predictPath()
