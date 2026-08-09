@@ -97,6 +97,7 @@ export class Game {
     this.aim = Math.atan2(t.pos.y - this.earth.pos.y, t.pos.x - this.earth.pos.x)
     this.power = 30; this.yieldMt = CFG.YIELD_DEFAULT
     this.mode = 'aim'; this.advancing = false; this.time = 0; this.paused = false
+    this.warpHold = this.warpHold ?? false
     this.obsSpeed = 1   // OBS_SPEEDS 인덱스 — 기본 2×
     this.toast = null; this.toastT = 0
     this.winBanked = false; this.timeWarn = 0
@@ -222,8 +223,13 @@ export class Game {
 
   // 순차 워프인 — 실시간으로 돈다. 조준 모드라 판이 멈춰 있어도
   // "조르그가 하나씩 도착하는" 연출은 흘러야 한다.
-  get warpPending() { return this.bodies.some(b => (b.warpIn ?? 0) > 0) }
+  // 단 하나 예외가 warpHold다. 튜토리얼이 화면을 덮고 있는 동안 조르그가
+  // 들어와 버리면, 규칙 설명을 다 읽고 나왔을 때 이미 도착이 끝나 있다 —
+  // 첫 판에서 제일 먼저 봐야 할 장면을 오버레이 뒤에서 놓치는 것이다.
+  // 그래서 튜토리얼을 닫는 순간부터 카운트다운이 시작된다.
+  get warpPending() { return this.warpHold || this.bodies.some(b => (b.warpIn ?? 0) > 0) }
   stepWarpIns(dtReal) {
+    if (this.warpHold) return
     for (const b of this.bodies) {
       if (!(b.warpIn > 0)) continue
       b.warpIn -= dtReal

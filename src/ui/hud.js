@@ -312,7 +312,9 @@ const FAIL_WHY = {
 const OVER_DELAY = 2200
 // 판이 시작될 때 조작을 덮어 두는 시간(ms). 조르그가 워프해 들어오는 걸
 // 보라고 주는 시간이다 — 그게 끝나면 조준 UI가 떠오른다.
-const WARP_VEIL_MS = 3000
+// 첫 판은 셋이 0.5·1.4·2.3초에 도착하니 그걸 다 덮는다. 후반에는 열 기가
+// 넘어 8초 이상 걸리는데 그동안 조작을 잠글 수는 없으므로 여기서 끊는다.
+const WARP_VEIL_MS = 4000
 
 const CTRL_IDS = ['#fire', '#findPrev', '#findNext']
 
@@ -341,9 +343,13 @@ export function updateHud(el, game) {
   const decided = game.runOver || game.won || game.lost
   // 워프인은 증원 수만큼 길어진다(후반엔 열 기가 넘어 8초 이상 걸린다).
   // 그동안 계속 조작을 잠글 수는 없으므로 앞머리만 덮는다.
-  if (game.warpPending && el._warpAt === undefined) el._warpAt = performance.now()
-  if (!game.warpPending) el._warpAt = undefined
-  const notYet = !decided && game.warpPending && performance.now() - el._warpAt < WARP_VEIL_MS
+  // 시계는 워프가 **실제로 시작된 뒤에** 돈다 — 튜토리얼이 잡아 두고 있는
+  // 동안(warpHold) 3초를 다 써 버리면, 튜토리얼을 닫자마자 조준 UI가 떠서
+  // 정작 조르그가 들어오는 걸 다시 못 보게 된다.
+  if (game.warpPending && !game.warpHold && el._warpAt === undefined) el._warpAt = performance.now()
+  if (!game.warpPending || game.warpHold) el._warpAt = undefined
+  const notYet = !decided && game.warpPending &&
+    (game.warpHold || performance.now() - el._warpAt < WARP_VEIL_MS)
   const veil = decided || notYet
   if (el._veil !== veil) {
     el._veil = veil
