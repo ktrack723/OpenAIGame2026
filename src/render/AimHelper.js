@@ -83,15 +83,10 @@ export class AimHelper {
       transparent: true, depthTest: false, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
     }))
     this.lockHemi.renderOrder = 16
-    this.lockBrackets = new THREE.Group()   // 회전하는 락온 브래킷 4개
-    for (let i = 0; i < 4; i++) {
-      const m = new THREE.Mesh(
-        new THREE.RingGeometry(1.26, 1.54, 20, 1, i * Math.PI / 2 + 0.30, Math.PI / 2 - 0.60),
-        new THREE.MeshBasicMaterial({ transparent: true, depthTest: false, depthWrite: false, side: THREE.DoubleSide }))
-      m.renderOrder = 16
-      this.lockBrackets.add(m)
-    }
-    this.scene.add(this.lockDisc, this.lockRing, this.lockHemi, this.lockBrackets)
+    // 예전엔 여기에 회전하는 코너 브래킷 넷이 더 있었다. 같은 원을 링이 이미
+    // 그리고 있어서 브래킷은 "물었다"를 두 번 말하는 것뿐이었고, 실제로 봐야 할
+    // 반달(어느 살을 치는가)을 바깥에서 어지럽혔다.
+    this.scene.add(this.lockDisc, this.lockRing, this.lockHemi)
     this.t = 0
 
     // 조준 보조 — 임펄스 방향(노랑) / 타격 직후 공의 진로(흰색) / 폭풍 반경(주황 링)
@@ -136,14 +131,14 @@ export class AimHelper {
     const h = pred.hit
     const on = !!h
     this.lockDisc.visible = on; this.lockRing.visible = on
-    this.lockHemi.visible = on; this.lockBrackets.visible = on
+    this.lockHemi.visible = on
     if (h) {
       const pulse = 0.5 + 0.5 * Math.sin(this.t * 5)
       // 락온 크기는 그 공이 **화면에 그려지는 크기** 그대로여야 한다.
       // 판정 반경만 쓰면 줌아웃 시 락온이 공보다 작아져서 딴 걸 무는 것처럼 보인다.
       const body = this.bodies.find(b => b.id === h.id)
       const R = body ? this.renderRadius(body) : h.r
-      for (const o of [this.lockDisc, this.lockRing, this.lockHemi, this.lockBrackets]) o.material?.color.setHex(tone)
+      for (const o of [this.lockDisc, this.lockRing, this.lockHemi]) o.material.color.setHex(tone)
       this.lockDisc.position.set(h.x, h.y, 4)
       this.lockDisc.scale.setScalar(R)
       this.lockDisc.material.opacity = 0.14 + 0.10 * pulse
@@ -155,14 +150,6 @@ export class AimHelper {
       this.lockHemi.scale.setScalar(R)
       this.lockHemi.rotation.z = Math.atan2(-h.dy, -h.dx)
       this.lockHemi.material.opacity = 0.55 + 0.35 * pulse
-      // 브래킷은 락온이 "물었다"는 신호 — 천천히 돌면서 숨을 쉰다
-      this.lockBrackets.position.set(h.x, h.y, 5)
-      this.lockBrackets.scale.setScalar(R * (1 + 0.06 * pulse))
-      this.lockBrackets.rotation.z = -this.t * 0.8
-      for (const m of this.lockBrackets.children) {
-        m.material.color.setHex(tone)
-        m.material.opacity = 0.6 + 0.4 * pulse
-      }
     }
 
     const ppw = this.rig.worldPerPx
@@ -215,7 +202,7 @@ export class AimHelper {
   hide() {
     if (this.predEnd) this.predEnd.visible = false
     this.lockDisc.visible = false; this.lockRing.visible = false
-    this.lockHemi.visible = false; this.lockBrackets.visible = false
+    this.lockHemi.visible = false
     this.pushArrow.visible = false
     this.courseArrow.visible = false
     this.blastRing.visible = false
