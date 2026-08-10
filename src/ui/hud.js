@@ -1,4 +1,4 @@
-import { CFG, VIS, hitRadiusOf } from '../game/config.js'
+import { CFG, VIS, blastRadius, hitRadiusOf } from '../game/config.js'
 import { ROLES, roleAim, roleBrief, roleLabel } from '../game/roles.js'
 import { bearing, toDeg180 } from '../core/angle.js'
 import { defeatArt, defeatTag } from './defeatArt.js'
@@ -79,7 +79,7 @@ export function makeHud(game, view) {
 </section>
 
 <section class="mod alarm" id="laserMod" hidden>
-  <div class="modhead"><span class="tick"></span><span>ZORG BEAM</span><span class="clockv" id="laserT">—</span></div>
+  <div class="modhead"><span class="tick"></span><span>${t('alarm.title')}</span><span class="clockv" id="laserT">—</span></div>
   <div class="alarmtext" id="laserWhy"></div>
 </section>
 
@@ -419,6 +419,22 @@ export function updateHud(el, game) {
     // 아래에서 다시 계산하게 한다(안 그러면 발사 불가 상태에서도 버튼이 산다).
     el._aimable = undefined
   }
+  // ── 토스트 ────────────────────────────────────────────────────
+  // 이 창은 패널 **밖**(document.body)에 산다. 그래서 관측 모드로 넘어가며
+  // 패널이 통째로 숨어도 토스트는 그대로 화면에 남는다 — 만료 처리를 아래
+  // 관측 조기 리턴 뒤에 두면 조준 모드에서 띄운 토스트가 그 순간 영구히 굳는다
+  // (계측: 전환 6초 뒤 toastT=0인데 hidden=false로 그대로 떠 있었다).
+  // 그래서 **만료와 문구 갱신은 모드와 무관하게** 여기서 한다.
+  //
+  // 다만 관측 중에 새로 띄우지는 않는다 — 그건 지금 동작 그대로다.
+  // (그 화면은 판만 보는 화면이라는 게 setMode의 규약이고, 거기서 토스트를
+  //  살릴지는 문구 설계가 걸린 별개의 판단이다.)
+  const toast = el._toast
+  if (game.toastT > 0 && game.toast) {
+    if (!observing) toast.hidden = false
+    if (!toast.hidden) toast.textContent = tx(game.toast)
+  } else toast.hidden = true
+
   if (observing) {
     // 버튼 하나에 접어 넣는 최소 정보: 배속 · 남은 시한 · 레이저 경보
     const left = game.timeLeft
@@ -527,7 +543,7 @@ export function updateHud(el, game) {
     el.querySelector('#lcdTag').textContent = tag
     el.querySelector('#lcdText').textContent = text
     el.querySelector('#lcdSub').textContent = sub
-      || t('lcd.default', { yield: game.yieldMt, impulse: CFG.NUKE_IMPULSE, blast: (CFG.BLAST_R * game.yieldMt).toFixed(0) })
+      || t('lcd.default', { yield: game.yieldMt, impulse: CFG.NUKE_IMPULSE, blast: blastRadius(game.yieldMt).toFixed(0) })
     fireBtn.classList.toggle('danger', p.outcome === 'earth')
     fireBtn.disabled = game.inFlight || veil
     fireBtn.querySelector('.ftext').textContent = game.inFlight ? t('ui.fire.reload')
@@ -564,8 +580,4 @@ export function updateHud(el, game) {
   // 않으므로(키만 남긴다) 그 꼬리도 여기서 잇는다.
   const line = tx(game.message) + (game.bonusNote ? t('msg.timeBonus', { n: game.bonusNote }) : '')
   if (el._msg !== line) { el._msg = line; el.querySelector('#msg').textContent = line }
-
-  const toast = el._toast
-  if (game.toastT > 0 && game.toast) { toast.hidden = false; toast.textContent = tx(game.toast) }
-  else toast.hidden = true
 }

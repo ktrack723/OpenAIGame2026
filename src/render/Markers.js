@@ -1,6 +1,7 @@
 // 이 파일에는 이미 t(표적)와 tr(표적 반지름)이라는 지역 변수가 있다.
 // 번역 함수는 그 둘과 안 부딪히게 loc으로 받는다.
 import { t as loc, nameOf } from '../i18n/index.js'
+import { CFG } from '../game/config.js'
 import * as THREE from 'three'
 
 // 목표와 지구를 한눈에: **이름표 하나와 화면 밖 방향 화살표 하나씩.**
@@ -122,11 +123,11 @@ export class Markers {
     // 세로 화면에서는 이름표가 화면 폭을 넘긴다. 그때는 "남은 요새 n"을 뺀다 —
     // 같은 숫자가 작전 줄(0/2)에 이미 크게 떠 있다.
     const suffix = game.targets.length > 1 && innerWidth >= 520 ? loc('mark.left', { n: nAlive }) : ''
-    const thp = t.hp ?? 3, tmax = t.hpMax ?? 3
+    const thp = t.hp ?? CFG.PLANET_HP, tmax = t.hpMax ?? CFG.PLANET_HP
     // 본성(◈)은 광선을 쥔 요새다 — 표적이 그놈이면 이름 옆에 박아 둔다
     const home = t === game.homeworld ? loc('mark.home') : ''
     this.setLabel('target', loc('mark.target', { name: nameOf(t), home, hp: thp, hpMax: tmax, suffix }), '#ffc9cf', 'rgba(58,10,17,.92)')
-    this.setLabel('earth', loc('mark.earth', { hp: game.earth.hp ?? 3, hpMax: game.earth.hpMax ?? 3 }), '#bfdbfe', 'rgba(23,37,84,.92)')
+    this.setLabel('earth', loc('mark.earth', { hp: game.earth.hp ?? CFG.PLANET_HP, hpMax: game.earth.hpMax ?? CFG.PLANET_HP }), '#bfdbfe', 'rgba(23,37,84,.92)')
 
     const tr = radiusOfRender(t), er = radiusOfRender(e)
     this.place(this.targetLabel, this.targetArrow, t, rig, tr)
