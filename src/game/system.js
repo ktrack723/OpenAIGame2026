@@ -273,16 +273,3 @@ export function reinforce(rng, bodies, earth, ante, stageIdx) {
   for (const b of added) bodies.push(b)
   return { added, fortresses: added.filter(b => b.role === 'battery'), aMax }
 }
-
-// 본성 지정 — 살아있는 요새 중 하나가 레이저를 쏜다.
-// 본성이 죽으면 다음 요새가 지휘권을 승계한다(레이저가 끊기지 않는다).
-export function pickHomeworld(bodies) {
-  const forts = bodies.filter(b => b.alive && b.role === 'battery')
-  if (!forts.length) return null
-  const cur = forts.find(b => b.homeworld)
-  if (cur) return cur
-  // 가장 무거운 요새가 본성이 된다 — 시각적으로도 제일 크다
-  const next = forts.reduce((a, b) => (b.mu > a.mu ? b : a))
-  next.homeworld = true
-  return next
-}
