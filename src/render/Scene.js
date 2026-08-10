@@ -767,9 +767,12 @@ export class SceneView {
     this.lines = []
     const g = this.game
 
-    // 발사 회랑 — 지구에서 목표까지의 직선
-    if (!g.bare && g.earth.alive && g.target.alive)
-      this.ribbon([g.earth.pos, g.target.pos], 2, 0x22d3ee, { fade: false, opacity: 0.2, z: -5, tailWidth: 1, depth: true })
+    // ※ '발사 회랑'(지구 → 목표를 잇는 옅은 청록 직선)은 없앴다.
+    //   그 선은 판을 가로질러 **태양 위를 지나가는 일이 잦았고**, 그러면
+    //   "태양에서 행성으로 뭔가 이어져 있다"로 읽혔다(오프닝에서 특히).
+    //   정작 그 선이 말하려던 것 — 표적이 어디 있고 얼마나 먼가 — 은 이미
+    //   세 군데서 말하고 있다: 표적 이름표, 화면 밖 방향 화살표, 작전 줄의
+    //   '1104 GU · 94°'. 같은 말을 네 번째로 하면서 판까지 가리고 있었다.
 
     // 궤도 트레일 — 플레이어 임펄스 직후 강조 (P4, §14.2). 공 뒤로 지나간다.
     for (const b of g.bodies) {
