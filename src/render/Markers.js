@@ -81,7 +81,18 @@ export class Markers {
       if (label.visible) {
         const { w, h } = label.userData.px
         label.scale.set(w * ppw, h * ppw, 1)
-        label.position.set(body.pos.x, body.pos.y + rRender * 2.3 + h * ppw * 0.7, 8)
+        // 이름표는 **화면 안으로 밀어 넣는다.** 공에 그냥 붙여 두면 공이
+        // 가장자리에 있을 때 스프라이트 절반이 화면 밖으로 나가 글자가 잘렸다
+        // (세로 화면에서는 이름표가 화면보다 넓어 양쪽이 다 잘렸다).
+        // 이름표가 보이는 영역보다도 넓으면 밀어 봐야 소용없으니 가운데에 둔다.
+        const half = w * ppw / 2 + 8 * ppw   // 8px는 가장자리에 딱 붙지 않게 두는 숨통
+        const lx = 2 * half >= v.x1 - v.x0 ? (v.x0 + v.x1) / 2
+          : Math.max(v.x0 + half, Math.min(v.x1 - half, body.pos.x))
+        // 세로도 같이 가둔다 — 공이 패널 코앞에 있으면 이름표가 패널 뒤로
+        // 반쯤 들어가 읽히지 않았다.
+        const vpad = h * ppw * 0.6
+        const ly = Math.max(v.y0 + vpad, Math.min(v.y1 - vpad, body.pos.y + rRender * 2.3 + h * ppw * 0.7))
+        label.position.set(lx, ly, 8)
       }
     }
     arrow.visible = !inside && body.alive
@@ -108,7 +119,9 @@ export class Markers {
       if (o) o.visible = true
     const t = game.target, e = game.earth
     const nAlive = game.aliveTargets
-    const suffix = game.targets.length > 1 ? loc('mark.left', { n: nAlive }) : ''
+    // 세로 화면에서는 이름표가 화면 폭을 넘긴다. 그때는 "남은 요새 n"을 뺀다 —
+    // 같은 숫자가 작전 줄(0/2)에 이미 크게 떠 있다.
+    const suffix = game.targets.length > 1 && innerWidth >= 520 ? loc('mark.left', { n: nAlive }) : ''
     const thp = t.hp ?? 3, tmax = t.hpMax ?? 3
     // 본성(◈)은 광선을 쥔 요새다 — 표적이 그놈이면 이름 옆에 박아 둔다
     const home = t === game.homeworld ? loc('mark.home') : ''
