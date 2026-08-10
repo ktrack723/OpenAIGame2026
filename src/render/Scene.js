@@ -139,8 +139,7 @@ function missileParts() {
 //      옆모습으로, 하나는 위에서 보인다 — 즉 3D로 읽힌다.
 //   ② 발사구 테 — 프롱이 박혀 있는 두 겹의 고리. 겉면에 딱 맞게 앉아서
 //      팔이 허공에서 시작하지 않게 하고, 위에서 보면 그게 곧 포구다.
-//   ③ 적도 참호 — 총구 방향을 축으로 몸통을 감는 고리. 데스스타의 그 홈이다.
-//   ④ 구슬과 속불 — 프롱 끝의 점화구, 그리고 초점의 속불. 충전이 찰수록
+//   ③ 구슬과 속불 — 프롱 끝의 점화구, 그리고 초점의 속불. 충전이 찰수록
 //      달아오르고 커진다. 발사 순간 광선은 정확히 이 자리를 지나간다.
 //
 // 단위는 **구체 반지름**이다(= 판정 반경. 이 게임은 그리는 원과 판정 원이
@@ -163,12 +162,11 @@ function fortParts() {
   // 길이는 인스턴스마다 scale.x 로 맞춘다.
   const prong = new THREE.CylinderGeometry(0.045, 0.088, 1, 12)
   prong.rotateZ(-Math.PI / 2); prong.translate(0.5, 0, 0)
-  // 적도 참호 — 고리 축을 총구 방향(+x)으로 눕힌다. 겉면 바로 위에 얹혀서
-  // 위에서 보면 총구와 직각으로 몸통을 가로지르는 홈 한 줄로 읽힌다.
-  const trench = new THREE.TorusGeometry(1.005, 0.03, 8, 56)
-  trench.rotateY(Math.PI / 2)
+  // ※ 적도 참호(몸통을 감는 고리)는 없앴다. 데스스타의 그 홈을 흉내 낸
+  //   것이었는데, 화면에서는 가스 행성의 고리와 같은 실루엣이 되어 요새가
+  //   "고리 달린 행성"으로 읽혔다. 요새를 요새로 읽히게 하는 건 발사기다.
   return {
-    prong, trench,
+    prong,
     rim: new THREE.TorusGeometry(FORT_RIM, 0.055, 8, 44),
     inner: new THREE.TorusGeometry(FORT_INNER, 0.035, 8, 32),
     bead: new THREE.SphereGeometry(0.075, 10, 8),
@@ -470,7 +468,7 @@ export class SceneView {
     }
     if (fx.fort) {
       // 지오메트리는 fortGeo가 공유한다 — 여기서 버리는 건 재질 셋뿐이다
-      for (const m of [fx.fort.steel, fx.fort.hull, fx.fort.hot, fx.fort.fire]) m.dispose()
+      for (const m of [fx.fort.steel, fx.fort.hot, fx.fort.fire]) m.dispose()
       this.scene.remove(fx.fort.grp)
     }
   }
@@ -560,11 +558,6 @@ export class SceneView {
       color: 0x3a1622, roughness: 0.34, metalness: 0.92,
       emissive: new THREE.Color(0xff2d4d), emissiveIntensity: 0.1,
     })
-    // 선체 — 적도 참호처럼 몸통에 속한 것. 여긴 안 달아오른다(총구만 달아오른다).
-    const hull = new THREE.MeshStandardMaterial({
-      color: 0x2a2026, roughness: 0.5, metalness: 0.8,
-      emissive: new THREE.Color(0x5c0f1c), emissiveIntensity: 0.35,
-    })
     // 점화구·속불 — 가산 합성이라 겹칠수록 하얗게 탄다
     const hot = new THREE.MeshBasicMaterial({
       color: 0xff5c9e, transparent: true, opacity: 0.8,
@@ -575,7 +568,6 @@ export class SceneView {
       depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending,
     })
     const add = (geo, mat) => { const m = new THREE.Mesh(geo, mat); grp.add(m); return m }
-    add(G.trench, hull)
     // 발사구가 앉는 자리 — 총구(+x)에서 카메라 쪽으로 들어 올린 방향 D.
     // (D, U, V)는 정규직교라 D 둘레의 원을 각도 하나로 찍을 수 있다.
     const X = new THREE.Vector3(1, 0, 0)
@@ -615,7 +607,7 @@ export class SceneView {
     core.position.copy(focus)
     core.renderOrder = 9
     this.scene.add(grp)
-    fx.fort = { grp, core, beads, steel, hull, hot, fire }
+    fx.fort = { grp, core, beads, steel, hot, fire }
   }
 
   // 총구가 향하는 쪽 = **언제나 지구**다. 무엇을 하고 있든 그렇다.

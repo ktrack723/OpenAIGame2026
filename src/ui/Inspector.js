@@ -113,13 +113,20 @@ export class Inspector {
     for (const key of [b.role, ...modsOf(b)]) {
       const R = ROLES[key]
       if (!R) continue
-      out.push(`<div class="irole" style="color:#${R.color.toString(16).padStart(6, '0')}">`
-        + `${R.icon} ${roleLabel(key)} — ${roleBrief(key)}</div>`)
+      const hex = `#${R.color.toString(16).padStart(6, '0')}`
+      out.push(`<div class="irole" style="color:${hex}">${R.icon} ${roleLabel(key)} — ${roleBrief(key)}</div>`)
+      // 요새의 나머지 설명은 **그 요새가 실제로 그럴 때만** 붙인다.
+      // 대형은 2판부터, 추진기는 3판부터 온다 — 1판에서 그 둘을 미리 읽히면
+      // 지금 필요한 한 줄("한 번 처박으면 끝난다")이 그 안에 묻힌다.
+      if (key === 'battery') {
+        if (hpMax > 1) out.push(`<div class="irole" style="color:${hex}">${t('role.battery.heavy')}</div>`)
+        if (b.boost > 0) out.push(`<div class="irole" style="color:${hex}">${t('role.battery.boost')}</div>`)
+      }
     }
     if (b.role === 'volatile') out.push(`<div class="irow"><span>${t('insp.volatileR')}</span><b>${fmt(volatileRadius(b))} GU</b></div>`)
     out.push(`<div class="ifoot">${b.isEarth
       ? t('insp.foot.earth')
-      : hostile ? t('insp.foot.foe') : t('insp.foot.cue', { hint: mc.hint })}</div>`)
+      : hostile ? t('insp.foot.foe', { hp: hpMax }) : t('insp.foot.cue', { hint: mc.hint })}</div>`)
     return out.join('')
   }
 

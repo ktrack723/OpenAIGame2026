@@ -56,7 +56,9 @@ export const en = {
   'lcd.warn.eject': '↩ Out to the belt and back ({v}>{esc})',
 
   'goal.title': 'DESTROY ALL ZORG FORTRESSES',
-  'goal.rule': 'Wipe out every Zorg fortress (☠). A standard fortress has 1 HP — one solid impact ends it. From stage 2 heavy fortresses (◇◇) arrive with 2 HP and need two impacts — the marker shows their health. Sun, singularity and gas detonation all count.',
+  'goal.rule': 'Wipe out every Zorg fortress (☠). 1 HP — one solid impact ends it.',
+  'goal.heavy': 'This wave includes heavy fortresses (◇◇) — 2 HP, so they take two impacts.',
+  'goal.boost': 'From this wave the fortresses carry a thruster — they sidestep once when they see a shot coming.',
   'cause.collision': 'Destroyed by collision', 'cause.absorb': 'Swallowed by a singularity', 'cause.sun': 'Dropped into the sun',
   'cause.blast': 'Gas detonation', 'cause.laser': 'Pierced by the Zorg beam',
 
@@ -76,7 +78,9 @@ export const en = {
   'cat.hostile': 'Zorg fortress',
 
   'role.battery': 'Zorg fortress',
-  'role.battery.brief': '☠ This is the target. **Every fortress is a gun** — each charges a beam at Earth, and they fire in turn on a stagger. Kill one and its turn vanishes with it; kill one mid-charge and that shot is cancelled. Usually 1 HP; the heavy kind (from stage 2) has 2 and is that much bigger. From stage 3 each carries a thruster, but it takes them **a few seconds to notice a shot and burn it** — a course that locks on late lands anyway.',
+  'role.battery.brief': '☠ This is the target. It charges a beam at Earth, and the fortresses fire in turn on a stagger. Kill one and its turn vanishes with it; kill one mid-charge and that shot is cancelled.',
+  'role.battery.heavy': '◇◇ Heavy — 2 HP. One impact will not break it.',
+  'role.battery.boost': '⇢ One thruster — it sidesteps a few seconds after spotting an incoming shot. Once per stage only, so a course locked in late still lands.',
   'role.battery.aim': 'Zorg fortress — one good hit ends it',
   'role.armor': 'Metal planet',
   'role.armor.brief': '🔩 Heavy. Nuclear impulse lands at only {pct}% — it does move, but half as much.',
@@ -101,7 +105,7 @@ export const en = {
   'insp.radius': 'Radius / hitbox', 'insp.orbit': 'Orbital radius', 'insp.speed': 'Speed',
   'insp.dv': 'Nuclear Δv ({yield}Mt)', 'insp.volatileR': 'Detonation radius',
   'insp.foot.earth': 'Three impacts and Earth is gone — blast waves push it too, so be careful.',
-  'insp.foot.foe': '1 HP — one solid impact ends it. Sun, singularity and detonation all count.',
+  'insp.foot.foe': '{hp} HP — that many solid impacts end it. Sun, singularity and detonation all count.',
   'insp.foot.cue': '{hint} — pushing balls into the target is the whole game.',
 
   'planet.mercury': 'Mercury', 'planet.venus': 'Venus', 'planet.earth': 'Earth',

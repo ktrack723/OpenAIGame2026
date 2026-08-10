@@ -56,7 +56,9 @@ export const zhHans = {
   'lcd.warn.eject': '↩ 冲到带边再弹回来（{v}>{esc}）',
 
   'goal.title': '歼灭佐格要塞',
-  'goal.rule': '清除所有佐格要塞（☠）。普通要塞体力为 1 — 结结实实撞一次就完。第 2 关起混进来的大型要塞（◇◇）体力为 2，要撞两次 — 标记上会显示体力。太阳、吞噬与殉爆同样算数。',
+  'goal.rule': '清除所有佐格要塞（☠）。体力为 1 — 结结实实撞一次就完。',
+  'goal.heavy': '这一波混着大型要塞（◇◇）— 体力为 2，要撞两次。',
+  'goal.boost': '从这一波起要塞带着推进器 — 察觉到来弹会侧闪一次。',
   'cause.collision': '碰撞摧毁', 'cause.absorb': '被奇点吞噬', 'cause.sun': '投入恒星',
   'cause.blast': '殉爆', 'cause.laser': '被佐格光束贯穿',
 
@@ -76,7 +78,9 @@ export const zhHans = {
   'cat.hostile': '佐格要塞',
 
   'role.battery': '佐格要塞',
-  'role.battery.brief': '☠ 这就是目标。**每座要塞都是炮台** — 各自对地球充能，错开时间轮流开火。毁掉一座，那一轮也随之消失；在充能途中毁掉，这一发就取消。通常体力 1，大型（第 2 关起）为 2，个头也相应更大。第 3 关起每座都带一具推进器，但从察觉来弹到点火**要好几秒** — 太晚咬上的弹道照样命中。',
+  'role.battery.brief': '☠ 这就是目标。它对地球充能，各要塞错开时间轮流开火。毁掉一座，那一轮也随之消失；在充能途中毁掉，那一发就取消。',
+  'role.battery.heavy': '◇◇ 大型 — 体力 2。一次撞不碎。',
+  'role.battery.boost': '⇢ 一具推进器 — 察觉来弹几秒后侧闪。每关只有一次，太晚咬上的轨道照样命中。',
   'role.battery.aim': '佐格要塞 — 这一击就能结束',
   'role.armor': '金属行星',
   'role.armor.brief': '🔩 很重。核冲量只吃进 {pct}% — 会动，但只有一半。',
@@ -101,7 +105,7 @@ export const zhHans = {
   'insp.radius': '半径 / 判定', 'insp.orbit': '轨道半径', 'insp.speed': '速率',
   'insp.dv': '核 Δv（{yield}Mt）', 'insp.volatileR': '殉爆半径',
   'insp.foot.earth': '地球被撞三次就完了 — 冲击波也能推动它，小心。',
-  'insp.foot.foe': '体力 1 — 结结实实撞一次就完。太阳、奇点与殉爆同样算数。',
+  'insp.foot.foe': '体力 {hp} — 撞够这么多次就完。太阳、奇点与殉爆同样算数。',
   'insp.foot.cue': '{hint} — 把球推进目标里，这就是这个游戏。',
 
   'planet.mercury': '水星 Mercury', 'planet.venus': '金星 Venus', 'planet.earth': '地球 Earth',
