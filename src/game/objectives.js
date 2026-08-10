@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.js'
 // ─── 작전 목표 ──────────────────────────────────────────────────
 // 규칙은 언제나 하나다: **조르그 요새(☠)를 전부 없앤다.**
 // 방법은 묻지 않는다 — 행성끼리 처박든, 태양에 떨어뜨리든,
@@ -5,23 +6,17 @@
 // 성계 추방은 없앴다: 바깥은 카이퍼 벨트가 막고 있어서 아무도 못 나간다.
 
 // cause: 'collision' | 'absorb' | 'sun' | 'blast' | 'laser'
-export const CAUSE_KO = {
-  collision: '충돌 파괴', absorb: '특이점 흡수', sun: '항성 처분', blast: '유폭',
-  laser: '조르그 레이저에 관통',
-}
+export const causeText = (c) => t(`cause.${c}`)
 
-const GOAL_TITLE = '조르그 요새 섬멸'
-const GOAL_RULE =
-  '조르그 요새(☠)를 전부 없애라. 보통 요새는 체력 1 — 제대로 한 번 처박으면 끝난다. '
-  + '2판부터 섞여 오는 대형 요새(◇◇)는 체력 2라 두 번 처박아야 한다 — 표식에 체력이 뜬다. '
-  + '태양·흡수·유폭도 인정된다.'
 
 // 목표는 판 위의 상태에서 직접 읽는다. 카운터를 따로 굴리면 어긋날 여지가
 // 생기는데, "살아있는 요새가 0인가"는 어긋날 수가 없다.
 export function makeGoal(fortresses) {
   return {
-    title: GOAL_TITLE,
-    rule: GOAL_RULE,
+    // 제목과 규칙은 언어 표에서 그때그때 읽는다 — 문자열로 굳혀 두면
+    // 판이 도는 중에 언어를 바꿨을 때 목표만 옛 언어로 남는다.
+    get title() { return t('goal.title') },
+    get rule() { return t('goal.rule') },
     total: fortresses.length,
     ids: fortresses.map(f => f.id),
     get done() { return this.total - this.alive },

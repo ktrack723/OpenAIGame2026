@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.js'
 import * as THREE from 'three'
 import { makeArrow, setArrow } from './Arrow.js'
 
@@ -187,8 +188,8 @@ export class AimHelper {
       // 안 읽혔던 건 "노란 화살표와 흰 화살표 중 어느 쪽이 무엇인가"였다 —
       // 그 하나만 답한다. 색은 화살표와 같게 맞춰 라벨이 어느 선의 것인지도 붙인다.
       const pa = Math.atan2(h.dy, h.dx)
-      drawTag(this.pushTag, '충격 방향', '#fbbf24')
-      drawTag(this.courseTag, '바뀐 진로', '#ffffff')
+      drawTag(this.pushTag, t('mark.push'), '#fbbf24')
+      drawTag(this.courseTag, t('mark.course'), '#ffffff')
       const place = (tag, ax, ay, ang, dist) => {
         const px = tag.userData.px
         tag.scale.set(px.w * ppw, px.h * ppw, 1)

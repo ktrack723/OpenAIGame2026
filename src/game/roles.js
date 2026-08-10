@@ -1,4 +1,5 @@
 import { CFG, nukeDv } from './config.js'
+import { t } from '../i18n/index.js'
 
 // ─── 행성 태그 — 다섯 ───────────────────────────────────────────
 // 태그가 안 붙은 건 전부 **일반 행성**이다. 규칙이 없는 게 규칙이라
@@ -13,38 +14,21 @@ import { CFG, nukeDv } from './config.js'
 // 태그는 **행성의 종류가 정한다**(아래 TAG_BY_TYPE). 금속 행성처럼 생긴 게
 // 금속 행성이고 가스 행성처럼 생긴 게 터진다 — 보이는 것과 규칙이 어긋나지 않는다.
 // 조르그 요새만 예외로, 종류와 무관하게 조르그가 무장시킨 천체다.
+// 표에는 **키와 숫자만** 둔다. 문장(라벨·설명·조준 한 줄)은 언어 표에 있고,
+// 여기서는 role.<키> · role.<키>.brief · role.<키>.aim 세 자리를 약속으로 쓴다.
+// dvScale은 게임 수치라 언어와 무관하게 여기 남는다.
 export const ROLES = {
-  battery: {
-    label: '조르그 요새', icon: '☠', color: 0xf43f5e,
-    dvScale: 1,
-    brief: '☠ 이게 표적이다. 보통은 체력 1, 대형(2판부터)은 2이고 그만큼 크다. 3판부터는 추진기를 하나씩 달고 와서 꽂히는 탄을 딱 한 번 옆으로 피한다 — 첫 발로 그걸 빼고 다음 발로 잡는다. 본성(◈)은 지구를 겨눠 광선을 충전하는 놈 — 먼저 부수면 충전이 취소되고 지휘권이 다음 요새로 넘어간다.',
-    aim: '조르그 요새 — 이 한 방으로 끝난다',
-  },
-  armor: {
-    label: '금속 행성', icon: '🔩', color: 0x94a3b8,
-    dvScale: CFG.ARMOR_DV,
-    brief: `🔩 무겁다. 핵 임펄스가 ${(CFG.ARMOR_DV * 100).toFixed(0)}%만 먹는다 — 밀리긴 하지만 절반이다.`,
-    aim: `금속 행성 — 무거워서 밀리는 양이 ${(CFG.ARMOR_DV * 100).toFixed(0)}%다`,
-  },
-  volatile: {
-    label: '가스 행성', icon: '🪐', color: 0xfb923c,
-    dvScale: 1,
-    brief: '🪐 터진다. 핵을 맞으면 그 자리에서 유폭해 반경 안의 모든 천체를 밀어낸다.',
-    aim: '가스 행성 — 맞는 순간 유폭한다 (주황 원 안이 전부 밀린다)',
-  },
-  light: {
-    label: '얼음 행성', icon: '🧊', color: 0x8be9ff,
-    dvScale: 1,
-    brief: '🧊 가볍다. 질량이 같은 크기 대비 절반이라 핵 한 방에 두 배로 밀린다 — 최고의 큐볼.',
-    aim: '얼음 행성 — 가벼워서 크게 밀린다',
-  },
-  void: {
-    label: '특이점', icon: '🕳', color: 0xa855f7,
-    dvScale: 0,
-    brief: '🕳 삼킨다. 블랙홀·태양과 같은 부류다 — 핵도 안 통하고 부술 수도 없다. 여기로 밀어 넣어라.',
-    aim: '특이점 — 핵이 통하지 않는다 (탄두만 소멸)',
-  },
+  battery: { icon: '☠', color: 0xf43f5e, dvScale: 1 },
+  armor: { icon: '🔩', color: 0x94a3b8, dvScale: CFG.ARMOR_DV },
+  volatile: { icon: '🪐', color: 0xfb923c, dvScale: 1 },
+  light: { icon: '🧊', color: 0x8be9ff, dvScale: 1 },
+  void: { icon: '🕳', color: 0xa855f7, dvScale: 0 },
 }
+// 태그 문장 — 부르는 쪽은 이 셋만 쓴다.
+const PCT = { pct: (CFG.ARMOR_DV * 100).toFixed(0) }
+export const roleLabel = (k) => t(`role.${k}`)
+export const roleBrief = (k) => t(`role.${k}.brief`, PCT)
+export const roleAim = (k) => t(`role.${k}.aim`, PCT)
 
 // 종류 → 태그. 여기 없는 종류는 전부 일반 행성이다.
 export const TAG_BY_TYPE = { iron: 'armor', gas: 'volatile', void: 'void', ice: 'light' }
@@ -60,10 +44,9 @@ export const TYPE_MU_MUL = { ice: 0.55 }
 // 그와 견줘 읽으면 된다: 60이면 총알처럼 날아가고, 5면 꿈쩍도 안 한다.
 export function massClass(b) {
   const dv = nukeDv(CFG.YIELD_MAX, b.mu) * dvScaleOf(b)
-  if (dv >= 60) return { key: 'feather', label: '아주 가벼움', hint: '한 방에 총알처럼 날아간다', color: '#7dd3fc' }
-  if (dv >= 25) return { key: 'light', label: '가벼움', hint: '큐볼로 쓰기 좋다', color: '#a5f3fc' }
-  if (dv >= 10) return { key: 'medium', label: '보통', hint: '큰 작약이면 궤도가 바뀐다', color: '#cbd5e1' }
-  return { key: 'heavy', label: '무거움', hint: '핵으로는 거의 못 민다 — 다른 공을 던져라', color: '#f5b544' }
+  const key = dv >= 60 ? 'feather' : dv >= 25 ? 'light' : dv >= 10 ? 'medium' : 'heavy'
+  const color = { feather: '#7dd3fc', light: '#a5f3fc', medium: '#cbd5e1', heavy: '#f5b544' }[key]
+  return { key, color, get label() { return t(`mass.${key}`) }, get hint() { return t(`mass.${key}.hint`) } }
 }
 // 이 천체에 붙은 주 태그의 정의(없으면 null). 조르그 요새가 최우선 —
 // 금속으로 만든 요새라도 플레이어에게 먼저 읽혀야 하는 건 "표적"이라

@@ -1,4 +1,5 @@
 import { hitRadiusOf } from '../game/config.js'
+import { t, tList } from '../i18n/index.js'
 
 // ─── 지상 관제 ──────────────────────────────────────────────────
 // 조르그가 요새 위에서 잡담을 던진다면(Comms), 이쪽은 **지구 아래에서 사건에
@@ -55,55 +56,21 @@ const FACES = [
 // 우선순위(prio)가 높은 사건은 낮은 사건을 끊고 들어온다. 같은 프레임에 둘이
 // 겹치는 일이 흔하기 때문이다 — 핵 한 방이 요새를 부수면 nuke와 요새 격파가
 // 같이 온다. 그럴 때 할 말은 하나뿐이다.
+//
+// 문장은 언어 표에 있다(gnd.*). 여기 남는 건 **어떤 사건에 입을 여는가**와
+// 그 우선순위뿐이다.
+//
+// ※ 카이퍼 벨트 반사는 뺐다. 벨트는 판마다 수십 번 울리는 배경 규칙인데,
+//   그때마다 관제가 "운동량은 그대로다"라고 설명하면 정작 격파·유폭 같은
+//   사건에서 할 말이 그 잡음에 묻힌다. 벽에 튕기는 건 화면이 이미 말한다.
 const SAY = {
   // 요새 격파는 fx가 아니라 **명단을 대조해** 잡는다. destroy 이벤트는 광선이
   // 우리 행성을 녹일 때도 똑같이 나가서, 그걸로는 승패를 구분할 수 없다.
-  fortDown: { prio: 6, lines: [
-    '요새 소멸 확인. 저 궤도는 이제 비었다.',
-    '표적 하나 지웠다. 다음 좌표 넘긴다.',
-    '명중 판정 — 조르그 요새, 신호 끊김.',
-  ] },
-  laserHit: { prio: 4, lines: [
-    '행성 하나가 통째로 녹았다. 체력 같은 건 소용없다.',
-    '광선이 지나간 자리에 아무것도 안 남았다.',
-  ] },
-  nuke: { prio: 4, lines: [
-    '탄두 기폭. 이제 저 공이 어디로 가는지가 전부다.',
-    '쳤다. 밀린 각도 계산 들어간다.',
-    '유효타 — 궤도가 바뀌는 게 보인다.',
-  ] },
-  volatile: { prio: 4, lines: [
-    '휘발성 유폭! 반경 안이 통째로 밀렸다.',
-    '연쇄 폭발 — 저 근처 궤도는 전부 다시 계산해야 한다.',
-  ] },
-  boost: { prio: 5, lines: [
-    '요새가 추진기를 태웠다 — 옆으로 비켰다. 저건 한 번뿐이다.',
-    '회피 기동 확인. 다음 발은 안 피한다.',
-    '표적이 궤도를 틀었다. 추진기는 저걸로 끝이다 — 다시 쏴라.',
-  ] },
-  swing: { prio: 3, lines: [
-    '스윙바이 성사. 중력이 대신 쳐 줬다.',
-    '궤도가 꺾인다 — 계산대로다.',
-    '가속 확인. 공짜로 얻은 속도다.',
-  ] },
-  launch: { prio: 2, lines: [
-    '탄두 이탈. 여기서부터는 궤도가 알아서 한다.',
-    '큐를 놓았다. 남은 건 보는 일뿐이다.',
-    '발사 확인 — 손을 떠났다.',
-  ] },
-  laserCharge: { prio: 3, lines: [
-    '조르그 조준선 포착. 대응 시간 시작한다.',
-    '충전 신호 잡혔다 — 저쪽이 지구를 겨눈다.',
-    '경보. 본성이 광선을 물었다.',
-  ] },
-  laserMiss: { prio: 3, lines: [
-    '광선 소진 — 빗나갔다. 아직 살아 있다.',
-    '회피 성공. 지구는 원래 자리에 없었다.',
-  ] },
-  belt: { prio: 1, lines: [
-    '카이퍼 벨트 반사 — 운동량은 그대로 돌아온다.',
-    '벨트에 튕겼다. 성계 밖으로는 아무것도 못 나간다.',
-  ] },
+  fortDown: 6,
+  laserHit: 4, nuke: 4, volatile: 4,
+  boost: 5,
+  swing: 3, laserCharge: 3, laserMiss: 3,
+  launch: 2,
 }
 
 // 조르그 광선에 대한 반응 — 예고편에서는 이 셋만 입을 다문다.
@@ -147,15 +114,15 @@ export class Ground {
   // game.addFx가 흘려보내는 사건. 여기서는 **고르기만** 하고, 실제로 띄우는 건
   // update()다 — 한 프레임에 여러 사건이 몰리면 그중 제일 센 것만 말해야 한다.
   feed(e) {
-    const s = SAY[e.kind]
-    if (!s) return
+    const prio = SAY[e.kind]
+    if (!prio) return
     if (e.kind === 'laserHit' && e.sun) return    // 태양이 막은 건 아무것도 안 없앤다
     // 예고편이 화면을 잡고 있는 동안(game.cinematic)은 **조르그 광선에 대해
     // 아무 말도 하지 않는다.** ③은 저쪽의 막이다 — 거기서 이쪽이 끼어들어
     // 위력에 감탄하면 정작 보여 주려던 한 방이 해설에 묻힌다.
     // 이쪽 목소리는 ⑤에서 탄두가 나갈 때 처음 들어온다(그때는 cinematic이 꺼진다).
     if (LASER_KINDS.has(e.kind) && this.game.cinematic) return
-    this.raise(e.kind, s.prio)
+    this.raise(e.kind, prio)
   }
 
   raise(kind, prio) { if (!this.queued || prio > this.queued.prio) this.queued = { kind, prio } }
@@ -170,12 +137,13 @@ export class Ground {
   }
 
   show(kind, prio) {
-    const s = SAY[kind]
-    const i = this.last[kind] = pick(s.lines, this.last[kind] ?? -1)
+    const lines = tList(`gnd.${kind}`)
+    if (!lines.length) return
+    const i = this.last[kind] = pick(lines, this.last[kind] ?? -1)
     this.face = pick(FACES, this.face)
     this.faceEl.innerHTML = FACES[this.face]
-    this.whoEl.textContent = '지구 관제'
-    this.lineEl.textContent = s.lines[i]
+    this.whoEl.textContent = t('gnd.who')
+    this.lineEl.textContent = lines[i]
     this.el.hidden = false
     this.el.classList.remove('out')
     this.el.classList.add('in')
@@ -214,7 +182,7 @@ export class Ground {
     const ok = g.mode === 'observe' && !g.bare && !g.doom && !g.runOver && !g.lost
     if (!ok) { this.queued = null; if (this.left > 0) this.close(); return }
 
-    if (down) this.raise('fortDown', SAY.fortDown.prio)
+    if (down) this.raise('fortDown', SAY.fortDown)
     const q = this.queued
     this.queued = null
     // 앞의 말이 아직 새것이면(FLOOR 안) 더 센 사건만 끊고 들어온다.

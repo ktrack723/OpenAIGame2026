@@ -6,7 +6,8 @@ import {
   segHitsCircle, shatter, stepBodies, stepMissile, updateEncounters,
 } from './physics.js'
 import { hasRole, roleOf, volatileRadius } from './roles.js'
-import { CAUSE_KO, makeGoal } from './objectives.js'
+import { causeText, makeGoal } from './objectives.js'
+import { msg, nameOf, t } from '../i18n/index.js'
 import { bearing } from '../core/angle.js'
 import { createSystem, pickHomeworld, reinforce } from './system.js'
 import { makeBody } from './body.js'
@@ -112,11 +113,11 @@ export class Game {
     this.dodgeT = 0   // 요새 회피 판정 주기 타이머
     this.obsSpeed = 1   // OBS_SPEEDS 인덱스 — 기본 2×
     this.toast = null; this.toastT = 0
-    this.winBanked = false; this.timeWarn = 0
+    this.winBanked = false; this.timeWarn = 0; this.bonusNote = 0
     this.stage = { roles: this.presentRoles() }
     this.message = added.length
-      ? `조르그 증원 워프 — 요새 ${fortresses.length}기 진입. ${this.goal.rule}`
-      : `작전 개시 — ${this.goal.rule}`
+      ? msg('msg.stage.reinforce', { n: fortresses.length, rule: msg('goal.rule') })
+      : msg('msg.stage.open', { rule: msg('goal.rule') })
   }
 
   presentRoles() {
@@ -163,11 +164,11 @@ export class Game {
     if (this.won || this.lost || this.doom || !this.earth.alive) return
     if (this.warpCurtain) return   // 개막 중 — 아직 내 차례가 아니다
     if (this.inFlight) {
-      this.setToast('아직 탄이 날고 있다 — 결판난 뒤에 다음 탄을 쏜다')
+      this.setToast(msg('toast.inflight'))
       return
     }
     if (this.power <= this.launchEscape) {
-      this.setToast(`발사 속도 부족 — 지구 탈출속도 ${this.launchEscape.toFixed(1)} 초과 필요`)
+      this.setToast(msg('toast.slow', { v: this.launchEscape.toFixed(1) }))
       return
     }
     const p = this.launchPos(), v = fromAngle(this.aim, this.power)
@@ -178,7 +179,7 @@ export class Game {
     })
     this.shots++
     this.addFx({ kind: 'launch', x: p.x, y: p.y, a: this.aim })
-    this.message = `MISSILE AWAY — ${this.yieldMt}Mt 탄두. 어느 살을 치느냐가 전부다`
+    this.message = msg('msg.away', { yield: this.yieldMt })
     // 쏘면 자동으로 관측 모드로 넘어간다 — 쏜 뒤엔 보는 게 할 일이다.
     // 언제든 조준 모드를 다시 켜면 미사일이 날아가는 도중에도 판이 멈춘다.
     this.setMode('observe')
@@ -300,10 +301,10 @@ export class Game {
       stepMissile(m, this.bodies, dt)
       updateEncounters(m, this.bodies, {
         swing: (b, deg) => {
-          this.message = `${b.name} 스윙바이 ${deg.toFixed(0)}°! 체인 x${m.chain}`
+          this.message = msg('msg.swing', { name: nameOf(b), deg: deg.toFixed(0), chain: m.chain })
           this.addFx({ kind: 'swing', x: b.pos.x, y: b.pos.y, r: b.radius })
         },
-        capture: (b) => { this.detonate(m, b, { x: m.pos.x, y: m.pos.y }); this.setToast('포획됨 — 너무 느렸다 (강제 추락)') },
+        capture: (b) => { this.detonate(m, b, { x: m.pos.x, y: m.pos.y }); this.setToast(msg('toast.capture')) },
       })
       if (m.alive) this.contact(m)
       if (m.alive) this.missileBounds(m)
@@ -381,8 +382,8 @@ export class Game {
     b.boost = 0
     b.trailFlash = 2.0
     this.addFx({ kind: 'boost', x: b.pos.x, y: b.pos.y, r: hitRadiusOf(b), a: Math.atan2(-ny, -nx) })
-    this.message = `${b.name}이(가) 추진기를 태웠다 — 태양 반대쪽으로 궤도를 틀었다. 이 요새는 이제 못 피한다`
-    this.setToast(`${b.name} 회피 기동 (일회성 — 다 썼다)`)
+    this.message = msg('msg.boost', { name: nameOf(b) })
+    this.setToast(msg('toast.boost', { name: nameOf(b) }))
   }
 
   // ─── 조르그 레이저 ─────────────────────────────────────────
@@ -394,18 +395,18 @@ export class Game {
     if (!ev) return
     if (ev.kind === 'charge') {
       this.addFx({ kind: 'laserCharge', x: L.ox, y: L.oy })
-      this.setToast(`조르그 레이저 조준 — ${CFG.LASER_CHARGE}초 뒤 발사. 조준점에서 비켜나라`)
-      this.message = `${ev.src.name} 본성이 지구의 도달 지점을 겨눴다 — 지구를 밀면 조준점이 틀어진다`
+      this.setToast(msg('toast.laser.charge', { sec: CFG.LASER_CHARGE }))
+      this.message = msg('msg.laser.charge', { name: nameOf(ev.src) })
       return
     }
     if (ev.kind === 'abort') {
-      this.setToast('본성 파괴 — 레이저 조준 해제')
-      this.message = '조르그 레이저 — 충전 중 본성이 파괴되어 발사가 취소됐다'
+      this.setToast(msg('toast.laser.abort'))
+      this.message = msg('msg.laser.abort')
       return
     }
     if (ev.kind === 'fire') {
       this.addFx({ kind: 'laserFire', x: L.ox, y: L.oy, a: Math.atan2(L.uy, L.ux) })
-      this.message = '조르그 레이저 발사 — 직진한다. 조준점이 틀어져 있으면 스쳐 지나간다'
+      this.message = msg('msg.laser.fire')
       return
     }
     if (ev.kind === 'intercept') {
@@ -417,41 +418,41 @@ export class Game {
       this.addFx({ kind: 'nuke', x: ev.x, y: ev.y, yld: m.yld, r: 22, wave: wave.radius })
       this.addFx({ kind: 'laserMiss', x: ev.x, y: ev.y })
       this.score += CFG.INTERCEPT_SCORE
-      this.message = `레이저 요격 — ${m.yld}Mt 탄두로 광선을 끊었다 (+${CFG.INTERCEPT_SCORE})`
-      this.setToast('레이저 요격 성공')
-      if (wave.pushed.some(p => p.body.isEarth)) this.setToast('경고 — 요격 폭풍이 지구를 밀었다')
+      this.message = msg('msg.laser.intercept', { yield: m.yld, score: CFG.INTERCEPT_SCORE })
+      this.setToast(msg('toast.laser.intercept'))
+      if (wave.pushed.some(p => p.body.isEarth)) this.setToast(msg('toast.laser.blastEarth'))
       return
     }
     if (ev.kind === 'expire') {
       this.addFx({ kind: 'laserMiss', x: ev.x, y: ev.y })
-      this.message = '조르그 레이저 — 아무것도 맞히지 못하고 성계를 벗어났다'
-      this.setToast('레이저 회피 성공')
+      this.message = msg('msg.laser.expire')
+      this.setToast(msg('toast.laser.expire'))
       return
     }
     // ── 착탄 ──
     const b = ev.body
     this.addFx({ kind: 'laserHit', x: ev.x, y: ev.y, r: b ? hitRadiusOf(b) : CFG.R_STAR, sun: !b })
     if (!b) {   // 태양이 막았다
-      this.message = '조르그 레이저가 태양에 삼켜졌다 — 항성은 부술 수 없다'
-      this.setToast('태양이 광선을 막았다')
+      this.message = msg('msg.laser.sun')
+      this.setToast(msg('toast.laser.sun'))
       return
     }
     if (b.isEarth) {
       this.addFx({ kind: 'destroy', x: b.pos.x, y: b.pos.y, r: b.radius * 2, earth: true })
       b.alive = false
-      this.fail('EARTH_LASER', '조르그 레이저가 지구를 관통했다. 작전 종료.')
-      this.setToast('지구 피격 — 게임 오버')
+      this.fail('EARTH_LASER', msg('msg.fail.laser'))
+      this.setToast(msg('toast.laser.earth'))
       return
     }
     if (b.role === 'void') {   // 특이점도 막되 안 부서진다
-      this.message = `${b.name}이(가) 레이저를 삼켰다 — 특이점엔 아무것도 안 통한다`
-      this.setToast(`특이점이 광선을 막았다 — ${b.name}`)
+      this.message = msg('msg.laser.void', { name: nameOf(b) })
+      this.setToast(msg('toast.laser.void', { name: nameOf(b) }))
       return
     }
     // 체력 불문 파괴. 막아 준 대가가 그 공의 소멸이다.
     this.addFx({ kind: 'destroy', x: b.pos.x, y: b.pos.y, r: b.radius * 1.8, big: true })
-    this.message = `${b.name}이(가) 레이저에 관통당해 소멸했다 — 체력과 무관하게 부서진다`
-    this.setToast(`레이저 차단 — ${b.name} 소멸`)
+    this.message = msg('msg.laser.kill', { name: nameOf(b) })
+    this.setToast(msg('toast.laser.kill', { name: nameOf(b) }))
     this.killBody(b, 'laser', { fx: false })
   }
 
@@ -470,7 +471,7 @@ export class Game {
     while (this.timeWarn < marks.length && left <= marks[this.timeWarn]) {
       const s = marks[this.timeWarn]
       this.timeWarn++
-      this.setToast(`작전 시한 ${s}초 — 서둘러라 (시간 보너스 ${this.timeBonus})`)
+      this.setToast(msg('toast.timeLeft', { sec: s, bonus: this.timeBonus }))
     }
   }
 
@@ -495,19 +496,18 @@ export class Game {
   detonate(m, b, point) {
     m.alive = false; m.hit = b
     const yld = m.yld
-    const who = '핵'
 
     // 모성 — 핵도 안 통한다. 부술 수 없는 것에는 부술 수 없다고 말해 준다.
     if (b.mothership) {
       this.addFx({ kind: 'nuke', x: point.x, y: point.y, yld, r: b.radius })
-      this.message = `${b.name}에 ${who}이 통하지 않았다 — 부술 수 없다`
+      this.message = msg('msg.nuke.mothership', { name: nameOf(b) })
       return
     }
 
     // 특이점 — 탄두째로 삼킨다. 밀리지도, 터지지도 않는다.
     if (b.role === 'void') {
       this.addFx({ kind: 'absorb', x: point.x, y: point.y, r: b.radius, small: true })
-      this.message = `${b.name}이(가) ${who}을 삼켰다 — 특이점엔 아무것도 안 통한다`
+      this.message = msg('msg.nuke.void', { name: nameOf(b) })
       return
     }
 
@@ -522,7 +522,7 @@ export class Game {
       this.addFx({ kind: 'nuke', x: point.x, y: point.y, yld, r: b.radius })
       blastWave(this.bodies, point.x, point.y, yld, b)
       b.alive = false
-      this.message = '파편에 격발 — 탄두 조기 폭발'
+      this.message = msg('msg.nuke.debris')
       return
     }
 
@@ -530,8 +530,8 @@ export class Game {
       this.addFx({ kind: 'nuke', x: point.x, y: point.y, yld: CFG.YIELD_MAX, r: b.radius, earth: true })
       this.addFx({ kind: 'destroy', x: b.pos.x, y: b.pos.y, r: b.radius, earth: true })
       b.alive = false
-      this.fail('EARTH_LOST', '지구에 핵을 박았다. 인류 종료 — 작전도 종료.')
-      this.setToast('지구 오폭 — 게임 오버')
+      this.fail('EARTH_LOST', msg('msg.fail.nukeEarth'))
+      this.setToast(msg('toast.nukeEarth'))
       return
     }
 
@@ -547,10 +547,12 @@ export class Game {
     const M = 1 + 0.75 * m.chain + 0.25 * m.nearMiss + (m.minSunDist < CFG.SUN_BONUS_R ? 0.5 : 0)
     const gained = Math.round(8 * M)
     this.score += gained
-    this.message = `${b.name} 타격 — Δv ${push.dv.toFixed(1)} · 방위 ${bearing(push.dx, push.dy).toFixed(0)}°`
-      + (hasRole(b, 'armor') ? ' (장갑에 막혀 거의 안 밀렸다)' : gained ? ` (+${gained})` : '')
+    this.message = msg('msg.nuke.hit', {
+      name: nameOf(b), dv: push.dv.toFixed(1), dir: bearing(push.dx, push.dy).toFixed(0),
+      tail: hasRole(b, 'armor') ? msg('msg.nuke.armor') : gained ? msg('msg.nuke.gain', { n: gained }) : '',
+    })
     // 폭풍이 지구를 정통으로 훑었다면 경고 — 지구가 밀려 태양에 빠지는 사고가 실제로 난다
-    if (wave.pushed.some(p => p.body.isEarth)) this.setToast('경고 — 폭풍이 지구를 밀었다')
+    if (wave.pushed.some(p => p.body.isEarth)) this.setToast(msg('toast.blastEarth'))
   }
 
   // ─── 휘발성 유폭 ─────────────────────────────────────────────
@@ -570,7 +572,7 @@ export class Game {
       o.vel.x += dx / d * dv; o.vel.y += dy / d * dv
       o.trailFlash = 2
     }
-    this.message = `${b.name} 유폭! — 반경 ${R.toFixed(0)} GU 안이 전부 밀렸다`
+    this.message = msg('msg.volatile', { name: nameOf(b), r: R.toFixed(0) })
     this.killBody(b, 'blast', { fx: false })
   }
 
@@ -581,8 +583,10 @@ export class Game {
       hole.mu = Math.min(CFG.VOID_MU_MAX, hole.mu + prey.mu * CFG.VOID_GROW)
       hole.radius = radiusOf(hole.mu)
     }
-    this.message = `${prey.name}이(가) ${hole.name}에 삼켜졌다 — 특이점 질량 ${hole.mu.toFixed(0)}`
-      + ` (반경 ${hitRadiusOf(hole).toFixed(0)}, 중력 ×${(hole.mu / 900).toFixed(2)})`
+    this.message = msg('msg.absorb', {
+      prey: nameOf(prey), hole: nameOf(hole), mu: hole.mu.toFixed(0),
+      r: hitRadiusOf(hole).toFixed(0), g: (hole.mu / 900).toFixed(2),
+    })
     this.killBody(prey, 'absorb', { fx: false, shatterIt: false })
   }
 
@@ -610,7 +614,7 @@ export class Game {
     const vRel0 = Math.hypot(a.vel.x - b.vel.x, a.vel.y - b.vel.y)
     if ((a.role === 'volatile' || b.role === 'volatile') && vRel0 >= CFG.VOLATILE_TRIGGER_V) {
       const vol = a.role === 'volatile' ? a : b, other = vol === a ? b : a
-      this.message = `${vol.name} ✕ ${other.name} — 상대속도 ${vRel0.toFixed(0)}, 충돌 유폭!`
+      this.message = msg('msg.collide.volatile', { a: nameOf(vol), b: nameOf(other), v: vRel0.toFixed(0) })
       this.damage(other, 3, 'collision')
       this.volatileBlast(vol)
       return 'destroyed'
@@ -631,10 +635,10 @@ export class Game {
     const dmg = vRel < CFG.COLLIDE_DMG_V ? 0 : vRel >= 160 ? 3 : vRel >= 90 ? 2 : 1
     this.addFx({ kind: 'bump', x: cx, y: cy, r: (hitRadiusOf(a) + hitRadiusOf(b)) * 0.5, v: vRel, soft: dmg === 0 })
     if (dmg === 0) {
-      this.message = `${a.name} ↔ ${b.name} — 가벼운 접촉(상대속도 ${vRel.toFixed(0)}), 튕겨 나갔다`
+      this.message = msg('msg.collide.soft', { a: nameOf(a), b: nameOf(b), v: vRel.toFixed(0) })
       return null
     }
-    this.message = `${a.name} ✕ ${b.name} — 충돌! 상대속도 ${vRel.toFixed(0)} · 피해 ${dmg}`
+    this.message = msg('msg.collide', { a: nameOf(a), b: nameOf(b), v: vRel.toFixed(0), dmg })
     // 둘 다 같은 피해를 받는다. 하나라도 박살나면 그 스텝은 거기서 끝낸다.
     const ka = this.damage(a, dmg, 'collision')
     const kb = this.damage(b, dmg, 'collision')
@@ -652,13 +656,13 @@ export class Game {
     b.trailFlash = 2.0
     b.scorch = Math.min(3, (b.scorch || 0) + 1)
     if (b.hp > 0) {
-      this.setToast(`${b.name} 체력 ${b.hp}/${b.hpMax ?? CFG.PLANET_HP} — ${b.hp}번 더`)
+      this.setToast(msg('toast.hp', { name: nameOf(b), hp: b.hp, hpMax: b.hpMax ?? CFG.PLANET_HP, left: b.hp }))
       return false
     }
     if (b.isEarth) {
       this.addFx({ kind: 'destroy', x: b.pos.x, y: b.pos.y, r: b.radius * 2, earth: true })
       b.alive = false
-      this.fail('EARTH_LOST', '지구가 세 번 처박혔다. 인류 종료 — 작전도 종료.')
+      this.fail('EARTH_LOST', msg('msg.fail.earthCrush'))
       return true
     }
     this.addFx({ kind: 'destroy', x: b.pos.x, y: b.pos.y, r: b.radius * 1.6, big: true })
@@ -688,21 +692,21 @@ export class Game {
     const [tp, np] = KILL_SCORE[cause] ?? [0, 0]
     const gained = wasFort ? tp : np
     this.score += gained
-    const label = `${b.name} — ${CAUSE_KO[cause]} (+${gained})`
+    const label = { name: nameOf(b), cause: msg('msg.cause', { cause: msg(`cause.${cause}`), gained }) }
     if (wasFort) {
       // 본성이 죽으면 남은 요새가 지휘권을 승계한다 (레이저가 끊기지 않는다)
       if (b.homeworld) {
         b.homeworld = false
         const next = pickHomeworld(this.bodies)
-        if (next) this.setToast(`본성 격파 — ${next.name}이(가) 지휘권을 승계`)
-        else this.setToast('조르그 본성 격파 — 레이저 침묵')
+        if (next) this.setToast(msg('toast.home.next', { name: nameOf(next) }))
+        else this.setToast(msg('toast.home.last'))
         this.homeworld = next
       }
       this.goal.update(this.aliveFortresses)
-      this.message = `${label} · ${this.goal.title} ${this.goal.label()}`
-      this.setToast(`요새 격파 — ${this.goal.label()}`)
+      this.message = msg('msg.kill.goal', { ...label, title: msg('goal.title'), count: this.goal.label() })
+      this.setToast(msg('toast.fortDown', { count: this.goal.label() }))
     } else {
-      this.message = label
+      this.message = msg('msg.kill', label)
     }
     if (this.aliveFortresses === 0) this.win()
   }
@@ -713,8 +717,8 @@ export class Game {
     // 축하 화면이 떴다(그리고 won=true가 되면 시계가 멈춰 연출까지 얼어붙었다).
     if (this.won || this.lost || this.doom) return
     this.won = true
-    this.message = '작전 성공 — 조르그 요새 전멸. 성계는 그대로 다음 판으로 이어진다'
-    this.setToast('작전 성공')
+    this.message = msg('msg.win')
+    this.setToast(msg('toast.win'))
   }
 
   missileBounds(m) {   // §7.8
@@ -742,7 +746,7 @@ export class Game {
         if (b.isEarth) {
           this.addFx({ kind: 'sun', x: b.pos.x, y: b.pos.y })
           b.alive = false
-          this.fail('EARTH_LOST', '지구가 태양으로 떨어졌다. 작전 종료.')
+          this.fail('EARTH_LOST', msg('msg.fail.earthSun'))
           return
         }
         this.killBody(b, 'sun', { shatterIt: false })
@@ -753,8 +757,8 @@ export class Game {
         b.lastBelt = this.time
         b.trailFlash = 2.0; b.bumpFlash = 0.6
         this.addFx({ kind: 'belt', x: hit.x, y: hit.y, nx: hit.nx, ny: hit.ny, v: hit.speed, r: hitRadiusOf(b) })
-        this.message = `${b.name}이(가) 카이퍼 벨트를 들이받았다 — 속력 ${hit.speed.toFixed(0)} 유지, 반사각으로 복귀`
-        this.setToast(`벨트 반사 — ${b.name} (운동량 그대로)`)
+        this.message = msg('msg.belt', { name: nameOf(b), v: hit.speed.toFixed(0) })
+        this.setToast(msg('toast.belt', { name: nameOf(b) }))
       }
     }
   }
@@ -764,10 +768,10 @@ export class Game {
     if (m.hit) return
     let tag
     // '유실'은 이제 없다 — 벨트가 튕겨 되돌려 보낸다. 남은 실패는 태양/시간뿐이다.
-    if (m.out === 'sun') tag = '태양 소멸 — 근일점이 너무 낮다'
-    else if (m.encountered && m.bestDeflection < 10) tag = `속도 초과 — 통과만 함 (δ ${m.bestDeflection.toFixed(0)}°)`
-    else if (m.bestDeflection < CFG.SWING_DEG) tag = `굴절 부족 — ${m.bestDeflection.toFixed(0)}° / ${CFG.SWING_DEG}° 필요`
-    else tag = '타이밍 — 공이 지나갔다'
+    if (m.out === 'sun') tag = msg('msg.miss.sun')
+    else if (m.encountered && m.bestDeflection < 10) tag = msg('msg.miss.fast', { deg: m.bestDeflection.toFixed(0) })
+    else if (m.bestDeflection < CFG.SWING_DEG) tag = msg('msg.miss.bend', { deg: m.bestDeflection.toFixed(0), need: CFG.SWING_DEG })
+    else tag = msg('msg.miss.timing')
     this.setToast(tag); this.message = tag
   }
 
@@ -782,10 +786,11 @@ export class Game {
     if (this.won && !this.winBanked) {   // 클리어 시점의 남은 시간을 보너스로 정산
       this.winBanked = true
       const b = this.timeBonus
-      if (b > 0) { this.score += b; this.message += ` · 시간 보너스 +${b}` }
+      // 문구는 화면에서 붙인다(tx가 번역한 뒤 꼬리를 잇는다)
+      if (b > 0) { this.score += b; this.bonusNote = b }
     }
     if (this.won || this.lost) return
-    if (!this.earth.alive) { this.fail('EARTH_LOST', '작전 실패 — 지구 상실. 런 종료'); return }
+    if (!this.earth.alive) { this.fail('EARTH_LOST', msg('msg.fail.earthLost')); return }
     // 요새가 어떤 이유로든 전멸했으면(연쇄로 같이 터졌든) 그 순간 클리어다
     if (this.aliveFortresses === 0) { this.win(); return }
     // 시한 초과 — 날아가고 있는 마지막 한 발은 끝까지 보내준다.
@@ -810,7 +815,7 @@ export class Game {
     const a = Math.atan2(this.earth.pos.y, this.earth.pos.x) + 0.4
     const R = Math.min(this.beltR * 0.8, r * 2.4)
     const ship = makeBody({
-      id: 'mothership', name: '조르그 모성', type: 'zorg',
+      id: 'mothership', nameKey: 'planet.mothership', type: 'zorg',
       mu: CFG.DOOM_MU, radius: CFG.DOOM_R,
       pos: { x: Math.cos(a) * R, y: Math.sin(a) * R }, vel: { x: 0, y: 0 },
       hp: 1, zorg: true, mothership: true, warp: 1,
@@ -820,8 +825,8 @@ export class Game {
     this.doom = makeDoom(ship.pos.x, ship.pos.y, this.aMax * CFG.LASER_RANGE_MUL, ship)
     this.addFx({ kind: 'warp', x: ship.pos.x, y: ship.pos.y, r: hitRadiusOf(ship), fort: true })
     this.setMode('observe')
-    this.message = '그들이 왔다…'
-    this.setToast('그들이 왔다…')
+    this.message = msg('msg.doom')
+    this.setToast(msg('toast.doom'))
   }
 
   tickDoom(dt) {
@@ -845,8 +850,8 @@ export class Game {
         this.killBody(b, 'laser', { fx: false })
       }
     }
-    this.message = '그들이 왔다…'
-    if (this.doom.done) this.fail('TIME_UP', '그들이 왔다…')
+    this.message = msg('msg.doom')
+    if (this.doom.done) this.fail('TIME_UP', msg('msg.doom'))
   }
 
   fail(reason, msg) {

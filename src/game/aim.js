@@ -3,6 +3,7 @@ import { wrapPi } from '../core/angle.js'
 import { CFG, beltRadius, blastRadius, hitRadiusOf } from './config.js'
 import { beltBounce, cloneBodies, segCircleEntry, segHitsCircle, stepBodies, stepMissile } from './physics.js'
 import { effDv, volatileRadius } from './roles.js'
+import { msg } from '../i18n/index.js'
 
 // ─── 조준 보조 — game.js에서 떼어낸 순수 계산부 ───────────────────
 // 상태를 바꾸는 건 scanContact가 game.aim을 쓰는 것뿐이고,
@@ -156,7 +157,7 @@ export function scanContact(game, dir = 1) {
     game._predKey = null; game._predAt = 0
     return true
   }
-  game.setToast('이 발사 속도로는 닿는 각도가 없다 — 속도를 바꿔라')
+  game.setToast(msg('toast.noAngle'))
   return false
 }
 
@@ -213,7 +214,7 @@ function impactInfo(game, o, point, simEarth) {
   const vAfter = Math.hypot(o.vel.x + dx * dv, o.vel.y + dy * dv)
   const vEsc = Math.sqrt(2 * CFG.MU_STAR / Math.max(1, Math.hypot(o.pos.x, o.pos.y)))
   return {
-    name: o.name, isEarth: o.isEarth, isTarget: isT, type: o.type, id: o.id,
+    name: o.name, nameKey: o.nameKey, isEarth: o.isEarth, isTarget: isT, type: o.type, id: o.id,
     outcome, x: o.pos.x, y: o.pos.y, r: hitRadiusOf(o),
     px: point.x, py: point.y,            // 폭심 (공의 어느 살인가)
     dx, dy, dv,                          // 임펄스 방향/크기

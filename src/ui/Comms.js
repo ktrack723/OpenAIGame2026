@@ -1,4 +1,5 @@
 import { hitRadiusOf } from '../game/config.js'
+import { tList, nameOf } from '../i18n/index.js'
 
 // ─── 조르그 교신 ────────────────────────────────────────────────
 // 관측 모드에서 가끔, 살아 있는 조르그 요새 위에 저쪽 얼굴이 뜨고 한 마디
@@ -52,27 +53,7 @@ const FACES = [
   </svg>`,
 ]
 
-const LINES = [
-  '그 궤도는 이미 계산이 끝났다.',
-  '돌덩이로 요새를 친다고? 해 봐라.',
-  '조준선은 지구를 놓지 않는다.',
-  '네 태양은 우리 편이 아니다.',
-  '요새 하나쯤은 내줄 수 있다.',
-  '밀어 봐야 소용없다 — 우리는 원래 자리를 겨눈다.',
-  '시간을 세고 있다. 우리도, 너도.',
-  '본대가 오면 이 대화도 끝이다.',
-  '지구인. 아직 살아 있나.',
-]
 
-// 단말마 — 끊기는 통신이다. 문장이 끝까지 가지 않는다.
-const DEATH_LINES = [
-  '격벽이— 계산이 틀렸— 어떻게—',
-  '통신 두절— 여기는— 여기는—',
-  '본대에… 전해라… 지구인은…',
-  '이 궤도는… 우리 것이… 었…',
-  '아직… 끝나지 않는… 다…',
-  '경보— 노심— 지지—직—',
-]
 
 const pick = (arr, not) => {
   let i = Math.floor(Math.random() * arr.length)
@@ -129,7 +110,8 @@ export class Comms {
   open(line = null, any = false) {
     const b = this.speaker(any)
     if (!b) { this.t = 2; return }      // 화면 밖이면 조금 뒤에 다시 본다
-    this.show(b, line ?? LINES[this.line = pick(LINES, this.line)], false, HOLD)
+    const lines = tList('zorg.taunt')
+    this.show(b, line ?? lines[this.line = pick(lines, this.line)], false, HOLD)
   }
 
   // 지금 당장 한 마디 — 예고편이 박자를 잡아 부른다.
@@ -138,7 +120,9 @@ export class Comms {
 
   // 단말마. 이미 부서진 요새를 화자로 쓰므로 alive 검사를 하지 않는다.
   die(b) {
-    this.show(b, DEATH_LINES[this.dline = pick(DEATH_LINES, this.dline)], true, DEATH_HOLD)
+    // 단말마 — 끊기는 통신이다. 문장이 끝까지 가지 않는다(zorg.death).
+    const lines = tList('zorg.death')
+    this.show(b, lines[this.dline = pick(lines, this.dline)], true, DEATH_HOLD)
   }
 
   show(b, line, dying, hold) {
@@ -146,7 +130,7 @@ export class Comms {
     this.dying = dying
     this.face = pick(FACES, this.face)
     this.faceEl.innerHTML = FACES[this.face]
-    this.whoEl.textContent = b.name
+    this.whoEl.textContent = nameOf(b)
     this.lineEl.textContent = line
     this.el.hidden = false
     this.el.classList.remove('out')
