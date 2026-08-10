@@ -1,5 +1,4 @@
-import { Rng } from '../core/random.js'
-import { CFG, aMaxOf, beltRadius, contactDist, radiusOf } from './config.js'
+import { CFG, aMaxOf, beltRadius, contactDist } from './config.js'
 import { makeBody } from './body.js'
 import { TYPE_MU_MUL } from './roles.js'
 import { cloneBodies, stepBodies } from './physics.js'

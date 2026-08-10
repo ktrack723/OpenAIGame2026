@@ -1,6 +1,6 @@
 import { CFG, hitRadiusOf } from '../game/config.js'
 import { ROLES, massClass, modsOf, volatileRadius } from '../game/roles.js'
-import { CATEGORY, HOSTILE, categoryOf } from '../render/Icons.js'
+import { HOSTILE, categoryOf } from '../render/Icons.js'
 
 // ─── 천체 정보창 ────────────────────────────────────────────────
 // 마우스를 올리거나(데스크톱) 손가락으로 짚으면(모바일) 그 공의 제원이 뜬다.

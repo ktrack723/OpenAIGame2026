@@ -29,37 +29,58 @@ h1{margin:0;color:var(--cy);letter-spacing:.34em;font-size:15px;font-weight:800;
 .hud.folded .body{display:none}
 
 /* ── 모듈 블록 ── */
-.mod{margin:9px 0;padding:8px 9px;border:1px solid var(--line2);
+.mod{margin:7px 0;padding:7px 9px;border:1px solid var(--line2);
   background:linear-gradient(180deg,#0a1725aa,#060d16aa)}
 .modhead{display:flex;align-items:center;gap:7px;color:var(--cy);font-size:10px;font-weight:800;
   letter-spacing:.22em;text-transform:uppercase;margin-bottom:6px}
 .modhead .tick{width:3px;height:11px;background:var(--cy);box-shadow:0 0 8px var(--cy);flex:0 0 auto}
 .modhead>span:nth-child(3){margin-left:auto;letter-spacing:.06em}
-#tagNote{font-size:9.5px;font-weight:700;color:var(--dim);letter-spacing:.04em}
+/* 안테·판수 — 제목 옆의 작은 칩. 예전에는 목표 머리표와 SYSTEM 덤프에
+   같은 숫자가 두 번 적혀 있었다. */
+.ante{margin-left:auto;padding:2px 7px;border:1px solid #1b4a5f;background:#08131d;color:var(--cy);
+  font-size:10.5px;font-weight:800;font-family:var(--mono);letter-spacing:.06em;white-space:nowrap}
 
-/* ── 작전 목표 ── */
-/* 목표 줄은 목표까지의 거리·방위가 매 프레임 바뀌어 한 줄↔두 줄을 오간다.
-   그 한 줄 때문에 아래의 각도 버튼이 통째로 밀려 "꾹 누르고 있던 버튼이
-   발밑에서 사라지는" 일이 생긴다. 줄 수를 아래위로 못 박아 높이를 고정한다. */
-.objname{color:#eaf7ff;font-size:13px;font-weight:700;line-height:1.45;font-family:var(--mono);
-  min-height:calc(2 * 1.45em);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.objprog{margin:6px 0 4px;height:4px;background:#08131d;border:1px solid var(--line2)}
+/* ── 작전 줄 — 목표와 시한을 한 칸에 ──
+   예전에는 목표(제목·이름·진행바·규칙 문단)와 시계(제목·숫자·바·설명 문단)가
+   따로 살면서 245px을 먹었다. 둘 다 "지금 어디까지 왔나"를 말하는 계기이므로
+   한 칸에 겹쳐 놓는다: 라벨 + 숫자 두 개 + 바 두 줄. 60px이면 끝난다. */
+.op{padding:7px 9px}
+.oprow{display:flex;align-items:baseline;gap:8px}
+.oplabel{color:var(--cy);font-size:10px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.opcount{margin-left:auto;color:#eaf7ff;font-size:15px;font-weight:800;font-family:var(--mono);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.bars{display:grid;gap:3px;margin:5px 0 4px}
+.objprog,.clockbar{display:block;height:4px;background:#08131d;border:1px solid var(--line2)}
 .objprog i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--cy),var(--gr));
   box-shadow:0 0 10px #4fd6f7aa;transition:width .3s ease}
-.objrule{color:var(--am);font-size:11.5px;line-height:1.5}
-
-/* ── 특수 천체 범례 ── */
-.roles{display:grid;gap:4px}
-.rolerow{display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:baseline;font-size:11px;line-height:1.4}
-.rolerow b{font-weight:800;white-space:nowrap;font-family:var(--mono)}
-.rolerow span{color:var(--dim)}
-
-/* ── 작전 시한 ── */
-.clockv{color:var(--cy);font-size:17px;font-weight:800;font-variant-numeric:tabular-nums;font-family:var(--mono)}
-.clockbar{height:5px;background:#08131d;border:1px solid var(--line2)}
 .clockbar i{display:block;height:100%;width:100%;background:linear-gradient(90deg,#1b7f9e,var(--cy));transition:width .2s linear}
-.clocknote{margin-top:5px;color:var(--dim);font-size:10.5px;line-height:1.4;
-  min-height:calc(2 * 1.4em);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+/* 목표 줄은 거리·방위가 매 프레임 바뀌어 한 줄↔두 줄을 오간다. 그 한 줄 때문에
+   아래 각도 버튼이 통째로 밀려 "꾹 누르고 있던 버튼이 발밑에서 사라지는" 일이
+   생긴다. 한 줄로 못 박고 넘치면 자른다. */
+.objname{color:#9fc4d8;font-size:11.5px;font-weight:700;font-family:var(--mono);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ── 특수 천체 범례 — 칩만 ──
+   무슨 짓을 하는 태그인지는 공을 짚으면 뜨는 정보창이 말해 준다.
+   여기서는 "이 판에 이런 게 깔려 있다"만 알리면 된다. */
+.roles{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}
+.roles[hidden]{display:none}
+.rolechip{font-size:10.5px;font-weight:800;font-family:var(--mono);white-space:nowrap;
+  padding:3px 6px;border:1px solid var(--line2);background:#08131d}
+
+/* ── 계기 칩 ── */
+.chips{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}
+.chip{display:inline-flex;align-items:baseline;gap:5px;padding:3px 7px;border:1px solid var(--line2);
+  background:#08131d;font-size:11.5px;font-weight:800;font-family:var(--mono);color:#dceaf3;
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.chip i{font-style:normal;color:var(--dim);font-size:9.5px;font-weight:700;letter-spacing:.1em}
+.chip.hi{color:var(--cy);border-color:#1b4a5f}
+.chip.crit{color:var(--rd);border-color:#5c1620}
+.msg{color:var(--dim);font-size:11px;line-height:1.45;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+
+.clockv{color:var(--cy);font-size:17px;font-weight:800;font-variant-numeric:tabular-nums;font-family:var(--mono)}
 .mod.warn{border-color:#7a5310}
 .mod.warn .clockv{color:var(--am)}
 .mod.warn .clockbar i{background:linear-gradient(90deg,#8a5a10,var(--am))}
@@ -80,9 +101,11 @@ h1{margin:0;color:var(--cy);letter-spacing:.34em;font-size:15px;font-weight:800;
 .mod.alarm.ok .modhead,.mod.alarm.ok .clockv{color:var(--cy)}
 .mod.alarm.ok .modhead .tick{background:var(--cy);box-shadow:0 0 10px var(--cy)}
 .mod.alarm.ok .alarmtext{color:#bfe9f8}
-/* 경보 문구는 안전/위험에 따라 길이가 바뀐다 — 그때마다 아래가 밀리지 않게 못 박는다 */
-.alarmtext{color:#ffc9cf;font-size:11px;line-height:1.5;
-  min-height:calc(6 * 1.5em);display:-webkit-box;-webkit-line-clamp:6;-webkit-box-orient:vertical;overflow:hidden}
+/* 경보 문구는 안전/위험에 따라 길이가 바뀐다 — 그때마다 아래가 밀리지 않게 못 박는다.
+   여섯 줄이던 걸 두 줄로 줄였다: 대응법을 매번 다시 읽는 사람은 없고,
+   경보가 뜬 순간 필요한 건 "지금 맞나 안 맞나"와 "몇 GU 모자라나"뿐이다. */
+.alarmtext{color:#ffc9cf;font-size:11px;line-height:1.45;
+  min-height:calc(2 * 1.45em);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 @keyframes alarmpulse{0%,100%{box-shadow:0 0 0 #0000}50%{box-shadow:0 0 22px #ff5c6a55,inset 0 0 22px #ff5c6a22}}
 
 /* ── 스테퍼 — 모바일에서 슬라이더는 정밀 조작이 안 된다 ──
@@ -104,11 +127,13 @@ h1{margin:0;color:var(--cy);letter-spacing:.34em;font-size:15px;font-weight:800;
 .stepbtn:active:not(:disabled){background:var(--cy);color:#04121c}
 
 /* ── 탐색 보조 ── */
-.assist{display:flex;align-items:center;gap:5px;margin:8px 0 6px;flex-wrap:wrap}
-.asslabel{color:var(--dim);font-size:10px;font-weight:800;letter-spacing:.1em}
+/* 접촉각 탐색 — 두 버튼이 한 줄을 반씩 나눠 쓴다("탐색" 라벨은 뺐다:
+   버튼에 이미 '접촉각'이라고 쓰여 있는데 그 앞에 이름표를 또 달 이유가 없다) */
+.assist{display:flex;gap:5px;margin:6px 0 0}
+.assist .ghost{flex:1;padding:7px 6px}
 
 /* ── LCD — 발사 버튼 바로 위의 납작한 흑색 창 ── */
-.lcd{position:relative;margin:8px 0 7px;padding:8px 10px;overflow:hidden;
+.lcd{position:relative;margin:7px 0 6px;padding:7px 9px;overflow:hidden;
   background:#03080a;border:1px solid #123b2c;box-shadow:inset 0 0 22px #0a3f28, inset 0 0 8px #000;
   font-family:var(--mono)}
 .lcdscan{position:absolute;inset:0;pointer-events:none;opacity:.5;
@@ -119,14 +144,14 @@ h1{margin:0;color:var(--cy);letter-spacing:.34em;font-size:15px;font-weight:800;
    (계측: 각도 90칸을 훑는 동안 LCD 높이 53~85px, 두 버튼이 33px씩 튐.)
    글자 수가 아니라 **줄 수**를 고정한다 — 위로는 min-height, 아래로는 클램프. */
 .lcdline{display:flex;align-items:baseline;gap:8px;font-size:12px;line-height:1.35;
-  min-height:calc(3 * 1.35em)}
+  min-height:calc(2 * 1.35em)}
 .lcdline b{flex:0 0 auto;padding:1px 5px;font-size:9.5px;font-weight:800;letter-spacing:.12em;
   background:var(--gr);color:#02150c}
 .lcdline span{color:var(--gr);text-shadow:0 0 8px #5ef2a488;word-break:keep-all;
-  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .lcdline span:after{content:'_';animation:blink 1.1s steps(1) infinite;margin-left:2px}
-.lcdsub{margin-top:4px;font-size:10px;color:#2f9c6b;text-shadow:0 0 6px #5ef2a444;line-height:1.4;
-  min-height:calc(2 * 1.4em);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.lcdsub{margin-top:3px;font-size:10px;color:#2f9c6b;text-shadow:0 0 6px #5ef2a444;line-height:1.4;
+  min-height:1.4em;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 @keyframes blink{0%,50%{opacity:1}51%,100%{opacity:0}}
 .lcd.warn{border-color:#5a4410;box-shadow:inset 0 0 22px #6b4a08, inset 0 0 8px #000}
 .lcd.warn .lcdline b{background:var(--am);color:#1a1000}
@@ -147,7 +172,7 @@ h1{margin:0;color:var(--cy);letter-spacing:.34em;font-size:15px;font-weight:800;
 
 /* ── 발사 버튼 ── */
 .firebtn{position:relative;display:flex;align-items:center;justify-content:center;gap:10px;
-  width:100%;margin:0;padding:14px 12px;border:1px solid #2f7f9c;border-radius:0;overflow:hidden;
+  width:100%;margin:0;padding:12px 12px;border:1px solid #2f7f9c;border-radius:0;overflow:hidden;
   background:linear-gradient(180deg,#0e3549,#07202e);color:#d9f6ff;
   font-weight:900;font-size:16px;letter-spacing:.26em;cursor:pointer;touch-action:manipulation;
   clip-path:polygon(0 0,calc(100% - 14px) 0,100% 14px,100% 100%,14px 100%,0 calc(100% - 14px));
@@ -166,7 +191,9 @@ h1{margin:0;color:var(--cy);letter-spacing:.34em;font-size:15px;font-weight:800;
 
 /* ── 일반 버튼 ── */
 button{font-family:inherit}
-.btnrow{display:flex;gap:5px;margin-top:7px;flex-wrap:wrap}
+.btnrow{display:flex;gap:5px;margin-top:6px;flex-wrap:wrap}
+/* 뷰 조작은 한 줄에 다섯 개. 자주 쓰는 게 아니라 작아도 된다. */
+.btnrow.tools .ghost{flex:1;padding:6px 4px;font-size:10.5px;letter-spacing:0}
 .ghost{margin:0;padding:8px 11px;border:1px solid var(--line);border-radius:0;background:#0b1826;
   color:#a9c8d8;font-size:11.5px;font-weight:700;letter-spacing:.06em;cursor:pointer;touch-action:manipulation;
   transition:background .12s,color .12s,box-shadow .12s}
@@ -177,9 +204,10 @@ button{font-family:inherit}
 button:disabled{opacity:.32;cursor:not-allowed;box-shadow:none}
 .hud.locked .step,.hud.locked .assist{opacity:.42}
 
+/* 키보드 힌트 — **키보드가 있는 화면에서만.** 손가락으로 하는 사람에게
+   "SHIFT 시간 진행"은 정보가 아니라 그냥 자리를 먹는 두 줄이다. */
 .hint{color:#4a6274;font-size:10px;margin-top:6px;line-height:1.5;font-family:var(--mono)}
-.zoomv{color:var(--cy);font-size:10.5px;font-weight:700;font-variant-numeric:tabular-nums;font-family:var(--mono)}
-pre{white-space:pre-wrap;line-height:1.55;color:#9fd0c4;margin:0;font-size:11px;font-family:var(--mono)}
+@media (pointer:coarse){.hint{display:none}}
 
 /* ── 승리 화면 ──
    판을 이겼다는 건 인류가 한 번 더 살아남았다는 뜻이다. 버튼 라벨이 아니라
@@ -490,23 +518,26 @@ pre{white-space:pre-wrap;line-height:1.55;color:#9fd0c4;margin:0;font-size:11px;
   .hud{left:max(8px,env(safe-area-inset-left));right:max(8px,env(safe-area-inset-right));top:auto;
     bottom:max(8px,env(safe-area-inset-bottom));width:auto;max-height:56dvh;padding:9px 10px 10px}
   h1{font-size:13px;letter-spacing:.26em}
-  .stepbtn{padding:11px 0;min-width:32px;font-size:12px}
-  .stepbtn.fine{min-width:26px;padding:10px 0}
+  .stepbtn{padding:9px 0;min-width:32px;font-size:12px}
+  .stepbtn.fine{min-width:26px;padding:8px 0}
   .stepbtn.mid{min-width:30px}
   .stepbtn.big{min-width:36px}
   .step{grid-template-columns:30px auto auto auto 1fr auto auto auto 24px;gap:4px}
   .stepval{font-size:17px}
-  .firebtn{padding:16px 12px;font-size:17px}
-  .ghost{padding:10px 12px}
+  .firebtn{padding:13px 12px;font-size:17px}
+  .ghost{padding:9px 12px}
 }
 @media (max-width: 700px){
-  .hud{max-height:52dvh}
-  /* 폰에서는 패널이 아래에 도킹되므로 LCD와 발사 버튼이 스크롤 밑으로 숨는다.
-     가장 많이 쓰는 조작부를 맨 위로 올린다. */
-  .body{display:flex;flex-direction:column}
-  .firectl{order:-1}
-  .objrule{font-size:11px}
-  pre{font-size:10.5px}
+  .hud{max-height:62dvh}
+  /* 폰에서는 패널이 아래에 도킹되고 안쪽이 스크롤된다. 그래서 **위에서부터
+     한 화면 안에 들어가는 것**이 곧 "스크롤 없이 되는 것"이다. 지금 순서로
+     작전 줄(74) + 경보(0~70) + 조준·발사(328)가 그 안에 다 들어간다 —
+     칩과 뷰 버튼만 아래로 밀리는데, 그건 판을 굴리는 데 필요 없는 것들이다.
+     (예전에는 조준부를 맨 위로 끌어올렸다: 그때는 목표·태그·시계 문단이
+      먼저 480px을 먹어서 그러지 않으면 발사 버튼이 화면 밖이었다.) */
+  .step{margin:4px 0}
+  .mod{margin:6px 0}
+  .msg{-webkit-line-clamp:1}
 }
 
 /* ─── 오프닝 예고편 오버레이 ───────────────────────────────────

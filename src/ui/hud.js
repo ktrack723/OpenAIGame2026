@@ -49,19 +49,31 @@ function holdRepeat(btn, fn) {
 export function makeHud(game, view) {
   const el = document.createElement('div')
   el.className = 'hud'
-  el.innerHTML = `<div class="hudtop"><h1>PLANETPOOL</h1><button id="fold" class="ghost" title="패널 접기">▾</button></div>
+  // ── 패널 구성 ───────────────────────────────────────────────
+  // 화면에 남는 것은 **누르는 것과 그 자리에서 읽어야 하는 숫자**뿐이다.
+  //
+  // 예전 패널은 모듈 여섯 개에 각각 머리표(20px)를 달고, 목표 규칙·시계 설명·
+  // 태그 해설·조작 힌트·시스템 덤프를 전부 문단으로 깔았다. 세로 화면에서
+  // 내용이 1270px — 패널 높이의 2.9배였다. 발사 버튼을 누르려면 스크롤을
+  // 내려야 하는 조준 UI는 조준 UI가 아니다.
+  //
+  // 그래서 규칙을 하나 세웠다: **설명은 패널에 살지 않는다.**
+  //   · 목표 규칙 → 판이 열릴 때 메시지 한 줄로(그 자리에서 읽고 지나간다)
+  //   · 태그 해설 → 공을 짚으면 뜨는 정보창(Inspector)에 이미 다 있다
+  //   · 천체 제원 → 같은 정보창
+  //   · 키보드 힌트 → 데스크톱에서만, 한 줄
+  // 남은 숫자는 전부 **칩**이다. 한 줄에 여러 개가 들어가고, 읽는 데 걸리는
+  // 시간이 짧고, 무엇보다 세로로 안 자란다.
+  el.innerHTML = `<div class="hudtop"><h1>PLANETPOOL</h1>
+  <span class="ante" id="anteChip">A1</span>
+  <button id="fold" class="ghost" title="패널 접기">▾</button></div>
 <div class="body">
 
-<section class="mod">
-  <div class="modhead"><span class="tick"></span><span id="goalHead">OPERATION</span></div>
+<section class="mod op" id="opMod">
+  <div class="oprow"><span class="oplabel" id="goalHead">OPERATION</span>
+    <span class="opcount" id="goalCount">—</span><span class="clockv" id="clockV">—</span></div>
+  <div class="bars"><i class="objprog"><i id="goalFill"></i></i><i class="clockbar"><i id="clockFill"></i></i></div>
   <div class="objname" id="objName">—</div>
-  <div class="objprog"><i id="goalFill"></i></div>
-  <div class="objrule" id="goalRule"></div>
-</section>
-
-<section class="mod" id="rolesMod" hidden>
-  <div class="modhead"><span class="tick"></span><span>PLANET TAGS</span><span class="clockv" id="tagNote">태그 없음 = 일반 행성</span></div>
-  <div class="roles" id="roles"></div>
 </section>
 
 <section class="mod alarm" id="laserMod" hidden>
@@ -69,19 +81,11 @@ export function makeHud(game, view) {
   <div class="alarmtext" id="laserWhy"></div>
 </section>
 
-<section class="mod" id="clock">
-  <div class="modhead"><span class="tick"></span><span>CHRONO</span><span class="clockv" id="clockV">—</span></div>
-  <div class="clockbar"><i id="clockFill"></i></div>
-  <div class="clocknote" id="clockNote"></div>
-</section>
-
 <section class="mod firectl">
-  <div class="modhead"><span class="tick"></span><span>FIRE CONTROL</span></div>
   ${stepper('angle', '각도', '°', [0.1, 1, 10])}
   ${stepper('power', '속도', 'GU/s', [1, 5, 10])}
   ${stepper('yield', '작약', 'Mt', [1, 3, 6])}
   <div class="assist">
-    <span class="asslabel">탐색</span>
     <button id="findPrev" class="ghost" title="닿는 각도를 반시계로">◀ 접촉각</button>
     <button id="findNext" class="ghost" title="닿는 각도를 시계로">접촉각 ▶</button>
   </div>
@@ -92,27 +96,23 @@ export function makeHud(game, view) {
   </div>
   <button id="fire" class="firebtn"><span class="fkey">SPACE</span><span class="ftext">FIRE</span><i class="fglow"></i></button>
   <div class="btnrow">
-    <button id="wait" class="ghost wide" title="누르고 있는 동안만 시간이 흐른다">시간 진행 ▶▶ (SHIFT)</button>
-    <button id="toObs" class="ghost wide obs" title="관측 모드 — UI가 사라지고 판이 흐른다">관측 모드 ▶ (TAB)</button>
+    <button id="wait" class="ghost wide" title="누르고 있는 동안만 시간이 흐른다">시간 진행 ▶▶</button>
+    <button id="toObs" class="ghost wide obs" title="관측 모드 — UI가 사라지고 판이 흐른다">관측 ▶</button>
   </div>
 </section>
 
 <section class="mod">
-  <div class="modhead"><span class="tick"></span><span>VIEW</span><span class="zoomv" id="zoomV"></span></div>
-  <div class="btnrow">
+  <div class="chips" id="chips"></div>
+  <div class="roles" id="roles" hidden></div>
+  <div class="btnrow tools">
     <button id="zout" class="ghost" title="축소 ( − )">－</button>
     <button id="zin" class="ghost" title="확대 ( + )">＋</button>
     <button id="zauto" class="ghost" title="목표 자동 프레이밍 ( 0 )">자동</button>
     <button id="zfull" class="ghost" title="성계 전체 ( 9 )">전체</button>
-    <button id="new" class="ghost">새 런</button>
+    <button id="new" class="ghost" title="새 시드로 다시">새 런</button>
   </div>
-  <div class="hint">TAB 조준/관측 전환 · SHIFT 시간 진행 · S 관측 배속 · ← → 각도 1°(SHIFT 0.1°) · ↑ ↓ 속도 · [ ] 작약 · F 접촉각<br>
-  조준 모드에서는 미사일이 날아가는 중에도 판이 멈춘다 · 행성에 마우스를 올리면(터치는 짚으면) 제원이 뜬다</div>
-</section>
-
-<section class="mod">
-  <div class="modhead"><span class="tick"></span><span>SYSTEM</span></div>
-  <pre id="stats"></pre>
+  <div class="msg" id="msg"></div>
+  <div class="hint">TAB 조준/관측 · SHIFT 시간 진행 · S 배속 · ← → 각도 · ↑ ↓ 속도 · [ ] 작약 · F 접촉각 · 공을 짚으면 제원</div>
 </section>
 </div>`
   document.body.appendChild(el)
@@ -287,19 +287,23 @@ function predLine(game, p) {
       // [2층] 이 접촉이 그 공에 즉시 일으키는 것 — 충격 방향/세기, 진로, 체력.
       // 화면 위 화살표와 같은 이름을 쓴다 — 노란 화살표 = 충격 방향,
       // 흰 화살표 = 바뀐 진로. 숫자는 여기(LCD)에만 둔다.
+      //
+      // 이름표를 뗐다("충격 방향"·"바뀐 진로"·"체력"). 세로 화면에서 두 줄을
+      // 넘겨 뒷부분이 잘렸는데, 잘리는 게 하필 체력이었다. 기호가 이름표를
+      // 대신한다: ↗ 임펄스 · → 진로 · ◆ 체력. 화살표 색과 같은 순서다.
       const direct = [
-        `충격 방향 ${dirOf(h.dx, h.dy)}° Δv ${h.dv.toFixed(1)}`,
-        `바뀐 진로 ${dirOf(h.vx, h.vy)}° ${Math.hypot(h.vx, h.vy).toFixed(0)}GU/s`,
-        `체력 ${h.hp}/${h.hpMax}`,
+        `↗${dirOf(h.dx, h.dy)}° Δv${h.dv.toFixed(1)}`,
+        `→${dirOf(h.vx, h.vy)}° ${Math.hypot(h.vx, h.vy).toFixed(0)}GU/s`,
+        `◆${h.hp}/${h.hpMax}`,
       ].join(' · ')
       // [3층] 의도하지 않았을 부작용만. 전부 이 한 발에서 확정적으로 참인 것.
       const warn = [
-        h.earthInBlast ? '⚠ 폭풍 반경에 지구가 들어간다' : '',
-        h.role === 'armor' ? `무겁다 — 임펄스 ${(CFG.ARMOR_DV * 100).toFixed(0)}%만 먹었다` : '',
+        h.earthInBlast ? '⚠ 폭풍 반경에 지구' : '',
+        h.role === 'armor' ? `무겁다 — 임펄스 ${(CFG.ARMOR_DV * 100).toFixed(0)}%` : '',
         // 저쪽에 아직 카드가 한 장 남았다. 결과를 대신 읽어 주지는 않는다 —
         // "피할 수 있다"까지만 말하고, 정말 피하는지는 쏴 봐야 안다.
-        h.boost ? '⚠ 추진기 미사용 — 이 요새는 한 번 비켜설 수 있다' : '',
-        h.willEject ? `↩ 벨트까지 날아갔다 되돌아온다 (${h.vAfter.toFixed(0)}>${h.vEsc.toFixed(0)})` : '',
+        h.boost ? '⚠ 추진기 미사용 — 한 번 비켜선다' : '',
+        h.willEject ? `↩ 벨트까지 갔다 온다 (${h.vAfter.toFixed(0)}>${h.vEsc.toFixed(0)})` : '',
       ].filter(Boolean).join(' · ')
       return [h.earthInBlast ? 'warn' : 'hit', tag,
         `${h.name}${badge} — ${direct}`, warn]
@@ -415,20 +419,24 @@ export function updateHud(el, game) {
 
   const t = game.target, e = game.earth, g = game.goal
   const dx = t.pos.x - e.pos.x, dy = t.pos.y - e.pos.y
-  el.querySelector('#goalHead').textContent = `안테 ${game.ante} · ${g.title}`
+  el.querySelector('#anteChip').textContent = `A${game.ante}·${game.stageIdx + 1}판`
+  el.querySelector('#goalHead').textContent = g.title
+  el.querySelector('#goalCount').textContent = g.label()
   el.querySelector('#objName').textContent =
-    `${g.label()}  ▸ ◎ ${t.name} · ${Math.hypot(dx, dy).toFixed(0)} GU · ${dirOf(dx, dy)}°`
+    `◎ ${t.name} · ${Math.hypot(dx, dy).toFixed(0)} GU · ${dirOf(dx, dy)}°`
   el.querySelector('#goalFill').style.width = `${Math.min(100, g.done / g.need * 100).toFixed(0)}%`
-  el.querySelector('#goalRule').textContent = g.rule
 
-  // 특수 천체 범례 — 이 판에 실제로 깔린 것만. 색은 화면의 점선 링과 같다.
+  // 특수 천체 범례 — **아이콘 칩만.** 각 태그가 무슨 짓을 하는지는 공을 짚으면
+  // 뜨는 정보창(Inspector)이 이미 한 줄씩 말해 준다. 같은 문장을 패널에도
+  // 깔면 세로로 137px을 먹는데, 그 값어치를 하는 건 처음 한 판뿐이다.
   if (el._roleKey !== game.stageIdx) {
     el._roleKey = game.stageIdx
     const list = game.stage.roles ?? []
-    el.querySelector('#rolesMod').hidden = !list.length
-    el.querySelector('#roles').innerHTML = list.map(k => {
+    const roles = el.querySelector('#roles')
+    roles.hidden = !list.length
+    roles.innerHTML = list.map(k => {
       const d = ROLES[k]
-      return `<div class="rolerow"><b style="color:${hex(d.color)}">${d.icon} ${d.label}</b><span>${d.brief}</span></div>`
+      return `<span class="rolechip" style="color:${hex(d.color)}" title="${d.brief}">${d.icon} ${d.label}</span>`
     }).join('')
   }
 
@@ -440,36 +448,24 @@ export function updateHud(el, game) {
     lm.hidden = false
     lm.classList.toggle('ok', game.laserSafe)
     el.querySelector('#laserT').textContent = `T-${game.laserLeft.toFixed(1)}s`
-    el.querySelector('#laserWhy').textContent =
-      `조준선에서 지구까지 ${game.laserMiss.toFixed(0)} GU — `
-      + (game.laserSafe ? '이대로면 빗나간다.' : `아직 맞는다(${hitRadiusOf(game.earth).toFixed(0)} GU 넘겨야 산다).`)
-      + ' 조르그는 지구가 원래 궤도를 돈다고 보고 겨눈다 — 폭풍으로 밀면 그만큼 조준이 틀어진다.'
-      + ' 행성으로 ◇ 선을 막아도 되고(그 행성은 소멸), 탄두를 선 위에 걸쳐 두면 요격된다.'
+    el.querySelector('#laserWhy').textContent = game.laserSafe
+      ? `빗나감 ${game.laserMiss.toFixed(0)} GU — 이대로면 산다. 계속 밀어 둬라.`
+      : `빗나감 ${game.laserMiss.toFixed(0)} GU — 아직 맞는다. `
+        + `${hitRadiusOf(game.earth).toFixed(0)} GU를 넘겨야 산다.`
   } else if (game.laserFlying) {
     lm.hidden = false
     lm.classList.remove('ok')
     el.querySelector('#laserT').textContent = `착탄 ${game.laserImpactLeft.toFixed(1)}s`
     el.querySelector('#laserWhy').textContent =
-      '광선이 날아가는 중이다 — 조준점에서 멈추지 않고 직진한다. '
-      + '닿는 첫 천체는 체력과 무관하게 소멸한다(태양·특이점은 막기만 한다). '
-      + `진로에 내 탄두가 ${CFG.LASER_INTERCEPT_R} GU 안으로 걸리면 그 자리에서 터지며 광선이 끊긴다.`
+      `광선 비행 중 — 직진한다. 닿는 첫 천체는 소멸(태양·특이점은 막기만).`
+      + ` 진로에 탄두를 ${CFG.LASER_INTERCEPT_R} GU 안으로 걸치면 끊긴다.`
   } else lm.hidden = true
 
-  const rig = el._rig
-  if (rig) el.querySelector('#zoomV').textContent = `${rig.zoom.toFixed(1)}×${rig.auto ? ' AUTO' : ''}`
-
   const left = game.timeLeft, frac = left / game.stageTime
-  const clock = el.querySelector('#clock')
+  const opMod = el.querySelector('#opMod')
   el.querySelector('#clockV').textContent = `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`
   el.querySelector('#clockFill').style.width = `${Math.max(0, frac * 100).toFixed(1)}%`
-  clock.className = 'mod' + (frac <= 0.15 ? ' crit' : frac <= 0.4 ? ' warn' : '')
-  const scale = game.effTimeScale()
-  const flying = game.missiles.some(m => m.alive)
-  el.querySelector('#clockNote').textContent = game.won
-    ? `정지 — 시간 보너스 +${game.timeBonus} 확정`
-    : scale === 0
-      ? `■ 정지 (조준 모드${flying ? ' — 미사일도 멈춰 있다' : ''}) · 클리어 시 +${game.timeBonus}`
-      : `▶ ${scale}× 진행 중 · 시간 보너스 +${game.timeBonus}`
+  opMod.className = 'mod op' + (frac <= 0.15 ? ' crit' : frac <= 0.4 ? ' warn' : '')
 
   // ── LCD — 발사 버튼 바로 위, 눌리는 자리에서 결과를 읽는다 ──
   const lcd = el.querySelector('#lcd')
@@ -495,14 +491,26 @@ export function updateHud(el, game) {
     fireBtn.querySelector('.ftext').textContent = 'FIRE'
   }
 
+  // ── 칩 줄 ────────────────────────────────────────────────────
+  // 예전 SYSTEM 덤프에서 살아남은 것만. 뺀 것들과 그 이유:
+  //   ANTE·STAGE  → 패널 머리의 칩으로 옮겼다
+  //   FORTRESS    → 목표 줄이 같은 숫자를 이미 크게 띄운다
+  //   TARGET 체력 → 화면의 표적 이름표에 그대로 붙어 있다
+  //   HOME        → 화면에서 ◈ 표식이 그 공에 달려 있다
+  //   SYSTEM/BELT → 판을 보면 되는 것을 숫자로 다시 말하고 있었다
   const hpBar = (b) => bar(b.hp ?? 0, b.hpMax ?? CFG.PLANET_HP, '◆', '◇')
-  el.querySelector('#stats').textContent =
-    `ANTE ${game.ante}   STAGE ${game.stageIdx + 1}
-SHOTS ${game.shots} (무제한 · 동시 1발)   SCORE ${game.score} (${game.runScore + game.score})
-EARTH  ${e.alive ? hpBar(e) : 'LOST'}   TARGET ${t.alive ? hpBar(t) : '—'}
-FORTRESS ${game.aliveFortresses}/${g.total}   HOME ${game.homeworld ? game.homeworld.name : '—'}
-SYSTEM ${game.bodies.filter(b => b.alive && b.type !== 'debris').length} bodies   BELT R=${game.beltR.toFixed(0)}
-> ${game.message}`
+  const scale = game.effTimeScale()
+  const rig = el._rig
+  const chips = [
+    ['점수', `${game.runScore + game.score}`, 'hi'],
+    ['발사', `${game.shots}`, ''],
+    ['지구', e.alive ? hpBar(e) : 'LOST', e.alive && e.hp <= 1 ? 'crit' : ''],
+    ['시간', scale === 0 ? '■ 정지' : `▶ ${scale}×`, scale === 0 ? '' : 'hi'],
+    ['보너스', `+${game.timeBonus}`, ''],
+    ['줌', rig ? `${rig.zoom.toFixed(1)}×${rig.auto ? ' A' : ''}` : '—', ''],
+  ].map(([k, v, c]) => `<span class="chip ${c}"><i>${k}</i>${v}</span>`).join('')
+  if (el._chips !== chips) { el._chips = chips; el.querySelector('#chips').innerHTML = chips }
+  if (el._msg !== game.message) { el._msg = game.message; el.querySelector('#msg').textContent = game.message }
 
   const toast = el._toast
   if (game.toastT > 0 && game.toast) { toast.hidden = false; toast.textContent = game.toast }
