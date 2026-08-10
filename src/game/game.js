@@ -98,6 +98,9 @@ export class Game {
     // 렌더러가 b.warp를 WARP_TIME에 걸쳐 0으로 내리므로, 마지막 warpIn만 보고
     // 막을 걷으면 요새가 아직 반투명한 채로 조작이 열린다.
     this.spawnEnd = added.length ? CFG.WARP_LEAD + (added.length - 1) * gap + CFG.WARP_TIME : 0
+    // 개막 시계는 **여기서** 0으로 돌린다. 아래쪽(초기화 묶음)에서 돌리면 그
+    // 사이에 있는 syncLasers가 지난 판의 openT를 보고 "이미 열린 판"으로 읽는다.
+    this.openT = 0
     // 개막 동안 카메라가 따라다닐 명단. 도착 순서대로다(카메라가 그 순서로 민다).
     this.arrivals = added
     // 표적 = 요새 + 모함. 모함은 광선을 안 쏘지만 **부술 때까지 요새를 계속
@@ -123,7 +126,7 @@ export class Game {
     this.aim = Math.atan2(t.pos.y - this.earth.pos.y, t.pos.x - this.earth.pos.x)
     this.power = 30; this.yieldMt = CFG.YIELD_DEFAULT
     this.mode = 'aim'; this.advancing = false; this.time = 0; this.paused = false
-    this.warpHold = this.warpHold ?? false; this.openT = 0
+    this.warpHold = this.warpHold ?? false
     this.dodgeT = 0   // 요새 회피 판정 주기 타이머
     this.obsSpeed = 1   // OBS_SPEEDS 인덱스 — 기본 2×
     this.toast = null; this.toastT = 0
@@ -208,7 +211,7 @@ export class Game {
     this.missiles.push({
       pos: { ...p }, vel: v, yld: this.yieldMt, alive: true, chain: 0, nearMiss: 0, age: 0, fade: 0,
       path: [{ ...p }], pathN: 0, enc: new Map(), bestDeflection: 0,
-      encountered: false, minSunDist: Infinity, hit: null, out: null, lastBelt: -99,
+      encountered: false, minSunDist: Infinity, hit: null, out: null,
     })
     this.shots++
     this.addFx({ kind: 'launch', x: p.x, y: p.y, a: this.aim })
@@ -287,11 +290,18 @@ export class Game {
     }
   }
 
+  // 이 판의 **첫 조준까지**(인게임 초). 판이 거듭될수록 당겨진다 —
+  // 조르그도 학습한다. 1스테이지만 넉넉하게 두는 건 그 판이 규칙을 배우는
+  // 자리이기 때문이고, 4스테이지부터는 하한(LASER_FIRST_MIN)에 붙는다.
+  get laserFirst() {
+    return Math.max(CFG.LASER_FIRST_MIN, CFG.LASER_FIRST - CFG.LASER_FIRST_DROP * this.stageIdx)
+  }
+
   // ─── 포대 명단 ───────────────────────────────────────────────
   // 살아 있는 조르그 요새 하나당 광선 하나. 새로 도착한 요새에는 광선을 달아
   // 주고, 부서진 요새의 광선은 걷어낸다.
   //
-  // 시차는 **도착 순서**로 준다: 1번은 LASER_FIRST에, 2번은 거기서 SPACING만큼
+  // 시차는 **도착 순서**로 준다: 1번은 laserFirst에, 2번은 거기서 SPACING만큼
   // 뒤에, 3번은 또 그만큼 뒤에. 그래서 첫 판은 "한 기가 물고, 다 지나가면 다음
   // 기가 문다"로 읽히고, 요새가 늘어도 겹쳐 쏘지 않는다.
   syncLasers() {
@@ -311,8 +321,18 @@ export class Game {
     }
     for (const b of forts) {
       if (this.lasers.some(L => L.from === b)) continue
+      // 순번은 **판이 열릴 때 도착한 요새**(arrivals)에만 붙인다. 판 도중에
+      // 모함이 실어 나른 요새까지 명단 길이로 순번을 매기면 첫 조준이 판 시한
+      // 밖으로 밀려나(예: 여섯째면 +750초) 그 요새는 영영 안 쏜다 — 즉 모함이
+      // 보낸 증원은 위협이 아니라 그냥 표적이 된다. 늦게 온 요새는 시차 한 칸만
+      // 두고 곧바로 줄에 선다.
+      // (시계로 "개막 중인가"를 물으면 안 된다: 프레임이 느린 기기나 예고편의
+      //  endOpening() 때문에 마지막 한 기가 도착하기 전에 막이 걷힐 수 있다.)
       const idx = this.lasers.length
-      this.lasers.push(makeLaser(this.rng, b, CFG.LASER_FIRST + idx * CFG.LASER_SPACING))
+      const wait = this.arrivals?.includes(b)
+        ? this.laserFirst + idx * CFG.LASER_SPACING
+        : CFG.LASER_SPACING
+      this.lasers.push(makeLaser(this.rng, b, wait))
     }
   }
 
@@ -906,19 +926,46 @@ export class Game {
     this.won = true
     this.message = msg('msg.win')
     this.setToast(msg('toast.win'))
+    this.bankWin()
   }
 
+  // 클리어 시점의 남은 시간을 보너스로 정산한다. **이긴 그 순간에** 해야 한다 —
+  // 예전에는 checkEnd에서만 했는데, 이기는 순간 시계가 멈추므로(effTimeScale 0)
+  // step()이 한 번도 더 안 돌면 보너스가 영영 안 붙는다. 승리 화면은 "남은 시한
+  // (보너스 +208)"이라고 적어 놓고 점수에는 그 208이 없는 상태가 된다.
+  // (checkEnd도 계속 부른다 — 어느 쪽이 먼저 와도 한 번만 붙게 winBanked로 막는다.)
+  bankWin() {
+    if (!this.won || this.winBanked) return
+    this.winBanked = true
+    const b = this.timeBonus
+    if (b > 0) { this.score += b; this.bonusNote = b }
+  }
+
+  // ─── 탄의 경계 ───────────────────────────────────────────────
+  // 태양 낙하 / 자폭 시한 / **카이퍼 벨트 기폭**.
+  // 공과 탄은 벨트에서 서로 다르게 굴러간다: 공은 쿠션에 튕겨 판돈으로
+  // 돌아오고, 탄두는 **얼음 벽에 박아 그 자리에서 터진다.**
+  // (튕겨 돌려보내던 시절엔 판 밖 둘레를 배회하다 TTL로 자폭하는 발이 흔했고,
+  //  그동안 다음 탄을 못 쏘니 차례만 버렸다 — config.js BELT 항목 참고.)
   missileBounds(m) {   // §7.8
     const r = len(m.pos)
     if (r < CFG.R_STAR + 8) { m.alive = false; m.out = 'sun' }
     else if (m.age > CFG.MISSILE_TTL) { m.alive = false; m.out = 'timeout' }
-    else if (r >= this.beltR) {   // 미사일도 쿠션에 튕긴다 — 유실은 이제 없다
-      const hit = beltBounce(m, this.beltR)
-      if (hit && this.time - (m.lastBelt ?? -99) > CFG.BELT_COOLDOWN) {
-        m.lastBelt = this.time
-        this.addFx({ kind: 'belt', x: hit.x, y: hit.y, nx: hit.nx, ny: hit.ny, v: hit.speed, missile: true })
-      }
-    }
+    else if (r >= this.beltR) this.beltDetonate(m)
+  }
+
+  // 벨트 기폭 — 탄두가 얼음 벽에 박는다. 폭풍은 그대로 터지므로 벨트 근처의
+  // 공은 밀린다(노리고 쓰면 바깥으로 튄 공을 되돌리는 수가 된다).
+  beltDetonate(m) {
+    const r = len(m.pos) || 1
+    const nx = m.pos.x / r, ny = m.pos.y / r
+    const x = nx * this.beltR, y = ny * this.beltR
+    const speed = Math.hypot(m.vel.x, m.vel.y)
+    m.alive = false; m.out = 'belt'
+    const wave = blastWave(this.bodies, x, y, m.yld, null)
+    this.addFx({ kind: 'belt', x, y, nx, ny, v: speed, missile: true })
+    this.addFx({ kind: 'nuke', x, y, yld: m.yld, r: 16, wave: wave.radius, belt: true })
+    if (wave.pushed.some(p => p.body.isEarth)) this.setToast(msg('toast.blastEarth'))
   }
 
   // ─── 성계 경계 ───────────────────────────────────────────────
@@ -954,8 +1001,9 @@ export class Game {
   finishShot(m) {
     if (m.hit) return
     let tag
-    // '유실'은 이제 없다 — 벨트가 튕겨 되돌려 보낸다. 남은 실패는 태양/시간뿐이다.
+    // 실패는 셋이다: 태양에 삼켜짐 · 벨트에서 기폭 · TTL 자폭(또는 못 꺾임).
     if (m.out === 'sun') tag = msg('msg.miss.sun')
+    else if (m.out === 'belt') tag = msg('msg.miss.belt')
     else if (m.encountered && m.bestDeflection < 10) tag = msg('msg.miss.fast', { deg: m.bestDeflection.toFixed(0) })
     else if (m.bestDeflection < CFG.SWING_DEG) tag = msg('msg.miss.bend', { deg: m.bestDeflection.toFixed(0), need: CFG.SWING_DEG })
     else tag = msg('msg.miss.timing')
@@ -970,12 +1018,7 @@ export class Game {
     // 클리어가 나 버린다. 막이 걷혀야 내 차례이므로 뜸까지 통째로 센다.
     if (this.warpPending || this.warpCurtain) return
     this.goal.update(this.aliveThreats)
-    if (this.won && !this.winBanked) {   // 클리어 시점의 남은 시간을 보너스로 정산
-      this.winBanked = true
-      const b = this.timeBonus
-      // 문구는 화면에서 붙인다(tx가 번역한 뒤 꼬리를 잇는다)
-      if (b > 0) { this.score += b; this.bonusNote = b }
-    }
+    this.bankWin()   // 문구는 화면에서 붙인다(tx가 번역한 뒤 꼬리를 잇는다)
     if (this.won || this.lost) return
     if (!this.earth.alive) { this.fail('EARTH_LOST', msg('msg.fail.earthLost')); return }
     // 위협이 어떤 이유로든 전멸했으면(연쇄로 같이 터졌든) 그 순간 클리어다

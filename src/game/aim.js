@@ -1,7 +1,7 @@
 import { fromAngle } from '../core/vector.js'
 import { wrapPi } from '../core/angle.js'
 import { CFG, beltRadius, blastRadius, hitRadiusOf } from './config.js'
-import { beltBounce, cloneBodies, segCircleEntry, segHitsCircle, stepBodies, stepMissile } from './physics.js'
+import { cloneBodies, segCircleEntry, segHitsCircle, stepBodies, stepMissile } from './physics.js'
 import { effDv, volatileRadius } from './roles.js'
 import { msg } from '../i18n/index.js'
 
@@ -67,11 +67,12 @@ export function predictPath(game) {
     }
     const r = Math.hypot(m.pos.x, m.pos.y)
     if (r < CFG.R_STAR + 8) { outcome = 'sun'; pts.push({ x: m.pos.x, y: m.pos.y }); break }
-    // 카이퍼 벨트 반사 — 실제 판정(game.missileBounds)과 같은 함수를 쓴다.
-    // 예측선이 벨트를 무시하면 "쐈더니 딴 데로 튀는" 거짓말이 된다.
+    // 카이퍼 벨트 = 탄이 끝나는 자리. 공은 튕기지만 탄두는 거기서 터진다
+    // (game.beltDetonate) — 예측선도 같은 자리에서 끊겨야 거짓말이 아니다.
     if (r >= beltR) {
-      const bp = beltBounce(m, beltR)
-      if (bp) { pts.push({ x: bp.x, y: bp.y }); pts.push({ x: m.pos.x, y: m.pos.y }) }
+      outcome = 'belt'
+      pts.push({ x: m.pos.x / r * beltR, y: m.pos.y / r * beltR })
+      break
     }
   }
   game._predKey = key
@@ -119,7 +120,7 @@ export function firstImpact(game, m, horizon) {
     }
     const r = Math.hypot(probe.pos.x, probe.pos.y)
     if (r < CFG.R_STAR + 8) return null            // 태양에 삼켜진다
-    if (r >= beltRadius(game.aMax)) beltBounce(probe, beltRadius(game.aMax))
+    if (r >= beltRadius(game.aMax)) return null    // 벨트에서 기폭 — 더 갈 곳이 없다
   }
   return null
 }
@@ -186,7 +187,7 @@ function coarseContact(game, ang) {
     }
     const r = Math.hypot(m.pos.x, m.pos.y)
     if (r < CFG.R_STAR + 8) return null
-    if (r >= beltR) beltBounce(m, beltR)   // 벨트에 튕겨 되돌아온 뒤에도 계속 훑는다
+    if (r >= beltR) return null            // 벨트에서 기폭 — 이 각도는 아무것에도 안 닿는다
   }
   return null
 }
