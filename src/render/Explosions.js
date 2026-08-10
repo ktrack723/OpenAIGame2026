@@ -50,15 +50,29 @@ export class Explosions {
   // 폭발이 아니다 — **밀어내는 힘**이다. 그래서 터지는 그림을 안 쓰고
   // 배기 방향(e.a = 밀린 반대쪽)으로만 길게 뿜는다. 그 꼬리가 곧 "저쪽으로
   // 비켜났다"는 표시라, 어느 쪽으로 궤도가 틀어졌는지가 불꽃만 보고도 읽힌다.
+  // 크기와 길이를 함께 올렸다. 이 분사는 **한 판에 한 번뿐인 사건**이고,
+  // 그 한 번이 "저 요새는 이제 못 피한다"를 뜻한다 — 0.4초짜리 불꽃으로는
+  // 그게 지나가 버렸다(빨리 감기로 보면 특히). 이제 화구가 배기 방향으로
+  // 길게 뻗고, 그 자리에 연기가 2초 넘게 남는다.
   boost(e) {
-    const P = this.parts, R = Math.max(30, (e.r ?? 24) * 1.2)
-    P.puff(e.x, e.y, { r0: R * 0.1, r1: R * 0.7, ttl: 0.35, color: 0xff9ad5, alpha: 0.8 })
-    P.burst(e.x, e.y, { n: 130, color: 0xff5c9e, speed: 420, size: 12, ttl: 0.9, spread: 0.55, dir: e.a })
-    P.burst(e.x, e.y, { n: 60, color: 0xffffff, speed: 680, size: 8, ttl: 0.45, spread: 0.32, dir: e.a })
-    P.spikes(e.x, e.y, { n: 10, color: 0xffd7ec, speed: 900, size: 7, ttl: 0.4 })
-    P.shock(e.x, e.y, R, 0xff5c9e, 0.5, { thin: true, from: 0.1, to: 2.2, alpha: 0.75 })
-    this.rig.hit(7)
-    this.flash(0.12, '#ffe0f0')
+    const P = this.parts, R = Math.max(64, (e.r ?? 24) * 2.6)
+    // ① 점화 — 흰 섬광 한 겹
+    P.puff(e.x, e.y, { r0: R * 0.08, r1: R * 0.55, ttl: 0.18, color: 0xffffff, alpha: 1 })
+    P.puff(e.x, e.y, { r0: R * 0.12, r1: R * 1.15, ttl: 0.8, color: 0xff9ad5, alpha: 0.9, delay: 0.04 })
+    // ② 배기 화염 — 세 겹이 시차를 두고 같은 방향으로 뻗는다(길고 좁게)
+    P.burst(e.x, e.y, { n: 260, color: 0xff5c9e, speed: 620, size: 17, ttl: 2.0, spread: 0.5, dir: e.a })
+    P.burst(e.x, e.y, { n: 150, color: 0xffd7ec, speed: 980, size: 11, ttl: 1.3, spread: 0.3, dir: e.a })
+    P.burst(e.x, e.y, { n: 90, color: 0xffffff, speed: 1350, size: 8, ttl: 0.7, spread: 0.18, dir: e.a })
+    // ③ 잔염 — 느리고 오래 남아 "여기서 태웠다"가 궤도에 자국으로 남는다
+    P.burst(e.x, e.y, { n: 120, color: 0xc0367a, speed: 150, size: 26, ttl: 3.4, spread: 0.9, dir: e.a, drag: 0.4 })
+    P.puff(e.x, e.y, { r0: R * 0.3, r1: R * 2.4, ttl: 2.6, color: 0x7a1f4a, alpha: 0.5, delay: 0.2, drift: 14 })
+    P.spikes(e.x, e.y, { n: 18, color: 0xffd7ec, speed: 1500, size: 9, ttl: 0.7 })
+    // ④ 충격파 두 겹 — 늦은 쪽이 더 크게 번진다
+    P.shock(e.x, e.y, R, 0xffffff, 0.5, { thin: true, from: 0.08, to: 2.6, alpha: 0.95 })
+    P.shock(e.x, e.y, R, 0xff5c9e, 1.15, { from: 0.14, to: 3.4, delay: 0.1, alpha: 0.7 })
+    this.rig.hit(18)
+    this.flash(0.26, '#ffe0f0')
+    this.rig.focus(e.x, e.y, R * 2.2, 1.8)
   }
 
   // ─── 당구 충돌 — 부서지지 않고 튕겼다 ────────────────────────

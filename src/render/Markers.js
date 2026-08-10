@@ -123,9 +123,7 @@ export class Markers {
     // 같은 숫자가 작전 줄(0/2)에 이미 크게 떠 있다.
     const suffix = game.targets.length > 1 && innerWidth >= 520 ? loc('mark.left', { n: nAlive }) : ''
     const thp = t.hp ?? 3, tmax = t.hpMax ?? 3
-    // 본성(◈)은 광선을 쥔 요새다 — 표적이 그놈이면 이름 옆에 박아 둔다
-    const home = t === game.homeworld ? loc('mark.home') : ''
-    this.setLabel('target', loc('mark.target', { name: nameOf(t), home, hp: thp, hpMax: tmax, suffix }), '#ffc9cf', 'rgba(58,10,17,.92)')
+    this.setLabel('target', loc('mark.target', { name: nameOf(t), hp: thp, hpMax: tmax, suffix }), '#ffc9cf', 'rgba(58,10,17,.92)')
     this.setLabel('earth', loc('mark.earth', { hp: game.earth.hp ?? 3, hpMax: game.earth.hpMax ?? 3 }), '#bfdbfe', 'rgba(23,37,84,.92)')
 
     const tr = radiusOfRender(t), er = radiusOfRender(e)

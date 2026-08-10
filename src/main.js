@@ -49,7 +49,7 @@ if (!params.get('nointro')) {
     // 한 프레임도 흐르지 않은 채 튜토리얼이 열린다.
     attract = null; game.warpHold = true; hud._sync()
     new Intro(() => { game.warpHold = false }).start()
-  }, comms).start()
+  }, comms, ground).start()
 }
 
 let last = performance.now()

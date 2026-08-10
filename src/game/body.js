@@ -36,7 +36,6 @@ export function makeBody(spec = {}) {
     isTarget: !!spec.isTarget,
     zorg: !!spec.zorg,
     mothership: !!spec.mothership,   // 시한 종료 시 오는 조르그 모성 — 부술 수 없다
-    homeworld: !!spec.homeworld,
     role,
     mods: spec.mods ?? null,
     // 남은 회피 분사 횟수. 조르그 요새에만 1로 실리고(3스테이지부터), 한 번 쓰면
