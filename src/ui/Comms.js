@@ -90,12 +90,13 @@ export class Comms {
     this.lineEl = el.querySelector('#commsLine')
   }
 
-  // 지금 말을 걸 수 있는 요새 — 살아 있고 화면 안에 있는 것.
+  // 지금 말을 걸 수 있는 조르그 — 살아 있고 화면 안에 있는 것.
+  // 요새든 모함이든 저쪽 목소리는 하나다(같은 대사표를 쓴다).
   // any=true면 화면 밖이라도 아무나 잡는다(예고편이 박자를 잡아 부를 때).
   // 창 자체는 place()가 화면 안으로 끌어다 놓으므로 가리키는 데가 없진 않다.
   speaker(any = false) {
     const g = this.game
-    const forts = g.bodies.filter(b => b.alive && b.role === 'battery')
+    const forts = g.bodies.filter(b => b.alive && g.isTarget(b))
     if (!forts.length) return null
     const rig = this.view.rig
     const onScreen = forts.filter(b => {
@@ -168,11 +169,12 @@ export class Comms {
   // 이번 프레임에 부서진 요새 — 지난 프레임의 명단과 비교해 찾는다.
   // 게임 쪽에 손대지 않고도 "죽는 순간"을 잡을 수 있는 유일하게 깔끔한 자리다.
   reaped() {
-    const alive = this.game.bodies.filter(b => b.alive && b.role === 'battery')
+    const g = this.game
+    const alive = g.bodies.filter(b => b.alive && g.isTarget(b))
     const now = new Set(alive.map(b => b.id))
     let gone = null
-    for (const b of this.game.bodies) {
-      if (b.role === 'battery' && this.forts.has(b.id) && !now.has(b.id)) { gone = b; break }
+    for (const b of g.bodies) {
+      if (g.isTarget(b) && this.forts.has(b.id) && !now.has(b.id)) { gone = b; break }
     }
     this.forts = now
     return gone

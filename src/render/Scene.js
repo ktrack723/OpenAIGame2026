@@ -23,6 +23,7 @@ const MATS = {
   void: { rough: 1.00, metal: 0.00, emis: 0.00 },
   earth: { rough: 0.55, metal: 0.10, emis: 0.08 },
   zorg: { rough: 0.45, metal: 0.65, emis: 0.30 },   // 조르그 모성
+  hive: { rough: 0.40, metal: 0.75, emis: 0.10 },   // 조르그 모함 — 회로가 대신 빛난다
   debris: { rough: 1.00, metal: 0.10, emis: 0.00 },
 }
 
@@ -44,6 +45,7 @@ const PALETTE = {
   void: [0x120a1e],
   earth: [0x3b82f6],       // 이 파랑은 지구 전용이다
   zorg: [0x4a1240],
+  hive: [0x3c1030],
   debris: [0x8b8f96],
 }
 // 천체 id → 팔레트 번호. 문자열 해시라 시드가 같으면 매번 같은 색이 나온다.
@@ -509,9 +511,11 @@ export class SceneView {
   // 값을 fx에 적어 두는 이유: 워프인·조준 물들임이 자체발광을 잠깐 덮었다가
   // 되돌리는데, 되돌릴 자리가 한 군데여야 요새의 회로가 그때 꺼지지 않는다.
   emissiveFor(b, pi, spec) {
-    return b.role === 'battery'
-      ? { tone: 0xff2b3f, base: 0.95, map: this.circuitFor(pi) }
-      : { tone: colorOf(b.type, pi), base: spec.emis, map: null }
+    // 조르그가 만든 것에는 회로 불빛이 들어온다 — 요새는 붉게, 모함은 자주로.
+    // (같은 지도를 쓰되 색만 다르다. 색 하나로 "저건 다른 물건"이 읽힌다.)
+    if (b.role === 'battery') return { tone: 0xff2b3f, base: 0.95, map: this.circuitFor(pi) }
+    if (b.role === 'hive') return { tone: 0xe879f9, base: 1.15, map: this.circuitFor(pi + 7) }
+    return { tone: colorOf(b.type, pi), base: spec.emis, map: null }
   }
 
   makeBodyFx(b) {
@@ -767,7 +771,7 @@ export class SceneView {
       }
       // 요새의 회로 불빛 — 도착이 끝난 뒤로는 여기서 아주 느리게 숨을 쉰다.
       // (자체발광 지도라 선 위만 빛난다. 몸통 전체가 밝아지지는 않는다.)
-      if (fx.fort && b.warp <= 0 && !fx.tinted)
+      if ((fx.fort || b.role === 'hive') && b.warp <= 0 && !fx.tinted)
         fx.mesh.material.emissiveIntensity = fx.emisBase * (0.7 + 0.3 * Math.sin(this.lockT * 1.7 + fx.phase))
       fx.mesh.position.set(b.pos.x, b.pos.y, 0)
       // 가스 행성은 고리가 판정 반경을 채우므로 구체를 그만큼 줄인다 —

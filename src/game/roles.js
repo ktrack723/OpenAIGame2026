@@ -1,11 +1,12 @@
 import { CFG, nukeDv } from './config.js'
 import { t } from '../i18n/index.js'
 
-// ─── 행성 태그 — 다섯 ───────────────────────────────────────────
+// ─── 행성 태그 — 여섯 ───────────────────────────────────────────
 // 태그가 안 붙은 건 전부 **일반 행성**이다. 규칙이 없는 게 규칙이라
 // 마음 놓고 큐볼로 쓰면 된다.
 //
 //   ☠ 조르그 요새 — 부숴야 할 표적. 체력 1이라 한 번만 제대로 처박으면 된다.
+//   ◎ 조르그 모함 — 안테 5부터. 광선은 안 쏘지만 부술 때까지 요새를 실어 나른다.
 //   🔩 금속 행성   — 무겁다. 핵으로 미는 양이 절반으로 깎인다.
 //   🪐 가스 행성   — 터진다. 핵을 맞으면 그 자리에서 유폭한다.
 //   🧊 얼음 행성   — 가볍다. 질량이 절반이라 두 배로 밀린다(최고의 큐볼).
@@ -19,6 +20,8 @@ import { t } from '../i18n/index.js'
 // dvScale은 게임 수치라 언어와 무관하게 여기 남는다.
 export const ROLES = {
   battery: { icon: '☠', color: 0xf43f5e, dvScale: 1 },
+  // 조르그 모함 — 광선은 안 쏘고 성계를 채운다. 이것도 부숴야 판이 끝난다.
+  hive: { icon: '◎', color: 0xe879f9, dvScale: 1 },
   armor: { icon: '🔩', color: 0x94a3b8, dvScale: CFG.ARMOR_DV },
   volatile: { icon: '🪐', color: 0xfb923c, dvScale: 1 },
   light: { icon: '🧊', color: 0x8be9ff, dvScale: 1 },

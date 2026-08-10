@@ -1,6 +1,6 @@
-// 이 파일에는 이미 t(표적)와 tr(표적 반지름)이라는 지역 변수가 있다.
-// 번역 함수는 그 둘과 안 부딪히게 loc으로 받는다.
-import { t as loc, nameOf } from '../i18n/index.js'
+// 이 파일에는 이미 t(표적)라는 지역 변수가 있다.
+// 번역 함수는 그것과 안 부딪히게 loc으로 받는다.
+import { t as loc } from '../i18n/index.js'
 import { CFG } from '../game/config.js'
 import * as THREE from 'three'
 
@@ -9,10 +9,11 @@ import * as THREE from 'three'
 //
 // 이름표는 둘뿐이다(지금 물고 있는 표적 하나 + 지구). 요새가 여덟이면
 // 이름표도 여덟이 되어 판이 글자로 덮인다.
-// 화살표는 **살아 있는 요새 전부**에 하나씩 붙는다. 화면 밖에 뭐가 몇 개
-// 남았는지는 방향만 있으면 읽히고, 그게 이 게임에서 제일 자주 필요한 정보다.
+// 화살표는 **살아 있는 위협 전부**(요새와 모함)에 하나씩 붙는다. 화면 밖에
+// 뭐가 몇 개 남았는지는 방향만 있으면 읽히고, 그게 이 게임에서 제일 자주
+// 필요한 정보다.
 //
-// 색으로 편을 가른다: 지구는 파랑, 조르그는 붉은색. 예전엔 시안과 하늘색이라
+// 색으로 편을 가른다: 지구는 파랑, 조르그 요새는 붉은색, 모함은 자주. 예전엔 시안과 하늘색이라
 // 화면 가장자리에서 둘이 구분되지 않았다 — 표적 테두리(#f43f5e)와 같은 색을
 // 쓰면 화살표가 가리키는 쪽에 뭐가 있는지가 색 하나로 끝난다.
 //
@@ -27,6 +28,8 @@ const LABEL_H = 26   // 라벨 표시 높이(CSS px) — 줌과 무관하게 일
 const ARROW_PX = 13
 const EARTH_TONE = 0x60a5fa   // 지구 — 파랑(공 테두리와 같은 색)
 const FOE_TONE = 0xf43f5e     // 조르그 요새 — 붉은색(표적 테두리와 같은 색)
+const HIVE_TONE = 0xe879f9    // 조르그 모함 — 자주(배지와 같은 색). 요새와 갈린다
+const HIVE_SCALE = 1.5        // 모함 화살표만 조금 크다 — 저건 다른 물건이다
 
 function labelSprite(text, color, bg) {
   const dpr = Math.min(3, devicePixelRatio || 1)
@@ -76,10 +79,14 @@ export class Markers {
     this.t = 0
   }
 
-  // 요새 하나의 화살표. 처음 보는 요새면 만들어 두고 그 뒤로는 재사용한다.
-  foeArrow(id) {
-    let a = this.foeArrows.get(id)
-    if (!a) { a = arrowMesh(FOE_TONE); this.scene.add(a); this.foeArrows.set(id, a) }
+  // 위협 하나의 화살표. 처음 보는 것이면 만들어 두고 그 뒤로는 재사용한다.
+  foeArrow(b) {
+    let a = this.foeArrows.get(b.id)
+    if (!a) {
+      a = arrowMesh(b.role === 'hive' ? HIVE_TONE : FOE_TONE)
+      a.userData.scale = b.role === 'hive' ? HIVE_SCALE : 1
+      this.scene.add(a); this.foeArrows.set(b.id, a)
+    }
     return a
   }
 
@@ -130,7 +137,7 @@ export class Markers {
     arrow.visible = !inside && body.alive && !(body.warpIn > 0)
     if (arrow.visible) {
       const cx = Math.max(x0, Math.min(x1, body.pos.x)), cy = Math.max(y0, Math.min(y1, body.pos.y))
-      const s = ARROW_PX * ppw
+      const s = ARROW_PX * (arrow.userData.scale ?? 1) * ppw
       arrow.position.set(cx, cy, 8)
       arrow.scale.set(s, s, 1)
       arrow.rotation.z = Math.atan2(body.pos.y - cy, body.pos.x - cx)
@@ -149,23 +156,27 @@ export class Markers {
     if (game.bare) return this.hide()
     for (const o of [this.targetLabel, this.earthLabel, this.earthArrow]) if (o) o.visible = true
     const t = game.target, e = game.earth
-    const nAlive = game.aliveTargets
-    // 세로 화면에서는 이름표가 화면 폭을 넘긴다. 그때는 "남은 요새 n"을 뺀다 —
-    // 같은 숫자가 작전 줄(0/2)에 이미 크게 떠 있다.
-    const suffix = game.targets.length > 1 && innerWidth >= 520 ? loc('mark.left', { n: nAlive }) : ''
-    const thp = t.hp ?? CFG.PLANET_HP, tmax = t.hpMax ?? CFG.PLANET_HP
-    this.setLabel('target', loc('mark.target', { name: nameOf(t), hp: thp, hpMax: tmax, suffix }), '#ffc9cf', 'rgba(58,10,17,.92)')
-    this.setLabel('earth', loc('mark.earth', { hp: game.earth.hp ?? CFG.PLANET_HP, hpMax: game.earth.hpMax ?? CFG.PLANET_HP }), '#bfdbfe', 'rgba(23,37,84,.92)')
+    // ── 이름표는 **체력만** 말한다 ──
+    // 예전에는 "☠ 표적 Zorg Mogul-1 · 체력 1/1 (남은 요새 2)"였다. 그 안에서
+    // 매 순간 달라지는 값은 체력 하나뿐이고, 나머지는 화면이 이미 말하고 있다:
+    // 무엇인가는 해골·이름표 색이, 몇 기 남았는가는 작전 줄(0/2)이, 이름은
+    // 공을 짚으면 뜨는 정보창이 말한다. 판 위에 문장이 길게 누워 있으면 정작
+    // 그 밑의 공과 궤도가 안 보인다.
+    this.setLabel('target', loc('mark.target', {
+      hp: t.hp ?? CFG.PLANET_HP, hpMax: t.hpMax ?? CFG.PLANET_HP,
+    }), '#ffc9cf', 'rgba(58,10,17,.92)')
+    this.setLabel('earth', loc('mark.earth', {
+      hp: e.hp ?? CFG.PLANET_HP, hpMax: e.hpMax ?? CFG.PLANET_HP,
+    }), '#bfdbfe', 'rgba(23,37,84,.92)')
 
     // ── 화살표는 살아 있는 요새 전부 ──
     // 이름표는 지금 물고 있는 하나뿐이지만, 화면 밖에 남은 요새가 몇 기이고
     // 어느 쪽에 있는지는 전부 보여 준다. 아직 워프해 들어오지 않은 증원은
     // 아직 성계에 없는 것이므로 세지 않는다(place가 걸러 낸다).
-    const forts = game.bodies.filter(b => b.alive && b.role === 'battery')
+    const forts = game.bodies.filter(b => b.alive && game.isTarget(b))
     this.reap(new Set(forts.map(b => b.id)))
     for (const b of forts) {
-      const arrow = this.foeArrow(b.id)
-      this.place(b === t ? this.targetLabel : null, arrow, b, rig, radiusOfRender(b))
+      this.place(b === t ? this.targetLabel : null, this.foeArrow(b), b, rig, radiusOfRender(b))
     }
     this.place(this.earthLabel, this.earthArrow, e, rig, radiusOfRender(e))
     // 요새가 하나도 안 남았으면(=클리어) 이름표는 마지막 표적 자리에 그대로 둔다
