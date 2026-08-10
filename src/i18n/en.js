@@ -299,7 +299,8 @@ export const en = {
   'intro.7.aim': '◎ AIM', 'intro.7.aim.sub': 'time frozen',
   'intro.7.obs': '▶ OBSERVE', 'intro.7.obs.sub': 'TAB to switch',
   'alarm.multi': ' · {n} batteries aiming',
-  'gnd.trailer.fear': 'A whole planet… gone. From one shot.',
+  'gnd.trailer.fear': 'That beam was aimed at Earth. If that planet had not crossed—',
+  'gnd.trailer.hit': 'A whole planet, gone. From one shot.',
   'gnd.trailer.nuke': 'Nukes will not stop that. We ran the numbers — not even close.',
   'gnd.trailer.idea': 'Then we throw something bigger. Hit a planet… with a planet!',
 }

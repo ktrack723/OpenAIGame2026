@@ -4,6 +4,7 @@ import { makeHud, updateHud } from './ui/hud.js'
 import { Inspector } from './ui/Inspector.js'
 import { Intro } from './ui/Intro.js'
 import { Attract } from './ui/Attract.js'
+import { LangPick } from './ui/LangPick.js'
 import { Comms } from './ui/Comms.js'
 import { Ground } from './ui/Ground.js'
 import { Victory } from './ui/Victory.js'
@@ -33,23 +34,32 @@ document.querySelector('.boot')?.remove()
 const comms = new Comms(game, view)
 const ground = new Ground(game, view)
 
-// 오프닝 — 두 단계다.
+// 오프닝 — 세 단계다.
+// ⓪ 언어: 무엇으로 읽을지부터 묻는다. 예고편도 튜토리얼도 문장이 있는데,
+//    그걸 다 보고 나서야 언어를 고를 수 있으면 그건 고른 게 아니다.
 // ① 예고편: **실제 게임을 굴려서** 한 번의 발사가 끝까지 굴러가는 걸 보여 준다.
 //    그려 놓은 그림이 아니라 같은 렌더러·같은 HUD·같은 폭발이다.
 //    끝나면 판을 리셋하고 로고를 박는다.
 // ② 튜토리얼: 규칙을 한 컷씩, 누르는 사람 속도로.
-// ?nointro=1 로 둘 다 끌 수 있다(반복 플레이·자동 검증용).
+// ?nointro=1 로 셋 다 끌 수 있다(반복 플레이·자동 검증용).
 // 조르그의 첫 워프인은 **튜토리얼을 닫은 뒤에** 시작된다(warpHold). 규칙을
 // 읽는 동안 뒤에서 도착이 끝나 버리면, 첫 판에서 제일 먼저 봐야 할 장면을
 // 오버레이가 통째로 가린다. 닫고 나서 워프가 끝나면 그때 조준 UI가 떠오른다.
 let attract = null
 if (!params.get('nointro')) {
-  attract = new Attract(game, view, () => {
-    // 예고편이 판을 되돌린 직후다(resetRun). 여기서 잡아 두면 워프인이
-    // 한 프레임도 흐르지 않은 채 튜토리얼이 열린다.
-    attract = null; game.warpHold = true; hud._sync()
-    new Intro(() => { game.warpHold = false }).start()
-  }, comms, ground).start()
+  // 언어를 고르는 동안에도 판은 붙들어 둔다 — 그 사이에 조르그가 도착해
+  // 버리면 예고편이 세울 무대가 이미 헝클어져 있다.
+  game.warpHold = true
+  new LangPick(() => {
+    game.warpHold = false
+    window.__attract = attract = new Attract(game, view, () => {
+      // 예고편이 판을 되돌린 직후다(resetRun). 여기서 잡아 두면 워프인이
+      // 한 프레임도 흐르지 않은 채 튜토리얼이 열린다.
+      attract = null; game.warpHold = true; hud._sync()
+      new Intro(() => { game.warpHold = false }).start()
+    }, comms, ground).start()
+    hud._sync()
+  }).start()
 }
 
 let last = performance.now()

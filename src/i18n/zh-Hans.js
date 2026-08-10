@@ -299,7 +299,8 @@ export const zhHans = {
   'intro.7.aim': '◎ 瞄准', 'intro.7.aim.sub': '时间静止',
   'intro.7.obs': '▶ 观测', 'intro.7.obs.sub': 'TAB 切换',
   'alarm.multi': ' · {n}座炮台同时瞄准',
-  'gnd.trailer.fear': '一整颗行星…没了。就一发。',
+  'gnd.trailer.fear': '那道光瞄的是地球。要不是那颗行星横穿过去—',
+  'gnd.trailer.hit': '一整颗行星，没了。就一发。',
   'gnd.trailer.nuke': '核弹拦不住那个。算过了 — 差得远。',
   'gnd.trailer.idea': '那就扔更大的。用行星—去撞行星！',
 }

@@ -299,7 +299,8 @@ export const ja = {
   'intro.7.aim': '◎ 照準', 'intro.7.aim.sub': '時間停止',
   'intro.7.obs': '▶ 観測', 'intro.7.obs.sub': 'TAB 切替',
   'alarm.multi': ' · 砲台{n}基が同時照準',
-  'gnd.trailer.fear': '惑星が…丸ごと消えました。たった一撃で。',
+  'gnd.trailer.fear': '照準は地球でした。あの惑星が横切らなければ—',
+  'gnd.trailer.hit': '惑星が丸ごと消えました。たった一撃で。',
   'gnd.trailer.nuke': 'あれは核でも止まりません。計算しました — 全然足りない。',
   'gnd.trailer.idea': 'なら、もっと大きいのを投げましょう。惑星を—惑星にぶつけるんです！',
 }

@@ -320,7 +320,8 @@ export const ko = {
   'intro.7.aim': '◎ 조준', 'intro.7.aim.sub': '시간 정지',
   'intro.7.obs': '▶ 관측', 'intro.7.obs.sub': 'TAB 전환',
   'alarm.multi': ' · 포대 {n}기 동시 조준',
-  'gnd.trailer.fear': '행성이… 통째로 사라졌습니다. 광선 한 발에.',
+  'gnd.trailer.fear': '조준선은 지구였습니다. 저 행성이 끼어들지 않았다면—',
+  'gnd.trailer.hit': '행성이 통째로 사라졌습니다. 광선 한 발에.',
   'gnd.trailer.nuke': '저건 핵으로도 안 됩니다. 계산해 봤습니다 — 한참 모자랍니다.',
   'gnd.trailer.idea': '그럼 더 큰 걸 던지죠. 행성을— 행성에 박읍시다!',
 }

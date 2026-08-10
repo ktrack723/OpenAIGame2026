@@ -59,7 +59,10 @@ const skull = (x, y, s) => `
 
 // ── 컷 목록 ─────────────────────────────────────────────────────
 // 규칙 하나에 컷 하나. 이 순서가 곧 이 게임을 배우는 순서다.
-const PANELS = [
+// **함수다.** 그림 안에도 글자가 있는데(지구·조르그 요새·밀린다…), 표를
+// 모듈이 뜨는 순간 한 번만 읽어 두면 그 글자만 옛 언어로 굳는다 —
+// 언어 선택이 오프닝 앞으로 나온 지금은 그게 곧 처음 보는 화면이다.
+const panels = () => [
   {
     key: 'intro.1',
     art: `<g>
@@ -158,6 +161,7 @@ export class Intro {
     this.onDone = onDone
     this.i = -1
     this.done = false
+    this.panels = panels()   // 지금 언어로 굽는다
 
     const el = document.createElement('div')
     el.className = 'intro'
@@ -184,7 +188,7 @@ export class Intro {
     this.tag = el.querySelector('#introTag')
     this.line = el.querySelector('#introLine')
     this.beat = el.querySelector('#introBeat')
-    el.querySelector('#introDots').innerHTML = PANELS.map(() => '<i></i>').join('')
+    el.querySelector('#introDots').innerHTML = this.panels.map(() => '<i></i>').join('')
     this.dots = [...el.querySelectorAll('#introDots i')]
 
     el.querySelector('#introSkip').onclick = (e) => { e.stopPropagation(); this.finish() }
@@ -214,8 +218,8 @@ export class Intro {
   next() {
     if (this.done) return
     this.i++
-    if (this.i >= PANELS.length) { this.finish(); return }
-    const p = PANELS[this.i]
+    if (this.i >= this.panels.length) { this.finish(); return }
+    const p = this.panels[this.i]
     this.art.innerHTML = p.art
     this.tag.textContent = t(`${p.key}.tag`)
     // **강조** 를 굵게 — 규칙의 핵심 단어 하나만 눈에 박히면 된다
