@@ -10,8 +10,8 @@ export const CAUSE_KO = {
   laser: '조르그 레이저에 관통',
 }
 
-export const GOAL_TITLE = '조르그 요새 섬멸'
-export const GOAL_RULE =
+const GOAL_TITLE = '조르그 요새 섬멸'
+const GOAL_RULE =
   '조르그 요새(☠)를 전부 없애라. 보통 요새는 체력 1 — 제대로 한 번 처박으면 끝난다. '
   + '2판부터 섞여 오는 대형 요새(◇◇)는 체력 2라 두 번 처박아야 한다 — 표식에 체력이 뜬다. '
   + '태양·흡수·유폭도 인정된다.'
@@ -29,6 +29,8 @@ export function makeGoal(fortresses) {
     need: fortresses.length,
     // 게임이 매 스텝 갱신한다 (살아있는 요새 수)
     update(aliveCount) { this.alive = aliveCount },
-    label() { return `${this.title} ${this.total - this.alive}/${this.total}` },
+    // 숫자만. 제목은 이 값을 띄우는 자리에 이미 붙어 있다 — 예전에는 둘을
+    // 한 문자열로 묶어서 패널에 "조르그 요새 섬멸  조르그 요새 섬멸 0/2"가 떴다.
+    label() { return `${this.total - this.alive}/${this.total}` },
   }
 }

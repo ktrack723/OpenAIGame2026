@@ -78,7 +78,7 @@ export const modsOf = (b) => (b && b.mods) ? b.mods : []
 // 이 공에 실제로 먹히는 Δv — 금속은 깎이고 특이점은 0이다.
 // 겹쳐 얹은 성질(mods)까지 보고 가장 강한 감쇠를 적용한다.
 // 예측선과 실제 임펄스가 반드시 같은 함수를 써야 조준이 거짓말을 안 한다.
-export function dvScaleOf(b) {
+function dvScaleOf(b) {
   let s = ROLES[b.role]?.dvScale ?? 1
   for (const m of modsOf(b)) s = Math.min(s, ROLES[m]?.dvScale ?? 1)
   return s

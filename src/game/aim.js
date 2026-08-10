@@ -166,7 +166,7 @@ export function scanContact(game, dir = 1) {
 // 지평은 TTL의 60%로 자른다: 계측상 접촉의 92%가 그 안에 일어나고,
 // 나머지는 어차피 굴러가다 만나는 샷이라 "칠 수 있는 각도" 목록에 안 넣는 게 낫다.
 const COARSE_HORIZON = 0.6
-export function coarseContact(game, ang) {
+function coarseContact(game, ang) {
   const sim = cloneBodies(game.bodies)
   const dt = 1 / 32
   const p = { x: game.earth.pos.x + Math.cos(ang) * CFG.LAUNCH_OFFSET, y: game.earth.pos.y + Math.sin(ang) * CFG.LAUNCH_OFFSET }
@@ -191,7 +191,7 @@ export function coarseContact(game, ang) {
 }
 
 // 충돌 한 건의 "큐 정보" — 폭심, 임펄스 방향, 타격 직후 공의 진로
-export function impactInfo(game, o, point, simEarth) {
+function impactInfo(game, o, point, simEarth) {
   const isT = game.isTarget(o)
   let outcome = 'neutral'
   if (o.type === 'debris') outcome = 'debris'

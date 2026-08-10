@@ -102,7 +102,7 @@ export class Game {
 
     this.pairCool.clear()
     this.doom = null; this.mothership = null
-    this.missiles = []; this.shots = 0; this.score = 0; this.chainLast = 0
+    this.missiles = []; this.shots = 0; this.score = 0
     this.won = false; this.lost = false; this.failReason = null
     const t = this.target
     this.aim = Math.atan2(t.pos.y - this.earth.pos.y, t.pos.x - this.earth.pos.x)
@@ -113,7 +113,7 @@ export class Game {
     this.obsSpeed = 1   // OBS_SPEEDS 인덱스 — 기본 2×
     this.toast = null; this.toastT = 0
     this.winBanked = false; this.timeWarn = 0
-    this.stage = { roles: this.presentRoles(), added: added.length }
+    this.stage = { roles: this.presentRoles() }
     this.message = added.length
       ? `조르그 증원 워프 — 요새 ${fortresses.length}기 진입. ${this.goal.rule}`
       : `작전 개시 — ${this.goal.rule}`
@@ -139,7 +139,6 @@ export class Game {
     return this.targets.find(t => t.alive) || this.targets[0] || this.earth
   }
   // 위협 = 조르그 요새. 이것만 전멸시키면 판이 끝난다.
-  get fortresses() { return this.bodies.filter(b => b.role === 'battery') }
   get aliveFortresses() { return this.bodies.filter(b => b.alive && b.role === 'battery').length }
   // id로 비교한다 — 예측선은 cloneBodies()가 만든 복제본을 넘기므로
   // 참조 비교를 쓰면 "예측에서는 목표가 목표가 아닌" 사고가 난다.
@@ -147,10 +146,6 @@ export class Game {
   // 성질로 판정한다 — 예측선이 넘기는 복제본에서도 그대로 성립한다.
   isTarget(b) { return b.role === 'battery' }
   get aliveTargets() { return this.aliveFortresses }
-  // 특이점은 부술 수 없으니 "남은 재료"에서 뺀다 (연쇄 충돌 목표의 달성 가능성 판정용)
-  get alivePlanets() {
-    return this.bodies.filter(b => b.alive && !b.isEarth && b.type !== 'debris' && b.role !== 'void').length
-  }
 
   launchPos() {
     const d = CFG.LAUNCH_OFFSET   // 지구 중력권 밖에서 발사 (§4.3 κ 증폭 때문)
@@ -551,7 +546,7 @@ export class Game {
     // §9.1 스타일 배율 — 체인/니어미스/태양 가속은 여전히 점수에 얹힌다
     const M = 1 + 0.75 * m.chain + 0.25 * m.nearMiss + (m.minSunDist < CFG.SUN_BONUS_R ? 0.5 : 0)
     const gained = Math.round(8 * M)
-    this.score += gained; this.chainLast = m.chain
+    this.score += gained
     this.message = `${b.name} 타격 — Δv ${push.dv.toFixed(1)} · 방위 ${bearing(push.dx, push.dy).toFixed(0)}°`
       + (hasRole(b, 'armor') ? ' (장갑에 막혀 거의 안 밀렸다)' : gained ? ` (+${gained})` : '')
     // 폭풍이 지구를 정통으로 훑었다면 경고 — 지구가 밀려 태양에 빠지는 사고가 실제로 난다
@@ -704,7 +699,7 @@ export class Game {
         this.homeworld = next
       }
       this.goal.update(this.aliveFortresses)
-      this.message = `${label} · ${this.goal.label()}`
+      this.message = `${label} · ${this.goal.title} ${this.goal.label()}`
       this.setToast(`요새 격파 — ${this.goal.label()}`)
     } else {
       this.message = label
