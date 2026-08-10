@@ -56,7 +56,9 @@ export const zhHant = {
   'lcd.warn.eject': '↩ 衝到帶邊再彈回來（{v}>{esc}）',
 
   'goal.title': '殲滅佐格要塞',
-  'goal.rule': '清除所有佐格要塞（☠）。普通要塞體力為 1 — 結結實實撞一次就完。第 2 關起混進來的大型要塞（◇◇）體力為 2，要撞兩次 — 標記上會顯示體力。太陽、吞噬與殉爆同樣算數。',
+  'goal.rule': '清除所有佐格要塞（☠）。體力為 1 — 結結實實撞一次就完。',
+  'goal.heavy': '這一波混著大型要塞（◇◇）— 體力為 2，要撞兩次。',
+  'goal.boost': '從這一波起要塞帶著推進器 — 察覺到來彈會側閃一次。',
   'cause.collision': '碰撞摧毀', 'cause.absorb': '被奇點吞噬', 'cause.sun': '投入恆星',
   'cause.blast': '殉爆', 'cause.laser': '被佐格光束貫穿',
 
@@ -76,7 +78,9 @@ export const zhHant = {
   'cat.hostile': '佐格要塞',
 
   'role.battery': '佐格要塞',
-  'role.battery.brief': '☠ 這就是目標。**每座要塞都是砲台** — 各自對地球充能，錯開時間輪流開火。毀掉一座，那一輪也隨之消失；在充能途中毀掉，這一發就取消。通常體力 1，大型（第 2 關起）為 2，個頭也相應更大。第 3 關起每座都帶一具推進器，但從察覺來彈到點火**要好幾秒** — 太晚咬上的彈道照樣命中。',
+  'role.battery.brief': '☠ 這就是目標。它對地球充能，各要塞錯開時間輪流開火。毀掉一座，那一輪也隨之消失；在充能途中毀掉，那一發就取消。',
+  'role.battery.heavy': '◇◇ 大型 — 體力 2。一次撞不碎。',
+  'role.battery.boost': '⇢ 一具推進器 — 察覺來彈幾秒後側閃。每關只有一次，太晚咬上的軌道照樣命中。',
   'role.battery.aim': '佐格要塞 — 這一擊就能結束',
   'role.armor': '金屬行星',
   'role.armor.brief': '🔩 很重。核衝量只吃進 {pct}% — 會動，但只有一半。',
@@ -101,7 +105,7 @@ export const zhHant = {
   'insp.radius': '半徑 / 判定', 'insp.orbit': '軌道半徑', 'insp.speed': '速率',
   'insp.dv': '核 Δv（{yield}Mt）', 'insp.volatileR': '殉爆半徑',
   'insp.foot.earth': '地球被撞三次就完了 — 衝擊波也能推動它，小心。',
-  'insp.foot.foe': '體力 1 — 結結實實撞一次就完。太陽、奇點與殉爆同樣算數。',
+  'insp.foot.foe': '體力 {hp} — 撞夠這麼多次就完。太陽、奇點與殉爆同樣算數。',
   'insp.foot.cue': '{hint} — 把球推進目標裡，這就是這個遊戲。',
 
   'planet.mercury': '水星 Mercury', 'planet.venus': '金星 Venus', 'planet.earth': '地球 Earth',

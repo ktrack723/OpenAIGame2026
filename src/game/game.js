@@ -116,9 +116,21 @@ export class Game {
     this.toast = null; this.toastT = 0
     this.winBanked = false; this.timeWarn = 0; this.bonusNote = 0
     this.stage = { roles: this.presentRoles() }
+    // ── 규칙은 **필요할 때** 알려 준다 ──
+    // 예전에는 판마다 같은 문단을 통째로 읽혔다: 체력 1 요새, 2판부터 오는
+    // 대형, 3판부터 달려 오는 추진기. 1판에서는 뒤의 둘이 아직 없는데도
+    // 그 설명을 먼저 읽는 셈이라, 정작 지금 필요한 한 줄이 그 안에 묻혔다.
+    // 이제 기본 규칙 한 줄에 **이번 판에 실제로 있는 것만** 덧붙인다.
+    // (문구는 **번역 전 상태로** 이어 붙인다 — msg()는 {키, 값}일 뿐이고
+    //  화면에 뜨는 순간에 번역된다. 여기서 문자열로 굳히면 판이 도는 중에
+    //  언어를 바꿨을 때 이 줄만 옛 언어로 남는다.)
+    let rule = msg('goal.rule')
+    const add = (k) => { rule = msg('ui.join', { a: rule, b: msg(k) }) }
+    if (fortresses.some(b => (b.hpMax ?? 1) > 1)) add('goal.heavy')
+    if (fortresses.some(b => b.boost > 0)) add('goal.boost')
     this.message = added.length
-      ? msg('msg.stage.reinforce', { n: fortresses.length, rule: msg('goal.rule') })
-      : msg('msg.stage.open', { rule: msg('goal.rule') })
+      ? msg('msg.stage.reinforce', { n: fortresses.length, rule })
+      : msg('msg.stage.open', { rule })
   }
 
   presentRoles() {
