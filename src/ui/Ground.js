@@ -15,6 +15,10 @@ import { t, tList } from '../i18n/index.js'
 
 const HOLD = 3.4          // 떠 있는 시간(초)
 const FLOOR = 1.1         // 이 안에 새 사건이 와도 앞의 말을 자르지 않는다(더 센 것만 자른다)
+// **어떤 사건이 와도** 한 줄은 이만큼은 떠 있는다. 이게 없으면 사건이 몰릴 때
+// (빨리 감기·예고편) 대사가 0.6초 만에 다음 줄에 덮여 한 줄도 못 읽는다.
+// 밀린 사건은 버리지 않고 큐에서 기다렸다가 이어서 나온다.
+const MIN_SHOW = 1.5
 
 // 얼굴 셋 — 관제 요원. 조르그와 실루엣부터 갈라 둔다: 저쪽은 곤충 머리,
 // 이쪽은 헬멧·헤드셋·바이저라 한눈에 "사람 쪽"으로 읽힌다.
@@ -201,7 +205,10 @@ export class Ground {
     // 대본은 모드를 안 본다 — 예고편의 ④는 조준 모드인데, 그 화면에서 하는
     // 말이 곧 이 게임이 시작된 이유다.
     if (this.forced) {
-      this.queued = null
+      // 대본이 말하는 동안 들어온 사건은 **버리지 않는다**. 예고편에서 발사는
+      // 넷째 대본이 끝나기 0.5초 전에 일어나는데, 예전에는 그 "발사" 보고가
+      // 여기서 지워져 발사 직후 7초 동안 관제가 입을 닫고 있었다.
+      // 대본이 끝나면 큐에 남은 그 한마디부터 이어서 말한다.
       this.left -= dt
       this.place()
       if (this.left <= 0) this.close()
@@ -214,11 +221,19 @@ export class Ground {
 
     if (down) this.raise('fortDown', SAY.fortDown)
     const q = this.queued
-    this.queued = null
-    // 앞의 말이 아직 새것이면(FLOOR 안) 더 센 사건만 끊고 들어온다.
-    if (q && (this.left <= 0 || q.prio > this.prio || this.left < HOLD - FLOOR)) {
-      this.show(q.kind, q.prio)
-      return
+    // ── 한 줄은 최소한 읽을 수 있어야 한다 ──
+    // 예전에는 더 센 사건이 오면 **즉시** 앞의 말을 지웠다. 판이 빨리 감기고
+    // 있을 때(관측 8×, 예고편) 그 규칙은 대사를 통째로 못 읽게 만든다:
+    // 계측(예고편)에서 "탄두 기폭"이 0.6초 만에 "표적 하나 지웠다"에 덮였다.
+    // 사건 자체는 버리지 않는다 — 큐에 둔 채 기다렸다가 이어서 말한다.
+    const hold = q && this.left > 0 && HOLD - this.left < MIN_SHOW
+    if (!hold) {
+      this.queued = null
+      // 앞의 말이 아직 새것이면(FLOOR 안) 더 센 사건만 끊고 들어온다.
+      if (q && (this.left <= 0 || q.prio > this.prio || this.left < HOLD - FLOOR)) {
+        this.show(q.kind, q.prio)
+        return
+      }
     }
     if (this.left <= 0) return
     this.left -= dt
