@@ -523,15 +523,39 @@ export class Game {
     this.setToast(msg(kind === 'fort' ? 'toast.hive.fort' : 'toast.hive.cue'))
   }
 
+  // 이 Δv로 밀고도 요새가 살아남는가 — 태양 둘레의 이체 궤도 원소로 답한다.
+  // 묶인 궤도(a > 0)이고 근일점이 태양 안전 반경 밖이면 통과. 회피하려다 태양에
+  // 처박는 분사만 걸러내는 판정이라 이 두 가지만 본다(원일점이 커지는 것은
+  // 회피의 결과이고, 벨트가 공을 되돌려 보낸다).
+  // 이미 조건을 어긴 궤도(앞판 충돌로 찌그러진 요새)면 어떤 Δv도 통과 못 하는데,
+  // 그때는 호출부의 바닥값(예전 세기)이 그대로 쓰인다 — 예전과 같은 분사다.
+  dodgeSafe(b, nx, ny, dv) {
+    const vx = b.vel.x + nx * dv, vy = b.vel.y + ny * dv
+    const r = Math.hypot(b.pos.x, b.pos.y) || CFG.EPS
+    const inv = 2 / r - (vx * vx + vy * vy) / CFG.MU_STAR   // 1/a — 0 이하면 탈출 궤도다
+    if (inv <= 0) return false
+    const a = 1 / inv
+    const h = b.pos.x * vy - b.pos.y * vx
+    const e = Math.sqrt(Math.max(0, 1 - h * h * inv / CFG.MU_STAR))
+    return a * (1 - e) >= CFG.FORT_DODGE_PERI_MIN
+  }
+
   dodgeBoost(b, vx, vy) {
     const s = Math.hypot(vx, vy) || 1
     let nx = -vy / s, ny = vx / s                   // 탄의 진입 방향에 직각 (둘 중 하나)
     // 태양에서 멀어지는 쪽을 고른다 — 안쪽 직각이면 뒤집는다
     if (nx * b.pos.x + ny * b.pos.y < 0) { nx = -nx; ny = -ny }
-    // 세기는 제 질량에 비례한 추력이다. 질량으로 나누면 결국 Δv는 지금 속도의
-    // 일정 비율이 되고, 그래서 무거운 요새도 가벼운 요새와 같은 만큼 궤도가
-    // 틀어진다 — 덩치가 곧 무적이 되지 않는다.
-    const dv = Math.hypot(b.vel.x, b.vel.y) * CFG.FORT_DODGE_DV
+    // 세기는 제 질량을 따라간다 — 무거운 요새일수록 추진기가 크고, 그래서 Δv도
+    // 질량에 비례해 커진다(가장 가벼운 요새가 기준 ×1, 대형 요새는 상한 ×3).
+    const v = Math.hypot(b.vel.x, b.vel.y)
+    const k = Math.min(CFG.FORT_DODGE_MASS_MAX,
+      Math.max(CFG.FORT_DODGE_MASS_MIN, b.mu / CFG.FORT_DODGE_MU_REF))
+    const base = v * CFG.FORT_DODGE_DV                // 예전 세기 — 안전장치도 이 아래로는 못 깎는다
+    let dv = base * k
+    // …다만 세진 분사가 요새를 태양으로 밀어 넣어서는 안 된다. 통과할 때까지
+    // 세기를 한 단계(0.8배)씩 낮춘다 — 질량 상한이 3배라 다섯 번이면 예전 세기에
+    // 닿고, 거기가 바닥이다. 요새 한 기당 판에 한 번뿐이라 값이 싸다.
+    while (dv > base && !this.dodgeSafe(b, nx, ny, dv)) dv = Math.max(base, dv * 0.8)
     b.vel.x += nx * dv; b.vel.y += ny * dv
     b.boost = 0
     b.alert = null; b.alertMax = null
