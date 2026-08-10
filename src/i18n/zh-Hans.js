@@ -150,7 +150,6 @@ export const zhHans = {
   'msg.cause': '{cause}（+{gained}）',
   'msg.kill': '{cause} — {name}',
   'msg.kill.goal': '{cause} — {name} · {title} {count}',
-  'msg.belt': '{name}撞上了柯伊伯带 — 速率 {v} 不变，按反射角回来',
   'msg.win': '行动成功 — 佐格要塞全灭。星系原样延续到下一关',
   'msg.timeBonus': ' · 时间奖励 +{n}',
   'msg.doom': '他们来了……',
@@ -189,7 +188,6 @@ export const zhHans = {
   'toast.fortDown': '要塞被毁 — {count}',
   'toast.win': '行动成功',
   'toast.doom': '他们来了……',
-  'toast.belt': '带边反弹 — {name}（动量不变）',
   'toast.obsSpeed': '观测倍速 {n}×',
 
   'gnd.who': '地球管制',

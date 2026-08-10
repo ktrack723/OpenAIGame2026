@@ -150,7 +150,6 @@ export const zhHant = {
   'msg.cause': '{cause}（+{gained}）',
   'msg.kill': '{cause} — {name}',
   'msg.kill.goal': '{cause} — {name} · {title} {count}',
-  'msg.belt': '{name}撞上了古柏帶 — 速率 {v} 不變，按反射角回來',
   'msg.win': '行動成功 — 佐格要塞全滅。星系原樣延續到下一關',
   'msg.timeBonus': ' · 時間獎勵 +{n}',
   'msg.doom': '他們來了……',
@@ -189,7 +188,6 @@ export const zhHant = {
   'toast.fortDown': '要塞被毀 — {count}',
   'toast.win': '行動成功',
   'toast.doom': '他們來了……',
-  'toast.belt': '帶邊反彈 — {name}（動量不變）',
   'toast.obsSpeed': '觀測倍速 {n}×',
 
   'gnd.who': '地球管制',

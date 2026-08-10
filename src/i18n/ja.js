@@ -150,7 +150,6 @@ export const ja = {
   'msg.cause': '{cause}（+{gained}）',
   'msg.kill': '{cause} — {name}',
   'msg.kill.goal': '{cause} — {name} · {title} {count}',
-  'msg.belt': '{name}がカイパーベルトに突っ込んだ — 速さ {v} を保ち、反射角で復帰',
   'msg.win': '作戦成功 — ゾルグ要塞を殲滅。星系はそのまま次の面へ続く',
   'msg.timeBonus': ' · 時間ボーナス +{n}',
   'msg.doom': '奴らが来た…',
@@ -189,7 +188,6 @@ export const ja = {
   'toast.fortDown': '要塞撃破 — {count}',
   'toast.win': '作戦成功',
   'toast.doom': '奴らが来た…',
-  'toast.belt': 'ベルト反射 — {name}（運動量はそのまま）',
   'toast.obsSpeed': '観測倍速 {n}×',
 
   'gnd.who': '地球管制',
