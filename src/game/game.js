@@ -104,9 +104,10 @@ export class Game {
     // 실어 나르므로**(stepHive) 판이 끝나려면 결국 이것도 없어져야 한다.
     this.targets = this.bodies.filter(b => (b.alive || (b.warpIn ?? 0) > 0) && this.isTarget(b))
     this.goal = makeGoal(this.targets)
-    // 모함이 유지하려 드는 요새 수 = **판이 열릴 때 온 요새 수.**
-    // 부수면 그 자리가 다시 차오른다 — 모함을 끊기 전까지는.
-    this.hiveKeep = fortresses.length
+    // 모함이 유지하려 드는 요새 수 — 판이 열릴 때 온 수의 60%.
+    // 부수면 그 자리가 다시 차오른다. 다만 **전부는 아니다**: 전부 되채우면
+    // 모함에 닿는 긴 한 수를 준비하는 동안 판이 한 발짝도 안 줄어든다.
+    this.hiveKeep = Math.ceil(fortresses.length * CFG.HIVE_KEEP_FRAC)
     this.hiveHere = this.targets.some(b => b.role === 'hive')
     this.hiveT = 0; this.hiveSent = false; this.hiveN = 0
     // 포대 명단은 판마다 새로 짠다 — 시차(순번)를 처음부터 다시 세워야 하고,
