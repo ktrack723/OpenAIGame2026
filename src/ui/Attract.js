@@ -520,17 +520,6 @@ function rewind(g, steps) {
   for (let i = 0; i < steps; i++) stepBodies(g.bodies, -CFG.DT)
 }
 
-// 조르그 본성을 **발사 직전**으로 만든다. 충전 표식과 ZORG BEAM 패널이 뜨고,
-// 조준선이 지구를 향해 그어진다 — 그걸 큐볼이 끊는 게 이 장면의 결말이다.
-function armLaser(g, left) {
-  const L = g.laser
-  L.state = LASER_IDLE; L.t = 0; L.nextAt = 0
-  g.step(CFG.DT)                                  // → charge (ghost·조준점 계산)
-  if (L.state !== LASER_CHARGE) return
-  L.t = Math.max(0, CFG.LASER_CHARGE - left)      // 남은 충전 시간을 맞춘다
-  g.toast = null; g.toastT = 0                    // "95초 뒤 발사"는 지금 화면과 어긋난다
-}
-
 // ── 로고 ────────────────────────────────────────────────────────
 // 마크는 이 게임 한 줄 요약이다: **궤도(원) 위의 공을 친다.**
 const LOGOMARK = `
@@ -685,9 +674,15 @@ export class Attract {
     // 예측선은 조준 모드에서만 그려진다(canAim). 조준 패널은 cinematic이 걷어낸다.
     g.setMode('aim')
     g.cinematic = true
-    // 남은 충전 시간. 장면 전체가 인게임 25초 남짓이므로, 32초를 남겨 두면
-    // 카운트다운이 내내 줄어들다가 큐볼이 요새를 부수는 순간 끊긴다.
-    armLaser(g, 32)
+    // ③에서 한 발 쏜 뒤로는 **다시 조준하지 않는다.**
+    // 예전에는 여기서 본성을 발사 직전 상태로 되돌려 놓았다(armLaser) —
+    // 카운트다운이 내내 줄어들다가 큐볼이 요새를 부수는 순간 끊기는 그림을
+    // 노린 것이었다. 그런데 화면에 실제로 남는 건 **지구를 가로지르는 위험
+    // 회랑과 조준 마름모**였고, ④는 "내 예측선을 읽는" 컷이라 그 붉은 띠가
+    // 정작 보여 주려던 선을 덮었다. 한 발이면 충분하다 — 광선이 뭘 하는지는
+    // ③에서 이미 봤다.
+    // (다음 조준까지의 시계는 인게임 300초 언저리라, 남은 25초 동안 저절로
+    //  다시 충전되지도 않는다.)
     this.comms?.close()
     this.bar(0.3)
     this.after(AIM_MS, () => this.launch())
