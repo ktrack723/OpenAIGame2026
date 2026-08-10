@@ -1,7 +1,7 @@
 import { CFG, hitRadiusOf } from '../game/config.js'
 import { ROLES, effDv, massClass, modsOf, roleBrief, roleLabel, volatileRadius } from '../game/roles.js'
 import { t, nameOf } from '../i18n/index.js'
-import { HOSTILE, categoryOf } from '../render/Icons.js'
+import { categoryOf, hostileMark } from '../render/Icons.js'
 
 // ─── 천체 정보창 ────────────────────────────────────────────────
 // 마우스를 올리거나(데스크톱) 손가락으로 짚으면(모바일) 그 공의 제원이 뜬다.
@@ -75,15 +75,15 @@ export class Inspector {
     const g = this.game
     const r = Math.hypot(b.pos.x, b.pos.y)
     const v = Math.hypot(b.vel.x, b.vel.y)
-    const hostile = b.role === 'battery'
+    const hostile = b.role === 'battery' || b.role === 'hive'
     const hp = b.hp ?? CFG.PLANET_HP, hpMax = b.hpMax ?? CFG.PLANET_HP
     const pips = '◆'.repeat(Math.max(0, hp)) + '◇'.repeat(Math.max(0, hpMax - hp))
     const out = []
     // 태그 줄 — 다섯 중 붙은 것만. 하나도 없으면 "일반 행성"이라고 못 박는다.
     const tags = []
-    if (hostile) tags.push(['foe', `${HOSTILE.icon} ${HOSTILE.label}`])
+    if (hostile) { const m = hostileMark(b); tags.push(['foe', `${m.icon} ${m.label}`]) }
     for (const key of [b.role, ...modsOf(b)]) {
-      if (!key || key === 'battery') continue
+      if (!key || key === 'battery' || key === 'hive') continue
       const R = ROLES[key]
       if (R) tags.push(['tag', `${R.icon} ${roleLabel(key)}`])
     }

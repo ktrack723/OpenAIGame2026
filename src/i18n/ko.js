@@ -61,19 +61,20 @@ export const ko = {
   'lcd.warn.eject': '↩ 벨트까지 갔다 온다 ({v}>{esc})',
 
   // ── 목표 ──────────────────────────────────────────────────────
-  'goal.title': '조르그 요새 섬멸',
+  'goal.title': '조르그 섬멸',
   // 문구 둘을 잇는 자리 — 판마다 실제로 있는 규칙만 골라 붙인다(game.loadStage).
   'ui.join': '{a} {b}',
   'goal.rule': '조르그 요새(☠)를 전부 없애라. 체력 1 — 제대로 한 번 처박으면 끝난다.',
   'goal.heavy': '이번 판에는 대형 요새(◇◇)가 섞여 있다 — 체력 2라 두 번 처박아야 한다.',
   'goal.boost': '이번 판부터 요새가 추진기를 달고 온다 — 꽂히는 탄을 알아채면 한 번 비켜선다.',
+  'goal.hive': '이번 판에는 조르그 모함(◎)이 궤도 바깥에 와 있다 — 부술 때까지 요새를 계속 실어 나른다. 체력 5.',
   'cause.collision': '충돌 파괴', 'cause.absorb': '특이점 흡수', 'cause.sun': '항성 처분',
   'cause.blast': '유폭', 'cause.laser': '조르그 레이저에 관통',
 
   // ── 화면 위 표식 ──────────────────────────────────────────────
-  'mark.target': '☠ 표적  {name} · 체력 {hp}/{hpMax}{suffix}',
-  'mark.left': ' (남은 요새 {n})',
-  'mark.earth': '◉ 지구 · 발사대 (체력 {hp}/{hpMax})',
+  // 이름표는 체력만 말한다 — 이름도 '표적'·'발사대'도 화면이 이미 말하고 있다
+  'mark.target': '☠ {hp}/{hpMax}',
+  'mark.earth': '◉ {hp}/{hpMax}',
   'mark.push': '충격 방향', 'mark.course': '바뀐 진로',
 
   // ── 천체 분류 ─────────────────────────────────────────────────
@@ -84,6 +85,7 @@ export const ko = {
   'cat.void': '특이점', 'cat.void.mech': '삼킨다 — 닿는 것을 없앤다. 부술 수 없다',
   'cat.earth': '지구', 'cat.earth.mech': '우리 집 — 세 번 처박히면 게임 오버',
   'cat.zorg': '조르그 모성', 'cat.zorg.mech': '부술 수 없다 — 시한이 끝나면 온다',
+  'cat.hive': '조르그 모함', 'cat.hive.mech': '증원을 실어 나른다 — 부수면 그친다',
   'cat.debris': '파편', 'cat.debris.mech': '미사일을 조기 격발시킨다',
   'cat.hostile': '조르그 요새',
 
@@ -93,6 +95,9 @@ export const ko = {
   'role.battery.heavy': '◇◇ 대형 — 체력 2. 한 번으로는 안 부서진다.',
   'role.battery.boost': '⇢ 추진기 하나 — 꽂히는 탄을 알아채면 몇 초 뒤 옆으로 비켜선다. 한 판에 한 번뿐이라, 늦게 물린 궤도는 그대로 맞는다.',
   'role.battery.aim': '조르그 요새 — 이 한 방으로 끝난다',
+  'role.hive': '조르그 모함',
+  'role.hive.brief': '◎ 광선은 안 쏜다. 대신 **부술 때까지 요새를 계속 실어 나른다** — 부순 자리가 다시 차오르므로, 이놈을 끊기 전에는 판이 끝나지 않는다. 궤도 바깥에 앉아 있어 한 발로는 닿기 어렵다.',
+  'role.hive.aim': '조르그 모함 — 체력 5, 여러 번 처박아야 한다',
   'role.armor': '금속 행성',
   'role.armor.brief': '🔩 무겁다. 핵 임펄스가 {pct}%만 먹는다 — 밀리긴 하지만 절반이다.',
   'role.armor.aim': '금속 행성 — 무거워서 밀리는 양이 {pct}%다',
@@ -135,6 +140,8 @@ export const ko = {
   'msg.away': 'MISSILE AWAY — {yield}Mt 탄두. 어느 살을 치느냐가 전부다',
   'msg.swing': '{name} 스윙바이 {deg}°! 체인 x{chain}',
   'msg.boost': '{name}이(가) 추진기를 태웠다 — 태양 반대쪽으로 궤도를 틀었다. 이 요새는 이제 못 피한다',
+  'msg.hive.fort': '{name}이(가) 요새 한 기를 워프시켰다 — 부순 자리가 다시 찼다',
+  'msg.hive.cue': '{name}이(가) 행성 하나를 워프시켰다 — 굴릴 공을 채워 넣는다',
   'msg.laser.charge': '{name}이(가) 지구의 도달 지점을 겨눴다 — 지구를 밀면 조준점이 틀어진다',
   'msg.laser.abort': '조르그 레이저 — 충전 중 {name}이(가) 파괴되어 발사가 취소됐다',
   'msg.laser.fire': '조르그 레이저 발사 — 직진한다. 조준점이 틀어져 있으면 스쳐 지나간다',
@@ -177,6 +184,9 @@ export const ko = {
   'toast.capture': '포획됨 — 너무 느렸다 (강제 추락)',
   'toast.noAngle': '이 발사 속도로는 닿는 각도가 없다 — 속도를 바꿔라',
   'toast.boost': '{name} 회피 기동 (일회성 — 다 썼다)',
+  'toast.hive.fort': '조르그 모함이 요새를 보냈다 — 모함부터 끊어라',
+  'toast.hive.cue': '조르그 모함이 행성을 밀어 넣었다',
+  'toast.hiveDown': '조르그 모함 격파 — 증원이 그쳤다 ({count})',
   'toast.laser.charge': '{name} 조준 개시 — {sec}초 뒤 발사. 조준점에서 비켜나라',
   'toast.laser.abort': '{name} 격파 — 조준 해제',
   'toast.laser.intercept': '레이저 요격 성공',
@@ -274,7 +284,7 @@ export const ko = {
   'vic.body': '관제실이 환호로 뒤집혔다. 이번에도 지구는 무사하다.',
   'vic.go': '다음 침공까지 평화를 즐긴다',
   'vic.goSub': '조르그가 다시 온다 ▶',
-  'vic.row.forts': '격파한 요새', 'vic.row.forts.v': '{n}기',
+  'vic.row.forts': '격파한 표적', 'vic.row.forts.v': '{n}기',
   'vic.row.time': '남은 시한', 'vic.row.time.v': '{clock} (보너스 +{bonus})',
   'vic.row.score': '이번 판 점수',
   'vic.row.alive': '살아남은 천체', 'vic.row.alive.v': '{n}기 — 그대로 다음 판으로 간다',

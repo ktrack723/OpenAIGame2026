@@ -9,7 +9,7 @@ import { hasRole, roleOf, volatileRadius } from './roles.js'
 import { makeGoal } from './objectives.js'
 import { msg, nameOf } from '../i18n/index.js'
 import { bearing } from '../core/angle.js'
-import { createSystem, reinforce } from './system.js'
+import { createSystem, reinforce, summonCue, summonFort } from './system.js'
 import { makeBody } from './body.js'
 import { chargeLeft, impactLeft, makeDoom, makeLaser, stepDoom, stepLaser, stepSpent, LASER_CHARGE, LASER_SPENT, LASER_TRAVEL } from './laser.js'
 import * as Aim from './aim.js'
@@ -66,7 +66,12 @@ export class Game {
   // this.time은 step()에서만 누적되고, step()은 effTimeScale()>0일 때만 돈다.
   // → 조준만 하고 있으면 시계가 멈춰 있고, 관측하거나(플레이어가 고른 배속)
   //   조준 중에 시간 진행 버튼을 누르고 있을 때만 줄어든다.
-  get stageTime() { return CFG.TIME_BASE + CFG.TIME_PER_ANTE * Math.min(this.ante - 1, 5) }
+  // 모함이 온 판은 목표가 하나 더, 그것도 궤도 바깥에 있다 — 그만큼 더 준다.
+  // (판이 열릴 때 정해 두고 안 바꾼다. 모함을 부순 순간 시계가 줄어들면
+  //  "부쉈더니 손해"가 되는데, 그건 이 물건이 주려는 판단이 아니다.)
+  get stageTime() {
+    return CFG.TIME_BASE + CFG.TIME_PER_ANTE * Math.min(this.ante - 1, 5) + (this.hiveHere ? CFG.HIVE_TIME : 0)
+  }
   get timeLeft() { return Math.max(0, this.stageTime - this.time) }
   get timeBonus() { return Math.round(this.timeLeft * CFG.TIME_BONUS) }
 
@@ -82,7 +87,7 @@ export class Game {
     }
     // 조르그 증원 — 지금 성계에 남은 것을 보고 그만큼만 보낸다.
     // 한꺼번에 뿅 나타나지 않고 **순서대로** 워프해 들어온다(stepWarpIns).
-    const { added, fortresses } = reinforce(this.rng, this.bodies, this.earth, this.ante, this.stageIdx)
+    const { added, fortresses, hives } = reinforce(this.rng, this.bodies, this.earth, this.ante, this.stageIdx)
     // 마릿수가 많으면 간격을 조여 도착 전체를 WARP_SPAN 안에 담는다 —
     // 막이 마지막 한 기까지 기다리므로, 간격이 고정이면 후반 개막이 10초를 넘는다.
     const gap = added.length > 1
@@ -95,8 +100,15 @@ export class Game {
     this.spawnEnd = added.length ? CFG.WARP_LEAD + (added.length - 1) * gap + CFG.WARP_TIME : 0
     // 개막 동안 카메라가 따라다닐 명단. 도착 순서대로다(카메라가 그 순서로 민다).
     this.arrivals = added
-    this.targets = fortresses
-    this.goal = makeGoal(fortresses)
+    // 표적 = 요새 + 모함. 모함은 광선을 안 쏘지만 **부술 때까지 요새를 계속
+    // 실어 나르므로**(stepHive) 판이 끝나려면 결국 이것도 없어져야 한다.
+    this.targets = this.bodies.filter(b => (b.alive || (b.warpIn ?? 0) > 0) && this.isTarget(b))
+    this.goal = makeGoal(this.targets)
+    // 모함이 유지하려 드는 요새 수 = **판이 열릴 때 온 요새 수.**
+    // 부수면 그 자리가 다시 차오른다 — 모함을 끊기 전까지는.
+    this.hiveKeep = fortresses.length
+    this.hiveHere = this.targets.some(b => b.role === 'hive')
+    this.hiveT = 0; this.hiveSent = false; this.hiveN = 0
     // 포대 명단은 판마다 새로 짠다 — 시차(순번)를 처음부터 다시 세워야 하고,
     // 새 판이 시작하자마자 지난 판의 충전이 이어져 발사되면 안 된다.
     this.lasers.length = 0
@@ -128,15 +140,20 @@ export class Game {
     const add = (k) => { rule = msg('ui.join', { a: rule, b: msg(k) }) }
     if (fortresses.some(b => (b.hpMax ?? 1) > 1)) add('goal.heavy')
     if (fortresses.some(b => b.boost > 0)) add('goal.boost')
+    if (hives.length) add('goal.hive')
     this.message = added.length
       ? msg('msg.stage.reinforce', { n: fortresses.length, rule })
       : msg('msg.stage.open', { rule })
   }
 
+  // 이 판에 깔린 태그 목록(패널 범례용).
+  // **아직 워프해 들어오는 중인 것도 센다** — 이 함수는 loadStage에서 불리는데
+  // 그 시점의 증원은 전부 alive=false(도착 대기)라, 살아 있는 것만 세면 방금
+  // 도착한 요새·모함·특이점의 칩이 범례에서 통째로 빠진다.
   presentRoles() {
     const set = new Set()
     for (const b of this.bodies) {
-      if (!b.alive) continue
+      if (!b.alive && !(b.warpIn > 0)) continue
       if (b.role) set.add(b.role)
     }
     return [...set]
@@ -152,14 +169,16 @@ export class Game {
   get target() {
     return this.targets.find(t => t.alive) || this.targets[0] || this.earth
   }
-  // 위협 = 조르그 요새. 이것만 전멸시키면 판이 끝난다.
+  // 위협 = 조르그 요새 + 모함. 이것들만 전멸시키면 판이 끝난다.
   get aliveFortresses() { return this.bodies.filter(b => b.alive && b.role === 'battery').length }
+  get aliveHives() { return this.bodies.filter(b => b.alive && b.role === 'hive').length }
+  get aliveThreats() { return this.aliveFortresses + this.aliveHives }
   // id로 비교한다 — 예측선은 cloneBodies()가 만든 복제본을 넘기므로
   // 참조 비교를 쓰면 "예측에서는 목표가 목표가 아닌" 사고가 난다.
   // 표적 = 조르그 요새. 규칙이 하나로 통일됐으므로 id 목록이 아니라
   // 성질로 판정한다 — 예측선이 넘기는 복제본에서도 그대로 성립한다.
-  isTarget(b) { return b.role === 'battery' }
-  get aliveTargets() { return this.aliveFortresses }
+  isTarget(b) { return b.role === 'battery' || b.role === 'hive' }
+  get aliveTargets() { return this.aliveThreats }
 
   launchPos() {
     const d = CFG.LAUNCH_OFFSET   // 지구 중력권 밖에서 발사 (§4.3 κ 증폭 때문)
@@ -357,6 +376,7 @@ export class Game {
   step(dt) {
     stepBodies(this.bodies, dt)
     this.stepDodge(dt)
+    this.stepHive(dt)
     for (const m of this.missiles) {
       if (!m.alive) continue
       stepMissile(m, this.bodies, dt)
@@ -449,6 +469,57 @@ export class Game {
     for (const b of this.bodies) {
       if (b.alert != null && !threatened.has(b)) { b.alert = null; b.alertMax = null }
     }
+  }
+
+  // ─── 조르그 모함 — 판을 채운다 ───────────────────────────────
+  // 안테 5부터 궤도 바깥에 한 기 앉는다. 광선은 안 쏜다. 대신 일정 간격으로
+  // **성계를 원래대로 되돌려 놓는다**: 요새를 부수면 요새를 워프시키고,
+  // 굴릴 공이 떨어지면 중립 행성을 워프시킨다.
+  //
+  // 그래서 후반 판의 첫 판단이 바뀐다. 눈앞의 요새부터 칠 것인가, 멀리 있는
+  // 모함부터 끊을 것인가 — 요새만 부수면 그 자리가 계속 차오르므로 시한 안에
+  // 끝나지 않고, 모함을 부수면 그 순간부터 판은 유한해진다.
+  //
+  // 한 번에 **한 기**만 보낸다. 몰아서 보내면 그건 증원이 아니라 재앙이고,
+  // 화면에서도 무슨 일이 벌어졌는지 안 읽힌다.
+  stepHive(dt) {
+    if (this.won || this.lost || this.doom) return
+    const h = this.bodies.find(b => b.alive && b.role === 'hive' && !(b.warpIn > 0))
+    if (!h) return
+    this.hiveT += dt
+    if (this.hiveT < (this.hiveSent ? CFG.HIVE_PERIOD : CFG.HIVE_FIRST)) return
+    this.hiveT = 0
+    // 성계가 꽉 찼으면 이번 차례는 거른다(정원을 넘기면 판이 안 읽힌다).
+    // **잔해와 시체는 안 센다** — 판이 굴러가면 충돌 하나가 파편을 예닐곱 개씩
+    // 만들어서, 배열 길이로 세면 몇 수 만에 정원을 넘겨 모함이 조용해진다
+    // (계측: 자동 플레이 6수 뒤 보충이 통째로 멎었다). 정원은 증원을 짤 때와
+    // 같은 기준으로 센다(reinforce의 live).
+    const live = this.bodies.filter(b => b.alive && b.type !== 'debris')
+    if (live.length >= CFG.SYSTEM_CAP) return
+    // 요새가 먼저다. 요새가 제 수만큼 있으면 그다음은 굴릴 공을 채운다 —
+    // 큐볼이 바닥나면 요새를 부술 방법 자체가 없어지기 때문이다.
+    const cues = live.filter(b => !b.isEarth && !b.zorg).length
+    const kind = this.aliveFortresses < this.hiveKeep ? 'fort'
+      : cues < CFG.HIVE_KEEP_CUE ? 'cue' : null
+    if (!kind) return
+    const tag = `${this.stageIdx + 1}+${++this.hiveN}`
+    const b = kind === 'fort'
+      ? summonFort(this.rng, this.bodies, this.earth, this.ante, this.stageIdx, tag)
+      : summonCue(this.rng, this.bodies, this.earth, this.ante, this.stageIdx, tag)
+    if (!b) return
+    this.hiveSent = true
+    b.alive = false; b.warp = 1; b.warpIn = CFG.WARP_LEAD
+    this.bodies.push(b)
+    if (this.isTarget(b)) {
+      // 표적이 하나 늘었다 — 목표 카운터도 같이 늘어난다. 진행률이 뒤로
+      // 밀리는 건 거짓말이 아니라 지금 벌어진 일 그대로다.
+      this.targets.push(b)
+      this.goal.total++; this.goal.need++
+      this.goal.update(this.aliveThreats)
+    }
+    this.addFx({ kind: 'hive', x: h.pos.x, y: h.pos.y, r: hitRadiusOf(h), tx: b.pos.x, ty: b.pos.y })
+    this.message = msg(kind === 'fort' ? 'msg.hive.fort' : 'msg.hive.cue', { name: nameOf(h) })
+    this.setToast(msg(kind === 'fort' ? 'toast.hive.fort' : 'toast.hive.cue'))
   }
 
   dodgeBoost(b, vx, vy) {
@@ -781,22 +852,25 @@ export class Game {
     // 내는 중이고, 그 와중에 조르그 요새가 같이 녹아도 그건 내가 부순 게 아니다.
     // 점수·목표 갱신·문구를 전부 건너뛴다 — 이 화면의 문장은 하나뿐이다.
     if (this.doom) return
-    const wasFort = b.role === 'battery'
+    const wasFort = this.isTarget(b)
     const [tp, np] = KILL_SCORE[cause] ?? [0, 0]
-    const gained = wasFort ? tp : np
+    // 모함은 이 판에서 제일 단단한 물건이다(체력 5) — 값도 그만큼 친다.
+    const gained = b.role === 'hive' ? tp * 2 : wasFort ? tp : np
     this.score += gained
     const label = { name: nameOf(b), cause: msg('msg.cause', { cause: msg(`cause.${cause}`), gained }) }
     if (wasFort) {
       // 요새 하나가 곧 포대 하나다 — 부수면 그 순번이 통째로 사라진다.
       // (명단 정리는 tickLaser의 syncLasers가 한다. 이미 나가 있는 광선은
       //  거기서도 안 걷는다 — 쏜 뒤에 부순 건 늦은 것이다.)
-      this.goal.update(this.aliveFortresses)
+      this.goal.update(this.aliveThreats)
       this.message = msg('msg.kill.goal', { ...label, title: msg('goal.title'), count: this.goal.label() })
-      this.setToast(msg('toast.fortDown', { count: this.goal.label() }))
+      // 모함이 부서지는 건 요새 하나가 부서지는 것과 다른 사건이다 —
+      // 그 순간부터 판이 유한해진다. 문구도 그렇게 갈라 준다.
+      this.setToast(msg(b.role === 'hive' ? 'toast.hiveDown' : 'toast.fortDown', { count: this.goal.label() }))
     } else {
       this.message = msg('msg.kill', label)
     }
-    if (this.aliveFortresses === 0) this.win()
+    if (this.aliveThreats === 0) this.win()
   }
 
   win() {
@@ -870,7 +944,7 @@ export class Game {
     // 개막 중이면 판정을 미룬다 — 안 그러면 "요새 0기"로 도착하기도 전에
     // 클리어가 나 버린다. 막이 걷혀야 내 차례이므로 뜸까지 통째로 센다.
     if (this.warpPending || this.warpCurtain) return
-    this.goal.update(this.aliveFortresses)
+    this.goal.update(this.aliveThreats)
     if (this.won && !this.winBanked) {   // 클리어 시점의 남은 시간을 보너스로 정산
       this.winBanked = true
       const b = this.timeBonus
@@ -879,8 +953,8 @@ export class Game {
     }
     if (this.won || this.lost) return
     if (!this.earth.alive) { this.fail('EARTH_LOST', msg('msg.fail.earthLost')); return }
-    // 요새가 어떤 이유로든 전멸했으면(연쇄로 같이 터졌든) 그 순간 클리어다
-    if (this.aliveFortresses === 0) { this.win(); return }
+    // 위협이 어떤 이유로든 전멸했으면(연쇄로 같이 터졌든) 그 순간 클리어다
+    if (this.aliveThreats === 0) { this.win(); return }
     // 시한 초과 — 날아가고 있는 마지막 한 발은 끝까지 보내준다.
     // 문장으로 통보하지 않는다. **모성이 온다.**
     if (this.time >= this.stageTime && !this.missiles.some(m => m.alive)) this.summonMothership()

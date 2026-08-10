@@ -26,6 +26,7 @@ const CAT_STYLE = {
   void: { icon: '🕳', color: '#c084fc' },
   earth: { icon: '🌍', color: '#93c5fd' },
   zorg: { icon: '👁', color: '#e879f9' },
+  hive: { icon: '🛸', color: '#e879f9' },
   debris: { icon: '·', color: '#94a3b8' },
 }
 export const CATEGORY = Object.fromEntries(Object.entries(CAT_STYLE).map(([k, v]) => [k, {
@@ -34,6 +35,10 @@ export const CATEGORY = Object.fromEntries(Object.entries(CAT_STYLE).map(([k, v]
   get mech() { return t(`cat.${k}.mech`) },
 }]))
 export const HOSTILE = { icon: '☠', color: '#ff5c6a', get label() { return t('cat.hostile') } }
+// 모함도 반드시 부숴야 하는 물건이지만 **다른 물건**이다. 해골 대신 제 표식을
+// 달고 색도 자주다 — 화면에서 "저건 요새가 아니다"가 한눈에 갈린다.
+export const HIVE_MARK = { icon: '◎', color: '#e879f9', get label() { return t('cat.hive') } }
+export const hostileMark = (b) => (b.role === 'hive' ? HIVE_MARK : HOSTILE)
 
 export const categoryOf = (type) => CATEGORY[type] ?? CATEGORY.rock
 
@@ -80,7 +85,7 @@ export class Icons {
 
   // 이 공이 "반드시 부숴야 하는" 표적인가 — 해골이 붙는 조건.
   // 규칙은 game.isTarget과 같아야 한다(요새 = 반격하는 조르그 천체).
-  static isHostile(b) { return b.role === 'battery' }
+  static isHostile(b) { return b.role === 'battery' || b.role === 'hive' }
 
   update(game, rig, dt, renderRadius) {
     this.t += dt
@@ -105,7 +110,8 @@ export class Icons {
       }
       const hostile = Icons.isHostile(b)
       if (hostile && !e.hostile) {
-        e.hostile = this.makeSprite(this.texFor('h:skull', HOSTILE.icon, HOSTILE.color, '#ff5c6a', 'rgba(38,4,8,.92)'), 23)
+        const m = hostileMark(b)
+        e.hostile = this.makeSprite(this.texFor(`h:${m.icon}`, m.icon, m.color, m.color, 'rgba(24,4,30,.92)'), 23)
       } else if (!hostile && e.hostile) {
         this.scene.remove(e.hostile); e.hostile.material.dispose(); e.hostile = null
       }

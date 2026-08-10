@@ -33,7 +33,8 @@ export class Explosions {
       else if (e.kind === 'swing') {
         this.parts.shock(e.x, e.y, Math.max(24, (e.r ?? 10) * CFG.SWING_ZONE * 0.5), 0x67e8f9, 0.6)
         this.parts.burst(e.x, e.y, { n: 26, color: 0x67e8f9, speed: 110, size: 8, ttl: 0.7 })
-      } else if (e.kind === 'boost') this.boost(e)
+      } else if (e.kind === 'hive') this.hive(e)
+      else if (e.kind === 'boost') this.boost(e)
       else if (e.kind === 'bump') this.bump(e)
       else if (e.kind === 'belt') this.belt(e)
       else if (e.kind === 'sun') {
@@ -44,6 +45,22 @@ export class Explosions {
       }
     }
     q.length = 0
+  }
+
+  // ─── 조르그 모함의 송출 ──────────────────────────────────────
+  // 폭발이 아니라 **보냈다**는 표시다. 모함 자리에서 자주색 고리가 한 번
+  // 퍼지고(= 여기서 나갔다), 도착지에도 같은 색 고리가 뜬다(= 저기로 갔다).
+  // 실제 워프인 연출(warp)은 그 뒤 도착 시각에 따로 뜨므로 여기서는 둘을
+  // **잇는 것**만 한다 — 화면 밖이라도 "또 하나 왔다"가 색으로 읽힌다.
+  hive(e) {
+    const P = this.parts, C = 0xe879f9, R = Math.max(50, e.r ?? 60)
+    P.shock(e.x, e.y, R * 2.2, C, 0.7)
+    P.puff(e.x, e.y, { r0: R * 0.4, r1: R * 1.5, ttl: 0.5, color: C, alpha: 0.5 })
+    P.burst(e.x, e.y, { n: 40, color: C, speed: 150, size: 9, ttl: 0.8 })
+    if (e.tx !== undefined) {
+      P.shock(e.tx, e.ty, 90, C, 0.8)
+      P.burst(e.tx, e.ty, { n: 26, color: C, speed: 90, size: 8, ttl: 0.7 })
+    }
   }
 
   // ─── 요새의 회피 분사 ────────────────────────────────────────

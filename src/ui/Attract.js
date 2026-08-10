@@ -67,17 +67,21 @@ const BEAM_SAFE = 140
 // 그 네 마디가 이 게임이 존재하는 이유다: **저건 지구를 겨눴다 → 닿으면
 // 없어진다 → 핵으로는 안 된다 → 그럼 행성을 던지자.**
 // 그림으로만 흘리면 "왜 하필 당구인가"가 안 남는다.
-// 읽는 속도로 잡는다 — 한 마디가 2.4초 떠 있고 다음 마디까지 2.4초.
-// 예전(1.6초 간격)에는 한 줄을 다 읽기 전에 다음 줄이 밀고 들어왔다.
+// 읽는 속도로 잡는다. 두 가지가 같이 걸려 있었다:
+//   ① 간격이 짧아 한 줄을 다 읽기 전에 다음 줄이 밀고 들어왔다.
+//   ② **체류와 간격이 같아서** 한 마디가 끝나는 순간 창이 닫혔다가 다음
+//      마디에 다시 열렸다 — 화면에서는 대사가 "나오다 마는" 것으로 보인다.
+// 그래서 간격을 늘리고, 체류를 간격보다 **길게** 준다. 창은 네 마디가 끝날
+// 때까지 한 번도 닫히지 않고 글자만 바뀐다.
 // 이 막은 예측선을 **보여 주는** 시간이기도 하므로 길어도 손해가 아니다.
-const AIM_MS = 10200
-const IDEA_MS = [200, 2600, 5000, 7400]   // 네 마디가 뜨는 시각(막 시작 기준)
-const IDEA_HOLD = 2.4                     // 한 마디가 떠 있는 시간(초)
+const AIM_MS = 12000
+const IDEA_MS = [200, 3000, 5800, 8600]   // 네 마디가 뜨는 시각(막 시작 기준)
+const IDEA_HOLD = 3.4                     // 한 마디가 떠 있는 시간(초) — 간격(2.8)보다 길다
 const TAIL_MS = 900      // 요새가 부서진 뒤 여운
 // 안전장치 — 장면이 어그러졌을 때만 걸린다. 정상 진행은 요새가 부서지는
 // 순간에 끝나므로(막 넷 18초 + 비행 6~10초), 느린 기기에서 잘리지 않게
 // 넉넉히 잡는다.
-const CAP_MS = 34000
+const CAP_MS = 38000
 // 무대를 푸는 데 쓸 수 있는 벽시계 시간(ms). 넘기면 예고편을 접는다.
 const SETUP_BUDGET_MS = 2600
 const LOGO_MS = 1500
@@ -492,9 +496,10 @@ function setUp(g, mode) {
   if (!cast) return null
 
   // 요새는 하나만 남긴다. 둘을 두면 이 한 수로 판이 안 끝나 이야기가 잘린다.
+  // (모함은 안테 5부터라 예고편(=1판)에는 애초에 없지만, 있으면 같이 걷는다.)
   for (let i = g.bodies.length - 1; i >= 0; i--) {
     const b = g.bodies[i]
-    if (b.role === 'battery' && b !== cast.fort) g.bodies.splice(i, 1)
+    if (b.role === 'hive' || (b.role === 'battery' && b !== cast.fort)) g.bodies.splice(i, 1)
   }
   g.targets = [cast.fort]
   g.goal = makeGoal([cast.fort])
@@ -545,7 +550,7 @@ function pickInterceptor(g, cast) {
   const keep = [cast.earth, cast.fort, cast.swing, cast.cue]
   return g.bodies
     .filter(b => b.alive && b.type !== 'debris' && !keep.includes(b)
-      && b.role !== 'void' && b.role !== 'volatile' && b.role !== 'battery')
+      && b.role !== 'void' && b.role !== 'volatile' && b.role !== 'battery' && b.role !== 'hive')
     .sort((a, b) => a.radius - b.radius)[0] ?? null
 }
 

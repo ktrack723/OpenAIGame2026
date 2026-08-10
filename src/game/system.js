@@ -112,7 +112,16 @@ function freeOrbit(rng, bodies, aMax, rNew, nearBand = 0, band = null) {
 // dt 1/40으로 돌렸다가 판 전환이 평균 3.6초(최대 9.1초) 걸렸다.
 // 프로브 수와 적분 해상도를 낮춰 36샷(3파워×12각도)·40초 지평·dt 1/25로 내렸다.
 // "한 발이라도 닿는가"만 보면 되므로 이 해상도로 충분하다.
-const PROBE_ANGLES = 12, PROBE_POWERS = [32, 44, 56]
+// 각도 12칸은 30° 간격이라 **닿는 자리를 통째로 건너뛰었다** — 계측에서 이
+// 검사를 통과한 요새의 30%가 실제로는 직격 각도가 0개였다(48샷 기준).
+// 같은 예산(36 → 48샷)에서 각도를 배로 늘리고 속도를 둘로 줄이는 쪽이 낫다:
+// 속도는 궤적을 조금 바꾸지만 각도는 아예 다른 방향이다.
+const PROBE_ANGLES = 24, PROBE_POWERS = [34, 50]
+// 천체는 미사일보다 **성기게** 굴린다. 이 검사의 비용은 stepBodies(O(n²))가
+// 8할을 먹는데, 행성은 초당 20 GU 남짓으로 움직이므로 1/6초 간격이면 위치
+// 오차가 3 GU 남짓이다 — 판정 반경이 18 GU 이상이라 답이 뒤집히지 않는다.
+// (예측선도 같은 수법을 쓴다: aim.js BODY_EVERY.)
+const PROBE_BODY_EVERY = 4
 function reachable(bodies, earth, target) {
   const dt = 1 / 25, steps = Math.round(40 / dt)
   const tIdx = bodies.indexOf(target)
@@ -128,7 +137,7 @@ function reachable(bodies, earth, target) {
         age: 0, pathN: 0, path: [], minSunDist: Infinity, prev: { ...p },
       }
       for (let i = 0; i < steps; i++) {
-        stepBodies(sim, dt)
+        if (i % PROBE_BODY_EVERY === (PROBE_BODY_EVERY >> 1)) stepBodies(sim, dt * PROBE_BODY_EVERY)
         stepMissile(m, sim, dt)
         let hit = -1
         for (let k = 0; k < sim.length; k++) {
@@ -196,6 +205,87 @@ const FORT_TYPES = ['rock', 'rock', 'iron']   // 요새는 암석이 기본, 가
 // 여기서 나온다. 남은 하나(조르그 요새)는 위의 증원 경로에서만 붙는다.
 const NEUTRAL_TYPES = ['rock', 'ice', 'ice', 'iron', 'gas', 'void']
 
+// ── 배역서 ──────────────────────────────────────────────────────
+// 요새 한 기와 중립 한 기를 만드는 규칙. 판이 열릴 때(reinforce)와 모함이
+// 보충으로 보낼 때(summonFort·summonCue)가 **같은 규칙**을 써야 한다 —
+// 갈라 두면 "판이 열릴 때 온 요새"와 "중간에 온 요새"가 다른 물건이 된다.
+const muFor = (rng, ante) => 120 + rng.next() * (220 + 60 * ante)
+// 요새 질량은 따로 잡는다 — **밀리는 공이어야 한다.**
+// 예전엔 중립과 같은 대역(138~460)을 썼는데, μ=422 요새는 3Mt에 Δv가 0.6이라
+// 밀어도 제자리였고, 어쩌다 이웃에 닿아도 상대속도가 데미지 문턱(6) 아래라
+// 그냥 튕기기만 했다. 가볍게 잡으면 12Mt에서 Δv 28~57이다.
+const fortMuFor = (rng, ante) => CFG.FORT_MU_MIN + rng.next() * (CFG.FORT_MU_SPAN + 14 * ante)
+const zorgName = (rng, tag) => `Zorg ${ZORG_NAMES[rng.int(0, ZORG_NAMES.length - 1)]}-${tag}`
+
+function fortSpec(rng, earth, ante, stageIdx, tag, heavy) {
+  return {
+    name: zorgName(rng, tag),
+    // 요새는 반격탄을 쏘므로 그 자체가 위협이다 — 이게 반드시 없애야 할 표적.
+    // 금속으로 지어진 요새는 잘 안 밀린다(태그가 둘 붙는다) — 종류가 곧 공략법이다.
+    type: FORT_TYPES[rng.int(0, FORT_TYPES.length - 1)],
+    role: 'battery', band: fortBand(earth),
+    mu: fortMuFor(rng, ante) * (heavy ? CFG.FORT_HEAVY_MU : 1),
+    hp: heavy ? CFG.FORT_HEAVY_HP : CFG.ZORG_HP,
+    rMul: heavy ? CFG.FORT_HEAVY_R : 1,
+    // 회피 분사는 3스테이지부터. 한 판에 한 번, 요새마다 하나씩.
+    boost: stageIdx >= CFG.FORT_DODGE_STAGE ? 1 : 0,
+  }
+}
+
+function neutralSpec(rng, ante, stageIdx, tag, forceVoid = false) {
+  // 특이점은 **3스테이지에 반드시 한 번** 등장시킨다. 추첨에만 맡기면
+  // 다섯 태그 중 하나를 끝까지 못 보고 런이 끝난다(계측: 9스테이지까지 0회).
+  let type = NEUTRAL_TYPES[rng.int(0, NEUTRAL_TYPES.length - 1)]
+  if (forceVoid) type = 'void'
+  else if (type === 'void' && stageIdx < 2) type = 'ice'
+  return { mu: muFor(rng, ante), name: `${zorgName(rng, tag)}`, type }
+}
+
+// 만들어 놓고 붙일 것 — 금속 요새는 장갑 태그를 겹쳐 얹는다.
+const dressFort = (b) => { if (b && b.type === 'iron') b.mods = ['armor']; return b }
+
+// ── 조르그 모함 ─────────────────────────────────────────────────
+// 궤도 **바깥**에 앉는다. 요새 대역(지구 궤도 0.55~1.6배)보다 멀어서
+// 한 발로 닿기 어렵고, 그래서 "지금 저것부터 칠 것인가"가 판단이 된다.
+const hiveBand = (earth) => {
+  const rE = Math.hypot(earth.pos.x, earth.pos.y)
+  return [rE * CFG.HIVE_BAND[0], rE * CFG.HIVE_BAND[1]]
+}
+
+function makeHive(rng, bodies, aMax, earth, stageIdx) {
+  const band = hiveBand(earth)
+  // 제약을 하나씩 풀며 자리를 찾되, 마지막 폴백은 **대역을 푸는 게 아니라
+  // 이웃 간격을 푼다**(rNew를 작게 줘서 요구 간격을 낮춘다). 대역을 풀었더니
+  // 모함이 지구 궤도의 3.6배 밖에 앉아 "저기까지 공을 굴려라"가 됐다(계측) —
+  // 이웃에 좀 붙는 건 오히려 낫다. 어차피 공을 맞아야 부서지는 물건이다.
+  // 그래도 자리가 없으면 이번 판에는 안 온다(다음 판에 다시 시도한다).
+  const orb = freeOrbit(rng, bodies, aMax, CFG.HIVE_R, CFG.HIVE_NEAR_BAND, band)
+    ?? freeOrbit(rng, bodies, aMax, CFG.HIVE_R, 0, band)
+    ?? freeOrbit(rng, bodies, aMax, CFG.HIVE_R, 0, [band[0] * 0.8, band[1] * 1.15])
+    ?? freeOrbit(rng, bodies, aMax, 8, 0, [band[0] * 0.8, band[1] * 1.15])
+  if (!orb) return null
+  const b = makeBody({
+    id: nextId(), name: `Zorg ${ZORG_NAMES[rng.int(0, ZORG_NAMES.length - 1)]} Prime`,
+    type: 'hive', mu: CFG.HIVE_MU, radius: CFG.HIVE_R,
+    pos: orb.pos, vel: orb.vel, hp: CFG.HIVE_HP,
+    zorg: true, warp: 1,
+  })
+  b.role = 'hive'; b.isTarget = true
+  return b
+}
+
+// 모함이 한 기 보낸다 — 판이 열릴 때와 같은 규칙으로 만들고, 자리도 같은
+// 제약(밀 수 있는 공 옆자리·지구에서 닿는 자리)으로 찾는다.
+export function summonFort(rng, bodies, earth, ante, stageIdx, tag) {
+  const aMax = aMaxOf(ante)
+  return dressFort(warpBody(rng, bodies, aMax, fortSpec(rng, earth, ante, stageIdx, tag, false)))
+}
+export function summonCue(rng, bodies, earth, ante, stageIdx, tag) {
+  const b = warpBody(rng, bodies, aMaxOf(ante), neutralSpec(rng, ante, stageIdx, tag))
+  if (b) b.zorg = false            // 굴러온 잔챙이 — 큐볼로 쓴다
+  return b
+}
+
 // ── 증원 ────────────────────────────────────────────────────────
 // 지금 성계에 뭐가 남아 있는지 보고 그만큼만 보낸다. 지난 판에서 판을
 // 깨끗이 비웠으면 많이 오고, 중립 행성이 잔뜩 남았으면 적게 온다.
@@ -216,14 +306,6 @@ export function reinforce(rng, bodies, earth, ante, stageIdx) {
   neutral = Math.max(neutral, room > fort ? 1 : 0)
 
   const added = []
-  const band = fortBand(earth)   // 요새는 지구 궤도 언저리에만 온다(사거리 문제)
-  const muFor = () => 120 + rng.next() * (220 + 60 * ante)
-  // 요새 질량은 따로 잡는다 — **밀리는 공이어야 한다.**
-  // 예전엔 중립과 같은 대역(138~460)을 썼는데, μ=422 요새는 3Mt에 Δv가 0.6이라
-  // 밀어도 제자리였고, 어쩌다 이웃에 닿아도 상대속도가 데미지 문턱(6) 아래라
-  // 그냥 튕기기만 했다(계측: 금성에 1.00×판정거리까지 닿고도 체력 3/3 유지).
-  // 가볍게 잡으면 12Mt에서 Δv 28~57 — "한 대 치면 실제로 날아가는" 표적이 된다.
-  const fortMuFor = () => CFG.FORT_MU_MIN + rng.next() * (CFG.FORT_MU_SPAN + 14 * ante)
 
   // ── 난이도 ──
   // 2스테이지부터 **대형 요새**가 섞여 온다. 체력 2라 한 번 처박아서는 안
@@ -233,43 +315,36 @@ export function reinforce(rng, bodies, earth, ante, stageIdx) {
   const heavies = Math.min(fort, Math.floor((stageIdx + 1) / 2))
 
   for (let i = 0; i < fort; i++) {
-    const heavy = i < heavies
-    const name = `Zorg ${ZORG_NAMES[rng.int(0, ZORG_NAMES.length - 1)]}-${stageIdx + 1}${i ? String.fromCharCode(97 + i) : ''}`
-    // 요새는 반격탄을 쏘므로 그 자체가 위협이다 — 이게 반드시 없애야 할 표적.
-    // 금속으로 지어진 요새는 잘 안 밀린다(태그가 둘 붙는다) — 종류가 곧 공략법이다.
-    const type = FORT_TYPES[rng.int(0, FORT_TYPES.length - 1)]
-    const spec = {
-      name, type, role: 'battery', band,
-      mu: fortMuFor() * (heavy ? CFG.FORT_HEAVY_MU : 1),
-      hp: heavy ? CFG.FORT_HEAVY_HP : CFG.ZORG_HP,
-      rMul: heavy ? CFG.FORT_HEAVY_R : 1,
-      // 회피 분사는 3스테이지부터. 한 판에 한 번, 요새마다 하나씩.
-      boost: stageIdx >= CFG.FORT_DODGE_STAGE ? 1 : 0,
-    }
+    const tag = `${stageIdx + 1}${i ? String.fromCharCode(97 + i) : ''}`
+    const spec = fortSpec(rng, earth, ante, stageIdx, tag, i < heavies)
     let b = null
     const pool2 = bodies.concat(added)
-    for (let t = 0; t < 2 && !b; t++) {
+    for (let t = 0; t < 3 && !b; t++) {
       b = warpBody(rng, pool2, aMax, spec)
       // 마지막 시도는 검사를 건너뛴다 — 못 찾고 요새를 아예 안 보내는 것보다 낫다
-      if (b && t === 0 && !reachable(pool2.concat([b]), earth, b)) b = null
+      if (b && t < 2 && !reachable(pool2.concat([b]), earth, b)) b = null
     }
-    if (!b) continue
-    if (type === 'iron') b.mods = ['armor']   // 금속 요새 — 핵으로는 거의 안 밀린다
-    added.push(b)
+    if (b) added.push(dressFort(b))
   }
   for (let i = 0; i < neutral; i++) {
-    // 특이점은 **3스테이지에 반드시 한 번** 등장시킨다. 추첨에만 맡기면
-    // 다섯 태그 중 하나를 끝까지 못 보고 런이 끝난다(계측: 9스테이지까지 0회).
-    // 그 전에는 안 나오고, 그 뒤로는 추첨에 맡긴다.
-    let type = NEUTRAL_TYPES[rng.int(0, NEUTRAL_TYPES.length - 1)]
-    if (stageIdx === 2 && i === 0) type = 'void'
-    else if (type === 'void' && stageIdx < 2) type = 'ice'
-    const b = warpBody(rng, bodies.concat(added), aMax, {
-      mu: muFor(), name: `${ZORG_NAMES[rng.int(0, ZORG_NAMES.length - 1)]}-${stageIdx + 1}x${i}`, type,
-    })
+    const spec = neutralSpec(rng, ante, stageIdx, `${stageIdx + 1}x${i}`, stageIdx === 2 && i === 0)
+    const b = warpBody(rng, bodies.concat(added), aMax, spec)
     if (b) { b.zorg = false; added.push(b) }   // 중립으로 굴러온 잔챙이 — 큐볼로 쓴다
+  }
+  // ── 조르그 모함 ──
+  // 안테 5부터, 판에 한 기도 없으면 한 기 온다. 이놈이 살아 있는 동안에는
+  // 요새가 계속 다시 차오르므로(game.stepHive), 판을 끝내려면 결국 여기를
+  // 끊어야 한다. 자리는 요새 대역 **바깥**이라 한 발로 닿기 어렵다.
+  if (ante >= CFG.HIVE_ANTE && !live.some(b => b.role === 'hive')) {
+    const h = makeHive(rng, bodies.concat(added), aMax, earth, stageIdx)
+    if (h) added.push(h)
   }
 
   for (const b of added) bodies.push(b)
-  return { added, fortresses: added.filter(b => b.role === 'battery'), aMax }
+  return {
+    added,
+    fortresses: added.filter(b => b.role === 'battery'),
+    hives: added.filter(b => b.role === 'hive'),
+    aMax,
+  }
 }
