@@ -299,7 +299,8 @@ export const zhHant = {
   'intro.7.aim': '◎ 瞄準', 'intro.7.aim.sub': '時間靜止',
   'intro.7.obs': '▶ 觀測', 'intro.7.obs.sub': 'TAB 切換',
   'alarm.multi': ' · {n}座砲台同時瞄準',
-  'gnd.trailer.fear': '一整顆行星…沒了。就一發。',
+  'gnd.trailer.fear': '那道光瞄的是地球。要不是那顆行星橫穿過去—',
+  'gnd.trailer.hit': '一整顆行星，沒了。就一發。',
   'gnd.trailer.nuke': '核彈擋不住那個。算過了 — 差得遠。',
   'gnd.trailer.idea': '那就扔更大的。用行星—去撞行星！',
 }

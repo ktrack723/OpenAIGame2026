@@ -128,36 +128,93 @@ function missileParts() {
 // ─── 조르그 요새의 생김새 ───────────────────────────────────────
 // 요새는 원이 아니라 **포대**다. 그런데 판정은 여전히 원이어야 한다(이 게임의
 // 공은 전부 원이고, 그림과 판정이 어긋나면 그게 곧 거짓말이다). 그래서 원은
-// 그대로 두고 그 위에 도형을 겹쳐 실루엣만 만든다 — 미사일을 원뿔+원통+날개로
-// 조립한 것과 같은 수법이다.
+// 그대로 두고 그 안에 **진짜 입체 구조물**을 세운다.
 //
-// 겹치는 것은 넷:
-//   ① 접시 — 초대형 포구. **광선이 나가는 쪽**에 붙는다. 그래서 요새를 보면
-//      지금 어디를 겨누고 있는지가 각도로 읽힌다(충전 중엔 여기가 달아오른다).
-//   ② 접시 테와 테두리 — 포구가 **파여 있다**는 걸 만드는 두꺼운 링 + 밝은 실선
-//   ③ 적도 참호 — 총구 방향과 직각으로 몸통을 가로지르는 홈
-//   ④ 참호 벽 — 그 홈 한쪽에 붙는 밝은 실선. 홈에 깊이를 준다
-// (참호와 직각으로 난 이음매도 넣어 봤는데, 둘이 겹쳐 십자 조준선처럼 보였다 —
-//  요새 위에는 이미 표적 레티클이 있어서 그 십자가 표식으로 오독된다. 뺐다.)
-// 기하는 전부 +x 를 총구 방향으로 놓고 만든다(그룹을 통째로 돌려 쓴다).
+// 예전에는 납작한 원판(접시)과 띠를 공 위에 겹쳐 실루엣만 만들었다. 그건
+// 스티커였다 — 어느 각도에서 봐도 같은 두께의 그림이고, 광선이 거기서
+// 나가는 것처럼 보이지도 않았다. 이제는 그 자리에 **발사기**가 서 있다:
+//
+//   ① 프롱 셋 — 몸통에서 뻗어 나와 **한 점으로 모이는** 팔. 그 모이는 자리가
+//      곧 광선이 태어나는 곳이다(초점). 셋이라 어느 방향에서 봐도 하나는
+//      옆모습으로, 하나는 위에서 보인다 — 즉 3D로 읽힌다.
+//   ② 발사구 테 — 프롱이 박혀 있는 두 겹의 고리. 겉면에 딱 맞게 앉아서
+//      팔이 허공에서 시작하지 않게 하고, 위에서 보면 그게 곧 포구다.
+//   ③ 적도 참호 — 총구 방향을 축으로 몸통을 감는 고리. 데스스타의 그 홈이다.
+//   ④ 구슬과 속불 — 프롱 끝의 점화구, 그리고 초점의 속불. 충전이 찰수록
+//      달아오르고 커진다. 발사 순간 광선은 정확히 이 자리를 지나간다.
+//
+// 단위는 **구체 반지름**이다(= 판정 반경. 이 게임은 그리는 원과 판정 원이
+// 같다 — renderRadius 주석 참고). 그래서 1.0이 곧 공의 겉면이고, 구조물은
+// 그 겉면 **위에** 서야 한다. 안쪽에 지으면 공에 묻혀 안 보인다.
+//
+// 총구는 +x 지만, 화면은 위에서 내려다보므로 발사구를 정확히 +x(=공의 옆구리
+// 실루엣)에 두면 위에서는 선 하나로 보인다. 그래서 총구 방향에서 **카메라
+// 쪽으로 살짝 들어 올린** 자리에 앉힌다(TILT) — 데스스타의 그 접시가 정면이
+// 아니라 비스듬히 보이는 것과 같다. 초점의 화면 위 위치는 여전히 광선이
+// 지나가는 선 위라, 빛은 정확히 이 발사구에서 나가는 것으로 읽힌다.
+const FORT_TILT = 40 * Math.PI / 180   // 총구 축 → 카메라 쪽 기울기
+const FORT_RIM = 0.5                   // 발사구 테 반지름 (구체 반지름 대비)
+const FORT_INNER = 0.26                // 안쪽 테
+const FORT_FOCUS = 1.44                // 초점까지의 거리 — 프롱 셋이 여기서 만난다
+const FORT_TIP = 0.1                   // 프롱 끝이 초점 둘레에 남기는 틈
+const PRONG_ROLL = [Math.PI / 2, Math.PI * 7 / 6, Math.PI * 11 / 6]   // 삼각대
 function fortParts() {
-  const flat = (c, o) => new THREE.MeshBasicMaterial({
-    color: c, transparent: true, opacity: o, depthTest: false, depthWrite: false, side: THREE.DoubleSide,
-  })
-  const bar = (w, h, x) => {
-    const g = new THREE.PlaneGeometry(w, h)
-    g.translate(x, 0, 0)
-    return g
-  }
-  const at = (g, x) => { g.translate(x, 0, 0); return g }
+  // 프롱 — +x 로 길이 1짜리 테이퍼 기둥(뿌리가 굵고 끝이 가늘다).
+  // 길이는 인스턴스마다 scale.x 로 맞춘다.
+  const prong = new THREE.CylinderGeometry(0.045, 0.088, 1, 12)
+  prong.rotateZ(-Math.PI / 2); prong.translate(0.5, 0, 0)
+  // 적도 참호 — 고리 축을 총구 방향(+x)으로 눕힌다. 겉면 바로 위에 얹혀서
+  // 위에서 보면 총구와 직각으로 몸통을 가로지르는 홈 한 줄로 읽힌다.
+  const trench = new THREE.TorusGeometry(1.005, 0.03, 8, 56)
+  trench.rotateY(Math.PI / 2)
   return {
-    dish: at(new THREE.CircleGeometry(0.29, 28), 0.40),
-    dishRim: at(new THREE.RingGeometry(0.29, 0.42, 28), 0.40),
-    dishEdge: at(new THREE.RingGeometry(0.415, 0.45, 28), 0.40),
-    trench: bar(0.15, 1.94, -0.14),
-    trenchLip: bar(0.035, 1.9, -0.055),
-    mat: flat,
+    prong, trench,
+    rim: new THREE.TorusGeometry(FORT_RIM, 0.055, 8, 44),
+    inner: new THREE.TorusGeometry(FORT_INNER, 0.035, 8, 32),
+    bead: new THREE.SphereGeometry(0.075, 10, 8),
+    core: new THREE.SphereGeometry(0.14, 16, 12),
   }
+}
+
+// ─── 요새 표면의 회로 불빛 ──────────────────────────────────────
+// 요새는 행성이 아니라 **기계**다. 그런데 몸통이 그냥 돌덩이 텍스처라
+// 위에 얹은 발사기만 기계였다. 그렇다고 몸 전체를 발광시키면 붉은 전구가
+// 하나 굴러다니는 꼴이라 표적 표식(붉은 링·해골)과 뒤엉킨다.
+//
+// 그래서 **부분부분**이다: 짧은 회로 배선 몇 가닥과 그 끝의 점 몇 개만
+// 빛난다. 자체발광 지도(emissiveMap)라 검은 데는 아예 안 빛나고, 그려 놓은
+// 선만 은은하게 달아오른다. 자전하면 그 불빛이 몸통을 따라 돌아 넘어간다.
+function circuitTexture(seed = 1) {
+  const W = 256, H = 128
+  const c = document.createElement('canvas'); c.width = W; c.height = H
+  const g = c.getContext('2d')
+  g.fillStyle = '#000'; g.fillRect(0, 0, W, H)
+  let s = (seed * 2654435761 + 12345) >>> 0
+  const rnd = () => ((s = (s * 1103515245 + 12345) >>> 0) / 4294967296)
+  g.lineCap = 'square'; g.lineJoin = 'miter'
+  for (let i = 0; i < 16; i++) {
+    let x = Math.floor(rnd() * W), y = Math.floor(rnd() * H)
+    const bright = 0.45 + rnd() * 0.55
+    g.strokeStyle = `rgba(255,255,255,${bright.toFixed(2)})`
+    g.lineWidth = 1 + Math.floor(rnd() * 2)
+    g.beginPath(); g.moveTo(x, y)
+    // 두세 마디짜리 짧은 배선 — 직각으로만 꺾인다(그래야 회로로 읽힌다)
+    const legs = 2 + Math.floor(rnd() * 2)
+    for (let k = 0; k < legs; k++) {
+      const len = 8 + rnd() * 22
+      if ((k + i) % 2) x += rnd() < 0.5 ? -len : len
+      else y += rnd() < 0.5 ? -len : len
+      g.lineTo(x, y)
+    }
+    g.stroke()
+    // 배선 끝의 접점 — 여기가 제일 밝다
+    g.fillStyle = `rgba(255,255,255,${Math.min(1, bright + 0.35).toFixed(2)})`
+    g.fillRect(x - 2, y - 2, 4, 4)
+  }
+  const tex = new THREE.CanvasTexture(c)
+  tex.colorSpace = THREE.SRGBColorSpace
+  tex.wrapS = THREE.RepeatWrapping
+  return tex
 }
 
 function glowTexture() {
@@ -202,6 +259,7 @@ export class SceneView {
     this.missileGeo = missileParts()
     this.fortGeo = fortParts()
     this.texCache = new Map()
+    this.circuitCache = new Map()   // 요새 표면의 회로 불빛 (팔레트 번호별)
 
     this.buildStars()
     this.buildSun()
@@ -411,9 +469,8 @@ export class SceneView {
       if (acc) { this.scene.remove(acc); acc.geometry.dispose(); acc.material.dispose() }
     }
     if (fx.fort) {
-      // 지오메트리는 fortGeo가 공유한다 — 여기서 버리는 건 재질과 속불의 원반뿐이다
-      for (const m of fx.fort.grp.children) m.material.dispose()
-      fx.fort.core.geometry.dispose()
+      // 지오메트리는 fortGeo가 공유한다 — 여기서 버리는 건 재질 셋뿐이다
+      for (const m of [fx.fort.steel, fx.fort.hull, fx.fort.hot, fx.fort.fire]) m.dispose()
       this.scene.remove(fx.fort.grp)
     }
   }
@@ -444,14 +501,30 @@ export class SceneView {
     return this.texCache.get(key)
   }
 
+  circuitFor(pi) {
+    if (!this.circuitCache.has(pi)) this.circuitCache.set(pi, circuitTexture(pi + 1))
+    return this.circuitCache.get(pi)
+  }
+
+  // 이 공이 스스로 내는 빛. 보통은 제 색으로 아주 약하게 깔리고, **조르그
+  // 요새만** 붉은 회로가 부분부분 들어온다(circuitTexture).
+  // 값을 fx에 적어 두는 이유: 워프인·조준 물들임이 자체발광을 잠깐 덮었다가
+  // 되돌리는데, 되돌릴 자리가 한 군데여야 요새의 회로가 그때 꺼지지 않는다.
+  emissiveFor(b, pi, spec) {
+    return b.role === 'battery'
+      ? { tone: 0xff2b3f, base: 0.95, map: this.circuitFor(pi) }
+      : { tone: colorOf(b.type, pi), base: spec.emis, map: null }
+  }
+
   makeBodyFx(b) {
     const spec = MATS[b.type] ?? MATS.rock
     const pi = paletteIndex(b.id, b.type)
-    const tone = colorOf(b.type, pi)
+    const em = this.emissiveFor(b, pi, spec)
     const mesh = new THREE.Mesh(this.sphereGeo, new THREE.MeshStandardMaterial({
       map: this.texFor(b.type, pi), color: 0xffffff,
       roughness: spec.rough, metalness: spec.metal,
-      emissive: new THREE.Color(tone), emissiveIntensity: spec.emis,
+      emissiveMap: em.map,
+      emissive: new THREE.Color(em.tone), emissiveIntensity: em.base,
     }))
     mesh.rotation.x = Math.PI / 2 - 0.35   // 극축을 살짝 눕혀 탑다운에서도 자전이 보이게
     const ring = new THREE.Mesh(this.ringGeoFor(0.9), new THREE.MeshBasicMaterial({
@@ -468,45 +541,102 @@ export class SceneView {
     hpArc.renderOrder = 15
     hpArc.visible = false
     this.scene.add(mesh, ring, hpArc)
-    const fx = { mesh, ring, hpArc, hpKey: -1, type: b.type, pi, spin: 0.15 + Math.random() * 0.5, role: null, fort: null }
+    const fx = {
+      mesh, ring, hpArc, hpKey: -1, type: b.type, pi,
+      spin: 0.15 + Math.random() * 0.5, role: null, fort: null,
+      emisTone: em.tone, emisBase: em.base, phase: Math.random() * 6.28,
+    }
     this.bodyFx.set(b.id, fx)
     if (b.role) this.attachRoleFx(fx, b)
     if (b.role === 'battery') this.attachFortFx(fx)
     return fx
   }
 
-  // 요새를 포대로 보이게 하는 겹침 도형(fortParts 주석 참고).
+  // 요새 위에 세우는 발사기(fortParts 주석 참고).
   // 판정에는 아무 영향이 없다 — 공은 여전히 hitRadiusOf 반경의 원이다.
   attachFortFx(fx) {
     const G = this.fortGeo, grp = new THREE.Group()
-    const add = (geo, color, opacity, order) => {
-      const m = new THREE.Mesh(geo, G.mat(color, opacity))
-      m.renderOrder = order
-      grp.add(m)
+    // 구조물 — 어두운 금속. 충전이 차면 색이 아니라 **자체발광**만 올린다.
+    const steel = new THREE.MeshStandardMaterial({
+      color: 0x3a1622, roughness: 0.34, metalness: 0.92,
+      emissive: new THREE.Color(0xff2d4d), emissiveIntensity: 0.1,
+    })
+    // 선체 — 적도 참호처럼 몸통에 속한 것. 여긴 안 달아오른다(총구만 달아오른다).
+    const hull = new THREE.MeshStandardMaterial({
+      color: 0x2a2026, roughness: 0.5, metalness: 0.8,
+      emissive: new THREE.Color(0x5c0f1c), emissiveIntensity: 0.35,
+    })
+    // 점화구·속불 — 가산 합성이라 겹칠수록 하얗게 탄다
+    const hot = new THREE.MeshBasicMaterial({
+      color: 0xff5c9e, transparent: true, opacity: 0.8,
+      depthWrite: false, blending: THREE.AdditiveBlending,
+    })
+    const fire = new THREE.MeshBasicMaterial({
+      color: 0xffffff, transparent: true, opacity: 0.9,
+      depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending,
+    })
+    const add = (geo, mat) => { const m = new THREE.Mesh(geo, mat); grp.add(m); return m }
+    add(G.trench, hull)
+    // 발사구가 앉는 자리 — 총구(+x)에서 카메라 쪽으로 들어 올린 방향 D.
+    // (D, U, V)는 정규직교라 D 둘레의 원을 각도 하나로 찍을 수 있다.
+    const X = new THREE.Vector3(1, 0, 0)
+    const D = new THREE.Vector3(Math.cos(FORT_TILT), 0, Math.sin(FORT_TILT))
+    const U = new THREE.Vector3(0, 1, 0)
+    const V = new THREE.Vector3().crossVectors(D, U).normalize()
+    const Z = new THREE.Vector3(0, 0, 1)
+    // 반지름 rad 짜리 고리를 **구체 겉면에 딱 맞게** 앉힌다(중심은 그만큼 안쪽).
+    const ringOn = (geo, rad) => {
+      const m = add(geo, steel)
+      m.position.copy(D).multiplyScalar(Math.sqrt(Math.max(0, 1 - rad * rad)))
+      m.quaternion.setFromUnitVectors(Z, D)
       return m
     }
-    const trench = add(G.trench, 0x140309, 0.9, 6)
-    const lip = add(G.trenchLip, 0xd98cae, 0.55, 7)
-    const rim = add(G.dishRim, 0x2a0812, 0.95, 7)
-    const edge = add(G.dishEdge, 0xd98cae, 0.7, 8)
-    const dish = add(G.dish, 0xff5c9e, 0.5, 8)
-    // 포구의 속불 — 충전이 찰수록 커지고 하얗게 달아오른다
-    const core = add(new THREE.CircleGeometry(1, 20), 0xffffff, 0.9, 9)
-    core.material.blending = THREE.AdditiveBlending
+    ringOn(G.rim, FORT_RIM)
+    ringOn(G.inner, FORT_INNER)
+    // 초점 — 프롱 셋이 만나는 자리. 광선은 정확히 여기를 지나간다.
+    const focus = D.clone().multiplyScalar(FORT_FOCUS)
+    const beads = []
+    for (const th of PRONG_ROLL) {
+      // 뿌리는 발사구 테 위, 끝은 초점 바로 앞. 셋이 안쪽으로 모여든다.
+      const off = U.clone().multiplyScalar(Math.cos(th) * FORT_RIM)
+        .addScaledVector(V, Math.sin(th) * FORT_RIM)
+      const base = D.clone().multiplyScalar(Math.sqrt(Math.max(0, 1 - FORT_RIM * FORT_RIM))).add(off)
+      const tip = focus.clone().addScaledVector(off.clone().normalize(), FORT_TIP)
+      const dir = tip.clone().sub(base)
+      const len = dir.length()
+      const arm = add(G.prong, steel)
+      arm.position.copy(base)
+      arm.quaternion.setFromUnitVectors(X, dir.normalize())
+      arm.scale.set(len, 1, 1)      // 길이만 늘린다(굵기는 그대로)
+      const bead = add(G.bead, hot)
+      bead.position.copy(tip)
+      beads.push(bead)
+    }
+    const core = add(G.core, fire)
+    core.position.copy(focus)
+    core.renderOrder = 9
     this.scene.add(grp)
-    fx.fort = { grp, dish, core, rim, edge, lip, trench }
+    fx.fort = { grp, core, beads, steel, hull, hot, fire }
   }
 
-  // 접시가 향하는 쪽 = 총구. 충전·비행 중이면 그 광선의 진짜 방향이고,
-  // 쉬고 있으면 지구를 겨눈다 — 요새는 늘 지구를 노리고 있다는 뜻이다.
+  // 총구가 향하는 쪽 = **언제나 지구**다. 무엇을 하고 있든 그렇다.
+  //
+  // 예전에는 충전·비행 중일 때 그 광선의 진짜 방향을 따라갔다. 규칙으로는
+  // 맞지만(광선은 "지구가 도달할 자리"를 겨눈다), 화면에서는 요새가 빈 하늘을
+  // 보고 있는 것처럼 읽히는 순간이 생겼다 — 특히 지구를 밀어 조준을 틀어
+  // 놓았을 때. 이 게임에서 요새가 하는 말은 하나뿐이다: **너희 집을 보고 있다.**
+  // 그러니 총구는 예외 없이 지구를 향한다. 도착한 그 순간부터.
+  // (u는 충전 진행도 — 총구가 얼마나 달아올랐는가.)
   fortAim(b) {
+    const e = this.game.earth
+    const a = Math.atan2(e.pos.y - b.pos.y, e.pos.x - b.pos.x)
+    let u = 0
     for (const L of this.game.lasers ?? []) {
       if (L.from !== b) continue
-      if (L.state === 'charge') return { a: Math.atan2(L.ay - L.oy, L.ax - L.ox), u: Math.min(1, L.t / CFG.LASER_CHARGE) }
-      if (L.state === 'travel' || L.state === 'spent') return { a: Math.atan2(L.uy, L.ux), u: 1 }
+      if (L.state === 'charge') u = Math.max(u, Math.min(1, L.t / CFG.LASER_CHARGE))
+      else if (L.state === 'travel' || L.state === 'spent') u = 1
     }
-    const e = this.game.earth
-    return { a: Math.atan2(e.pos.y - b.pos.y, e.pos.x - b.pos.x), u: 0 }
+    return { a, u }
   }
 
   // 역할에 딸린 **그림**을 붙인다. 예전엔 여기서 태그마다 점선 링을 둘렀는데,
@@ -579,7 +709,10 @@ export class SceneView {
         const mat = fx.mesh.material
         mat.map = this.texFor(b.type, fx.pi)
         mat.roughness = spec.rough; mat.metalness = spec.metal
-        mat.emissive.setHex(colorOf(b.type, fx.pi)); mat.emissiveIntensity = spec.emis
+        const em = this.emissiveFor(b, fx.pi, spec)
+        fx.emisTone = em.tone; fx.emisBase = em.base
+        mat.emissiveMap = em.map
+        mat.emissive.setHex(em.tone); mat.emissiveIntensity = em.base
         mat.needsUpdate = true
         fx.type = b.type
       }
@@ -594,25 +727,27 @@ export class SceneView {
       // 있어서 죽은 공에는 아예 도달하지 않는다 — 그 탓에 부서진 공의 체력 링만
       // 궤도에 유령처럼 남아 돌고 있었다. 켜는 건 아래, 끄는 건 여기다.
       if (!b.alive || waiting) fx.hpArc.visible = false
-      // ── 요새의 포대 실루엣 ──
-      // 워프해 들어오는 동안(warp>0)에는 안 그린다 — 몸통이 아직 반투명한데
-      // 접시만 또렷하면 도형이 공중에 떠 있는 것으로 보인다.
+      // ── 요새의 발사기 ──
+      // **워프해 들어오는 동안에도 그린다.** 도착하는 그 순간부터 총구는 이미
+      // 지구를 향하고 있어야 한다 — 그게 이 요새가 여기 온 이유이기 때문이다.
+      // 몸통과 같은 비율로 같이 떠오르므로 도형이 공중에 뜨지 않는다.
       if (fx.fort) {
-        const show = b.alive && !waiting && !(b.warp > 0)
+        const show = b.alive && !waiting
         fx.fort.grp.visible = show
         if (show) {
           const { a, u } = this.fortAim(b)
           const F = fx.fort
-          F.grp.position.set(b.pos.x, b.pos.y, 0.4)
-          F.grp.scale.setScalar(r)
+          // 워프인 — 몸통(아래 scale)과 같은 곡선으로 같이 자란다
+          const grow = b.warp > 0 ? 0.05 + 0.95 * (1 - Math.pow(b.warp, 3)) : 1
+          F.grp.position.set(b.pos.x, b.pos.y, 0)
+          F.grp.scale.setScalar(r * grow)
           F.grp.rotation.z = a
-          // 충전이 찰수록 포구가 달아오른다 — 색 하나로 "지금 물고 있다"가 읽힌다
-          F.dish.material.opacity = 0.45 + 0.55 * u
-          F.dish.material.color.setHex(u > 0 ? 0xff2d4d : 0xff5c9e)
-          F.edge.material.opacity = 0.7 + 0.3 * u
-          F.core.position.set(0.40, 0, 0)
-          F.core.scale.setScalar(0.26 * (0.18 + 0.82 * u) * (u > 0 ? 1 + 0.14 * Math.sin(this.lockT * 9) : 1))
-          F.core.material.opacity = 0.25 + 0.75 * u
+          // 충전이 찰수록 구조물이 달아오른다 — "지금 물고 있다"가 밝기로 읽힌다
+          const beat = 1 + 0.14 * Math.sin(this.lockT * 9)
+          F.steel.emissiveIntensity = 0.1 + 1.1 * u
+          F.hot.opacity = (0.35 + 0.65 * u) * (u > 0 ? beat : 1)
+          F.core.scale.setScalar((0.35 + 1.5 * u) * (u > 0 ? beat : 1))
+          F.core.material.opacity = 0.16 + 0.84 * u
         }
       }
       if (fx.role) {
@@ -647,9 +782,12 @@ export class SceneView {
         fx.mesh.material.emissiveIntensity = 0.6 + 2.5 * b.warp
       } else if (fx.warped !== true) {
         fx.warped = true
-        const spec = MATS[b.type] ?? MATS.rock
-        fx.mesh.material.emissiveIntensity = spec.emis
+        fx.mesh.material.emissiveIntensity = fx.emisBase
       }
+      // 요새의 회로 불빛 — 도착이 끝난 뒤로는 여기서 아주 느리게 숨을 쉰다.
+      // (자체발광 지도라 선 위만 빛난다. 몸통 전체가 밝아지지는 않는다.)
+      if (fx.fort && b.warp <= 0 && !fx.tinted)
+        fx.mesh.material.emissiveIntensity = fx.emisBase * (0.7 + 0.3 * Math.sin(this.lockT * 1.7 + fx.phase))
       fx.mesh.position.set(b.pos.x, b.pos.y, 0)
       // 가스 행성은 고리가 판정 반경을 채우므로 구체를 그만큼 줄인다 —
       // 공이 커지는 게 아니라 같은 자리에 다른 그림이 들어가는 것이다.
@@ -699,9 +837,8 @@ export class SceneView {
       // 구체 자체도 그 색으로 달아오르게 — 줌아웃해서 원반이 작아져도 색이 남는다
       if (targeted !== !!fx.tinted) {
         fx.tinted = targeted
-        const spec = MATS[b.type] ?? MATS.rock
-        fx.mesh.material.emissive.setHex(targeted ? (PRED_TONE[aimHit.outcome] ?? 0x67e8f9) : colorOf(b.type, fx.pi))
-        fx.mesh.material.emissiveIntensity = targeted ? 0.5 : spec.emis
+        fx.mesh.material.emissive.setHex(targeted ? (PRED_TONE[aimHit.outcome] ?? 0x67e8f9) : fx.emisTone)
+        fx.mesh.material.emissiveIntensity = targeted ? 0.5 : fx.emisBase
       }
 
       // ── 체력 호 — 다친 공만. 남은 칸이 줄면 호가 짧아지고 색이 식는다 ──

@@ -540,6 +540,33 @@ button:disabled{opacity:.32;cursor:not-allowed;box-shadow:none}
   .msg{-webkit-line-clamp:1}
 }
 
+/* ─── 언어 선택 — 오프닝보다 먼저 ─────────────────────────────
+   번역할 문장이 없는 화면이다(언어를 못 고른 사람에게 번역된 안내를 보여
+   주는 건 순환이다). 각 언어는 제 이름으로만 적힌다. */
+.langpick{position:fixed;inset:0;z-index:12;display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(120% 90% at 50% 42%,#0a1424 0%,#03060f 72%);animation:introin .35s ease-out}
+.langpick.out{opacity:0;transition:opacity .3s ease;pointer-events:none}
+.lpbox{width:min(380px,calc(100vw - 32px));padding:14px 16px 14px;
+  border:1px solid var(--line);background:var(--panel);backdrop-filter:blur(12px);
+  box-shadow:0 24px 90px #000d,inset 0 0 70px #0a1c2a55;
+  clip-path:polygon(0 14px,14px 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%);
+  animation:vicpop .45s cubic-bezier(.2,1.5,.4,1)}
+.lptop{display:flex;align-items:center;gap:10px;padding-bottom:9px;border-bottom:1px solid var(--line)}
+.lpttl{color:var(--cy);font-size:13px;font-weight:800;letter-spacing:.3em;text-shadow:0 0 12px #4fd6f755}
+.lpmark{margin-left:auto;font-size:15px;line-height:1}
+.lplist{display:grid;gap:5px;margin:11px 0 9px}
+.lpbtn{display:flex;align-items:baseline;gap:10px;width:100%;margin:0;padding:11px 13px;
+  border:1px solid var(--line2);border-radius:0;background:#08131d;color:#a9c8d8;
+  font-family:inherit;text-align:left;cursor:pointer;touch-action:manipulation;
+  transition:background .12s,color .12s,border-color .12s,box-shadow .12s}
+.lpname{font-size:15px;font-weight:800;letter-spacing:.04em}
+.lpcode{margin-left:auto;font-family:var(--mono);font-size:10px;letter-spacing:.14em;color:var(--dim)}
+.lpbtn:hover,.lpbtn:focus-visible{background:#16334a;color:#eaf7ff;border-color:var(--line)}
+.lpbtn.on{background:linear-gradient(180deg,#0e3549,#07202e);border-color:#2f7f9c;color:#d9f6ff;
+  box-shadow:0 0 20px #4fd6f733,inset 0 0 20px #4fd6f722}
+.lpbtn.on .lpcode{color:var(--cy)}
+.lphint{color:#4a6274;font-size:10px;letter-spacing:.2em;text-align:right;font-family:var(--mono)}
+
 /* ─── 오프닝 예고편 오버레이 ───────────────────────────────────
    화면 대부분은 **실제 게임 화면**이다(Attract.js가 판을 굴린다). 이 오버레이가
    그리는 건 진행 막대와 건너뛰기 버튼, 그리고 마지막 로고뿐이다. */
