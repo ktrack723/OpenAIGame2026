@@ -111,9 +111,12 @@ h1{margin:0;color:var(--cy);letter-spacing:.34em;font-size:15px;font-weight:800;
 /* ── 스테퍼 — 모바일에서 슬라이더는 정밀 조작이 안 된다 ──
    방향마다 버튼이 셋이다: ‹ 미세 / ◀ 보통 / ◀◀ 큼. 버튼 크기가 곧 걸음
    크기라서 라벨을 읽지 않아도 손이 먼저 안다(큰 걸음일수록 버튼이 크고 밝다). */
-.step{display:grid;grid-template-columns:32px auto auto auto 1fr auto auto auto 26px;
+.step{display:grid;grid-template-columns:var(--steplbl,42px) auto auto auto 1fr auto auto auto 26px;
   align-items:center;gap:3px;margin:5px 0}
-.steplabel{color:var(--dim);font-size:10px;font-weight:800;letter-spacing:.1em}
+/* 라벨 칸은 **세 줄이 같은 너비**여야 값이 세로로 맞는다 — 그래서 고정폭이다.
+   폭은 제일 긴 번역(영어 ANGLE/SPEED/YIELD)이 안 잘리는 값으로 잡았다.
+   32px이던 시절 영어로 켜면 'ANGL'·'SPEE'로 잘렸다. */
+.steplabel{color:var(--dim);font-size:10px;font-weight:800;letter-spacing:.06em;white-space:nowrap}
 .stepval{text-align:center;color:#eaf7ff;font-size:15px;font-weight:800;font-family:var(--mono);
   font-variant-numeric:tabular-nums;text-shadow:0 0 10px #4fd6f755}
 .stepunit{color:var(--dim);font-size:10px;font-family:var(--mono)}
@@ -195,8 +198,11 @@ h1{margin:0;color:var(--cy);letter-spacing:.34em;font-size:15px;font-weight:800;
 /* ── 일반 버튼 ── */
 button{font-family:inherit}
 .btnrow{display:flex;gap:5px;margin-top:6px;flex-wrap:wrap}
-/* 뷰 조작은 한 줄에 다섯 개. 자주 쓰는 게 아니라 작아도 된다. */
-.btnrow.tools .ghost{flex:1;padding:6px 4px;font-size:10.5px;letter-spacing:0}
+/* 뷰 조작은 작아도 된다 — 자주 쓰는 게 아니다. 다만 **글자는 안 자른다**:
+   flex:1로 여섯 칸을 균등 분할했더니 언어 버튼이 '한/국어'로, NEW RUN이
+   'NEW/RUN'으로 단어 중간에서 꺾였다. 내용만큼 차지하게 두고(1 1 auto),
+   줄이 모자라면 줄바꿈으로 흘려보낸다(.btnrow가 이미 wrap이다). */
+.btnrow.tools .ghost{flex:1 1 auto;padding:6px 5px;font-size:10.5px;letter-spacing:0;white-space:nowrap}
 .ghost{margin:0;padding:8px 11px;border:1px solid var(--line);border-radius:0;background:#0b1826;
   color:#a9c8d8;font-size:11.5px;font-weight:700;letter-spacing:.06em;cursor:pointer;touch-action:manipulation;
   transition:background .12s,color .12s,box-shadow .12s}
@@ -525,7 +531,7 @@ button:disabled{opacity:.32;cursor:not-allowed;box-shadow:none}
   .stepbtn.fine{min-width:26px;padding:8px 0}
   .stepbtn.mid{min-width:30px}
   .stepbtn.big{min-width:36px}
-  .step{grid-template-columns:30px auto auto auto 1fr auto auto auto 24px;gap:4px}
+  .step{grid-template-columns:var(--steplbl,42px) auto auto auto 1fr auto auto auto 24px;gap:4px}
   .stepval{font-size:17px}
   .firebtn{padding:13px 12px;font-size:17px}
   .ghost{padding:9px 12px}

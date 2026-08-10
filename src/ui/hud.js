@@ -330,7 +330,8 @@ function predLine(game, p) {
       t('lcd.chain.sub', { aim: roleAim(h.role), r: h.volatileR.toFixed(0) })]
     case 'debris': return ['warn', t('lcd.tag.debris'), t('lcd.debris'), '']
     case 'sun': return ['warn', t('lcd.tag.solar'), t('lcd.solar'), t('lcd.solar.sub')]
-    // '성계 이탈(유실)'은 없다 — 카이퍼 벨트가 튕겨 되돌려 보낸다.
+    // 벨트 기폭 — 판 밖으로 나가는 발이다. 공은 쿠션에 튕기지만 탄두는 거기서 끝난다.
+    case 'belt': return ['warn', t('lcd.tag.belt'), t('lcd.belt'), t('lcd.belt.sub')]
     case 'timeout': return ['warn', t('lcd.tag.noctc'), t('lcd.noctc', { ttl: CFG.MISSILE_TTL }), t('lcd.noctc.sub')]
     case 'target':
     case 'neutral': {

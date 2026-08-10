@@ -68,6 +68,8 @@ const SAY = {
   // 우리 행성을 녹일 때도 똑같이 나가서, 그걸로는 승패를 구분할 수 없다.
   fortDown: 6,
   laserHit: 4, nuke: 4, volatile: 4,
+  // 벨트 기폭은 명중이 아니다 — 판 밖으로 나간 발이라 할 말이 다르다.
+  beltBlast: 3,
   boost: 5,
   swing: 3, laserCharge: 3, laserMiss: 3,
   launch: 2,
@@ -117,6 +119,9 @@ export class Ground {
     const prio = SAY[e.kind]
     if (!prio) return
     if (e.kind === 'laserHit' && e.sun) return    // 태양이 막은 건 아무것도 안 없앤다
+    // 벨트에서 터진 탄두를 'nuke'로 흘리면 관제가 "유효타"라고 보고한다 —
+    // 아무것도 안 맞은 발이다. 사건 이름을 갈라 준다.
+    if (e.kind === 'nuke' && e.belt) return this.raise('beltBlast', SAY.beltBlast)
     // 예고편이 화면을 잡고 있는 동안(game.cinematic)은 **조르그 광선에 대해
     // 아무 말도 하지 않는다.** ③은 저쪽의 막이다 — 거기서 이쪽이 끼어들어
     // 위력에 감탄하면 정작 보여 주려던 한 방이 해설에 묻힌다.

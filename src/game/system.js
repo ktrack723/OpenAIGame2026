@@ -122,11 +122,14 @@ const PROBE_ANGLES = 24, PROBE_POWERS = [34, 50]
 // 오차가 3 GU 남짓이다 — 판정 반경이 18 GU 이상이라 답이 뒤집히지 않는다.
 // (예측선도 같은 수법을 쓴다: aim.js BODY_EVERY.)
 const PROBE_BODY_EVERY = 4
-function reachable(bodies, earth, target) {
+// aMax는 **이번 판의 것**을 받는다. 예전에는 안테 8 기준(가장 넓은 판)의 벨트를
+// 썼는데, 미사일이 벨트에 닿으면 그 자리에서 터지는 지금은 그게 거짓말이 된다 —
+// 지금 판의 벽 밖으로 나가는 궤적을 "닿는 각도"로 세어 버린다.
+function reachable(bodies, earth, target, aMax) {
   const dt = 1 / 25, steps = Math.round(40 / dt)
   const tIdx = bodies.indexOf(target)
   if (tIdx < 0) return false
-  const rMax = beltRadius(aMaxOf(8))
+  const rMax = beltRadius(aMax)
   for (const pw of PROBE_POWERS) {
     for (let ai = 0; ai < PROBE_ANGLES; ai++) {
       const ang = ai / PROBE_ANGLES * Math.PI * 2
@@ -322,7 +325,7 @@ export function reinforce(rng, bodies, earth, ante, stageIdx) {
     for (let t = 0; t < 3 && !b; t++) {
       b = warpBody(rng, pool2, aMax, spec)
       // 마지막 시도는 검사를 건너뛴다 — 못 찾고 요새를 아예 안 보내는 것보다 낫다
-      if (b && t < 2 && !reachable(pool2.concat([b]), earth, b)) b = null
+      if (b && t < 2 && !reachable(pool2.concat([b]), earth, b, aMax)) b = null
     }
     if (b) added.push(dressFort(b))
   }
