@@ -89,7 +89,6 @@ export class Inspector {
     }
     out.push(`<div class="ihead"><span class="iicon">${cat.icon}</span><b>${nameOf(b)}</b>`
       + (b.isEarth ? `<span class="ibadge earth">${t('insp.earth')}</span>` : '')
-      + (b.homeworld ? `<span class="ibadge foe">${t('insp.home')}</span>` : '')
       + '</div>')
     out.push(`<div class="itags">${tags.length
       ? tags.map(([c, t]) => `<span class="ibadge ${c}">${t}</span>`).join('')

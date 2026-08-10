@@ -42,20 +42,26 @@ import { effDv } from '../game/roles.js'
 const PEACE_MS = 1500    // ① 평화
 const WARP_MS = 2100     // ② 워프 + 대사
 const WARP_LINE_MS = 650 // 워프 뒤 대사가 뜨기까지 (카메라가 옮겨 갈 시간)
-const BEAM_MS = 3000     // ③ 광선 한 발
+// ③ 광선 한 발. 충전(BEAM_CHARGE) → 발사 → 비행 → 소멸이 이 안에 다 들어간다.
+const BEAM_MS = 4400
+const BEAM_CHARGE = 2.2  // 총구에 빛이 모이는 시간(인게임 초). 게임의 95초를 줄인 것.
 
 // ①~③이 흘려보낼 **판 시간**(인게임 초). 이만큼 되감아 두고 그만큼 되밟는다.
 // 평화·워프는 빨리 감는다 — 안쪽 행성이 눈에 띄게 돌아 줘야 "살아 있는 성계"로
 // 읽힌다(가장 안쪽 궤도가 한 바퀴 60초쯤이니 21초면 3분의 1 바퀴다).
 // 광선 구간만 실시간이다. 여기서 빨리 감으면 광선이 순간이동해 버린다.
-const ACT_SEC = { peace: 9, warp: 12, beam: 3 }
+const ACT_SEC = { peace: 9, warp: 12, beam: 4.4 }
 
 // 광선의 제물이 무대(지구·스윙바이 천체·큐볼·본성)에서 떨어져 있어야 하는 거리.
 // 크게 잡을 이유가 없다 — 제물이 사라지는 건 무대를 풀 때 이미 계산에 들어가
 // 있으므로(setUp의 2차 풀이), 여기서는 폭발이 무대를 덮지만 않으면 된다.
 const BEAM_SAFE = 220
 const BEAM_FAR = 1700    // 제물까지의 상한 — 한 발이 이 막 안에 닿아야 한다
-const AIM_MS = 1400      // ④ 예측 컷 — 패널 없이 예측선만 보여 주는 시간
+// ④ 예측 컷 — 패널 없이 예측선만. 여기서 지상 관제가 세 마디를 한다.
+// 그 세 마디가 이 게임이 존재하는 이유다: **광선을 봤다 → 핵으로는 안 된다 →
+// 그럼 행성을 던지자.** 그림으로만 흘리면 "왜 하필 당구인가"가 안 남는다.
+const AIM_MS = 6000
+const IDEA_MS = [200, 2100, 4000]   // 세 마디가 뜨는 시각(막 시작 기준)
 const TAIL_MS = 900      // 요새가 부서진 뒤 여운
 // 안전장치 — 장면이 어그러졌을 때만 걸린다. 정상 진행은 요새가 부서지는
 // 순간(보통 7~9초)에 끝나므로, 느린 기기에서 잘리지 않게 넉넉히 잡는다.
@@ -372,8 +378,6 @@ function setUp(g, mode) {
     const b = g.bodies[i]
     if (b.role === 'battery' && b !== cast.fort) g.bodies.splice(i, 1)
   }
-  cast.fort.homeworld = true
-  g.homeworld = cast.fort
   g.targets = [cast.fort]
   g.goal = makeGoal([cast.fort])
 
@@ -402,7 +406,7 @@ function setUp(g, mode) {
   return null
 }
 
-// ③의 한 발이 태울 행성. 총구는 조르그 본성이다.
+// ③의 한 발이 태울 행성. 총구는 그 요새다.
 function victimsFor(g, cast, fort) {
   const b = pickVictim(g, [g.earth, fort, cast.swing, cast.cue], fort.pos.x, fort.pos.y)
   return b ? [b] : []
@@ -471,28 +475,35 @@ function pickVictim(g, keep, ox, oy, taken = []) {
   return cands[0]?.b ?? null
 }
 
-function fireBeamPast(g, keep, want) {
+// 총구를 물린다. 예전에는 여기서 상태기를 두 스텝에 통과시켜 **충전을 건너뛰고**
+// 곧장 발사했는데, 그러면 광선이 아무 예고 없이 튀어나온다. 게임에서는 95초에
+// 걸쳐 총구에 빛이 모이는 게 이 무기의 절반인데 예고편만 그걸 안 보여 준 것이다.
+// 이제 충전 상태로 세워 두고 **남은 시간만 BEAM_CHARGE초로 줄인다** — 같은 연출,
+// 같은 상태기, 길이만 다르다.
+function armBeam(g) {
   const L = g.laser
+  if (!L) return null
   L.state = LASER_IDLE; L.t = 0; L.nextAt = 0
   g.step(CFG.DT)                                  // → charge (조준점 계산)
-  if (L.state !== LASER_CHARGE) return false
-  L.t = CFG.LASER_CHARGE
-  g.step(CFG.DT)                                  // → travel (진로 확정)
-  if (L.state !== LASER_TRAVEL) return false
+  if (L.state !== LASER_CHARGE) return null
+  L.t = Math.max(0, CFG.LASER_CHARGE - BEAM_CHARGE)
+  L.lockAim = true                                // 조준점은 예고편이 정한다
   g.toast = null; g.toastT = 0
+  return L
+}
 
-  // 무대를 풀 때 "없는 셈 친" 바로 그 행성을 쏜다. **정해진 제물이 없으면
-  // 아무것도 안 태운다** — 즉석에서 고르면 그게 곧 풀이에 없던 소멸이다.
+// 충전 중 매 스텝, 조준점을 제물 위로 끌어다 둔다. 판이 흐르고 있으므로
+// 한 번 찍어 두면 그동안 제물이 그만큼 옮겨 가 빗나간다.
+// 정해진 제물이 없으면 **아무것도 안 태우는 쪽**으로 튼다 — 즉석에서 고르면
+// 그게 곧 무대 풀이에 없던 소멸이고, ⑤⑥이 통째로 어긋난다.
+function holdBeam(L, keep, want) {
   const b = want?.alive ? want : null
   if (b) {
-    const { ux, uy } = leadUnit(b, L.ox, L.oy)
-    L.ux = ux; L.uy = uy
-    return b
+    const { ux, uy, d } = leadUnit(b, L.ox, L.oy)
+    L.ax = L.ox + ux * d; L.ay = L.oy + uy * d
+    return
   }
-
-  // 마땅한 표적이 없으면 아무것도 못 맞히는 쪽으로 튼다. 한 바퀴를 훑어
-  // 지켜야 할 것들에서 가장 멀리 떨어지는 각을 고른다 — 빈 하늘에 대고 쏘는
-  // 셈이지만, 무대를 태우는 것보다는 낫다.
+  // 한 바퀴를 훑어 지켜야 할 것들에서 가장 멀리 떨어지는 각 — 빈 하늘이다.
   let best = null, bestClear = -Infinity
   for (let i = 0; i < 72; i++) {
     const a = i * Math.PI / 36
@@ -507,8 +518,7 @@ function fireBeamPast(g, keep, want) {
     }
     if (worst > bestClear) { bestClear = worst; best = { ux, uy } }
   }
-  if (best) { L.ux = best.ux; L.uy = best.uy }
-  return true
+  if (best) { L.ax = L.ox + best.ux * 900; L.ay = L.oy + best.uy * 900 }
 }
 
 // 판을 거꾸로 감는다. 도약 적분(velocity-Verlet)은 시간대칭이라, 같은 dt로
@@ -537,9 +547,10 @@ const LOGOMARK = `
 </svg>`
 
 export class Attract {
-  constructor(game, view, onDone, comms = null) {
+  constructor(game, view, onDone, comms = null, ground = null) {
     this.game = game; this.view = view; this.onDone = onDone
     this.comms = comms          // 예고편에도 저쪽이 한 마디 한다
+    this.ground = ground        // 그리고 이쪽도 — ④에서 결론을 낸다
     this.done = false
     this.timers = []
     this.shot = null
@@ -584,6 +595,14 @@ export class Attract {
       // 버려지므로 매 스텝 지운다(frame()이 하는 것과 같은 이유).
       g.won = false; g.lost = false; g.runOver = false; g.failReason = null
       g.step(CFG.DT)
+      // 충전 중에는 조준점을 제물 위에 붙들어 둔다. 발사로 넘어가는 순간
+      // 그 조준점에서 진로가 확정되므로(stepLaser), 여기서 놓으면 광선이
+      // 지구를 향해 나간다 — 예고편에서 지구가 죽으면 이야기가 끝난다.
+      const L = g.laser
+      if (L?.lockAim) {
+        if (L.state === 'charge') holdBeam(L, this.keep, this.beamAt)
+        else L.lockAim = false
+      }
     }
     this.actLeft -= n
   }
@@ -634,7 +653,7 @@ export class Attract {
     // 게임이 증원을 불러들일 때와 같은 연출이다(stepWarpIns가 하는 그대로).
     z.alive = true; z.warp = 1
     g.addFx({ kind: 'warp', x: z.pos.x, y: z.pos.y, r: hitRadiusOf(z), fort: true })
-    g.homeworld = z
+    g.syncLasers()          // 도착했으니 포대가 하나 생긴다 — ③이 이걸 쏜다
     this.bar(0.1)
     this.after(WARP_LINE_MS, () => this.comms?.say(warpLine()))
     this.after(WARP_MS, () => this.beams())
@@ -650,13 +669,13 @@ export class Attract {
     this.after(BEAM_MS, () => this.predict())
   }
 
-  // 한 발. fireBeamPast는 상태기를 돌리려고 판을 두 스텝 밀므로 그만큼 예산에서 뺀다.
+  // 한 발. armBeam은 상태기를 돌리려고 판을 한 스텝 미므로 그만큼 예산에서 뺀다.
   volley() {
     const s = this.shot
-    const keep = [this.game.earth, s.F, s.J, s.C]
-    const hit = fireBeamPast(this.game, keep, s.doomed?.[0])
-    if (hit) this.actLeft = Math.max(0, this.actLeft - 2)
-    this.beamAt = typeof hit === 'object' ? hit : null
+    this.keep = [this.game.earth, s.F, s.J, s.C]
+    this.beamAt = s.doomed?.[0]?.alive ? s.doomed[0] : null
+    const L = armBeam(this.game)
+    if (L) { this.actLeft = Math.max(0, this.actLeft - 1); holdBeam(L, this.keep, this.beamAt) }
   }
 
   // ── ④ 예측 — 같은 화면, 같은 판. 조준 가이드만 켠다 ──
@@ -670,7 +689,7 @@ export class Attract {
     // 되돌리므로 그냥 두면 제물이 살아남는데, 무대는 그 둘이 **없다는 전제**로
     // 푼 것이라 살아남으면 ⑤가 어긋난다. tickLaser는 천체를 건드리지 않으니
     // 판은 풀이 그대로 남는다.
-    for (let i = 0; i < 4000 && g.laser.state === LASER_TRAVEL; i++) g.tickLaser(CFG.DT)
+    for (let i = 0; i < 4000 && g.laser?.state === LASER_TRAVEL; i++) g.tickLaser(CFG.DT)
     // 예측선은 조준 모드에서만 그려진다(canAim). 조준 패널은 cinematic이 걷어낸다.
     g.setMode('aim')
     g.cinematic = true
@@ -684,6 +703,12 @@ export class Attract {
     // (다음 조준까지의 시계는 인게임 300초 언저리라, 남은 25초 동안 저절로
     //  다시 충전되지도 않는다.)
     this.comms?.close()
+    // ── 세 마디 ──
+    // ③에서 행성 하나가 통째로 사라지는 걸 봤다. 여기서 관제가 그것을 말로
+    // 받고("핵으로는 안 된다"), 그 막힌 자리에서 이 게임을 발명한다.
+    // 조준 모드라 평소 규칙으로는 안 뜨므로 Ground.say로 대본을 밀어 넣는다.
+    const lines = ['gnd.trailer.fear', 'gnd.trailer.nuke', 'gnd.trailer.idea']
+    lines.forEach((k, i) => this.after(IDEA_MS[i], () => this.ground?.say(t(k), 2.6)))
     this.bar(0.3)
     this.after(AIM_MS, () => this.launch())
   }
@@ -740,7 +765,7 @@ export class Attract {
       // 총구에서 표적까지를 한 화면에. 지구를 상자에 넣으면(1000 GU 밖이다)
       // 화면이 통째로 물러나 정작 광선이 실오라기로 보인다 — 광선이 지구를
       // 겨누지 않는 막이므로 굳이 넣지 않는다.
-      const h = g.homeworld
+      const h = this.zorg
       if (h && h.alive) pts.push({ x: h.pos.x, y: h.pos.y, r: 240 })
       const b = this.beamAt
       // 표적은 판정 원보다 넉넉히 잡는다 — 소멸 폭발이 그보다 훨씬 크게 번져서,
@@ -807,6 +832,7 @@ export class Attract {
     this.game.paused = false
     this.game.cineBare = false
     this.comms?.close()
+    this.ground?.close()
     for (const t of this.timers) clearTimeout(t)
     removeEventListener('keydown', this.onKey)
     this.el.classList.add('out')

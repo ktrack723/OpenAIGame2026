@@ -136,6 +136,26 @@ export class Ground {
     return gone
   }
 
+  // ── 대본 한 줄 ──
+  // 사건이 아니라 **정해진 대사**를 말한다. 오프닝 예고편이 쓴다: 광선이 행성
+  // 하나를 지운 직후, 관제가 무슨 생각을 하다가 어떤 결론에 닿았는지가 이
+  // 게임의 전제이므로 그 세 마디는 우연에 맡길 수 없다.
+  // 평소 규칙(관측 모드에서만·우선순위)을 통째로 건너뛴다.
+  say(line, hold = HOLD) {
+    if (!line) return
+    this.face = pick(FACES, this.face)
+    this.faceEl.innerHTML = FACES[this.face]
+    this.whoEl.textContent = t('gnd.who')
+    this.lineEl.textContent = line
+    this.el.hidden = false
+    this.el.classList.remove('out')
+    this.el.classList.add('in')
+    this.left = hold
+    this.prio = 99
+    this.forced = true
+    this.place()
+  }
+
   show(kind, prio) {
     const lines = tList(`gnd.${kind}`)
     if (!lines.length) return
@@ -155,6 +175,7 @@ export class Ground {
   close() {
     this.left = 0
     this.prio = 0
+    this.forced = false
     this.el.classList.remove('in')
     this.el.classList.add('out')
     clearTimeout(this.hideT)
@@ -177,6 +198,15 @@ export class Ground {
     // 명단 대조는 **매 프레임** 한다. 조준 모드에서 부서진 요새를 안 세면,
     // 관측으로 돌아오는 순간 한참 지난 격파를 뒤늦게 보고하게 된다.
     const down = this.reaped()
+    // 대본은 모드를 안 본다 — 예고편의 ④는 조준 모드인데, 그 화면에서 하는
+    // 말이 곧 이 게임이 시작된 이유다.
+    if (this.forced) {
+      this.queued = null
+      this.left -= dt
+      this.place()
+      if (this.left <= 0) this.close()
+      return
+    }
     // 조준 모드에서는 안 뜬다(그 화면은 숫자를 읽는 화면이다). 판이 열리는
     // 순간과 예고편 도입부도 마찬가지 — 그때는 화면에 아무 UI도 없어야 한다.
     const ok = g.mode === 'observe' && !g.bare && !g.doom && !g.runOver && !g.lost

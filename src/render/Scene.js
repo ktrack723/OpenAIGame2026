@@ -125,6 +125,41 @@ function missileParts() {
   return { body, nose, fin }
 }
 
+// ─── 조르그 요새의 생김새 ───────────────────────────────────────
+// 요새는 원이 아니라 **포대**다. 그런데 판정은 여전히 원이어야 한다(이 게임의
+// 공은 전부 원이고, 그림과 판정이 어긋나면 그게 곧 거짓말이다). 그래서 원은
+// 그대로 두고 그 위에 도형을 겹쳐 실루엣만 만든다 — 미사일을 원뿔+원통+날개로
+// 조립한 것과 같은 수법이다.
+//
+// 겹치는 것은 넷:
+//   ① 접시 — 초대형 포구. **광선이 나가는 쪽**에 붙는다. 그래서 요새를 보면
+//      지금 어디를 겨누고 있는지가 각도로 읽힌다(충전 중엔 여기가 달아오른다).
+//   ② 접시 테와 테두리 — 포구가 **파여 있다**는 걸 만드는 두꺼운 링 + 밝은 실선
+//   ③ 적도 참호 — 총구 방향과 직각으로 몸통을 가로지르는 홈
+//   ④ 참호 벽 — 그 홈 한쪽에 붙는 밝은 실선. 홈에 깊이를 준다
+// (참호와 직각으로 난 이음매도 넣어 봤는데, 둘이 겹쳐 십자 조준선처럼 보였다 —
+//  요새 위에는 이미 표적 레티클이 있어서 그 십자가 표식으로 오독된다. 뺐다.)
+// 기하는 전부 +x 를 총구 방향으로 놓고 만든다(그룹을 통째로 돌려 쓴다).
+function fortParts() {
+  const flat = (c, o) => new THREE.MeshBasicMaterial({
+    color: c, transparent: true, opacity: o, depthTest: false, depthWrite: false, side: THREE.DoubleSide,
+  })
+  const bar = (w, h, x) => {
+    const g = new THREE.PlaneGeometry(w, h)
+    g.translate(x, 0, 0)
+    return g
+  }
+  const at = (g, x) => { g.translate(x, 0, 0); return g }
+  return {
+    dish: at(new THREE.CircleGeometry(0.29, 28), 0.40),
+    dishRim: at(new THREE.RingGeometry(0.29, 0.42, 28), 0.40),
+    dishEdge: at(new THREE.RingGeometry(0.415, 0.45, 28), 0.40),
+    trench: bar(0.15, 1.94, -0.14),
+    trenchLip: bar(0.035, 1.9, -0.055),
+    mat: flat,
+  }
+}
+
 function glowTexture() {
   const c = document.createElement('canvas'); c.width = c.height = 128
   const g = c.getContext('2d')
@@ -165,6 +200,7 @@ export class SceneView {
     this.ringGeos = new Map()   // 안쪽 반경 비율(%) → 링 지오메트리 (공유)
     this.glowTex = glowTexture()
     this.missileGeo = missileParts()
+    this.fortGeo = fortParts()
     this.texCache = new Map()
 
     this.buildStars()
@@ -174,7 +210,7 @@ export class SceneView {
     this.markers = new Markers(this.scene)
     this.boom = new Explosions(this.parts, this.rig, (v, c) => this.flash(v, c))
     this.orbits = new Orbits(this.scene)
-    this.laserView = new LaserView(this.scene, this.rig)
+    this.laserView = new LaserView(this.scene, this.rig, this.parts)
     this.belt = new Belt(this.scene)          // 성계 쿠션 — 여기서 튕긴다
     this.icons = new Icons(this.scene)        // 카테고리 배지 + 적대(해골) 표식
 
@@ -205,30 +241,10 @@ export class SceneView {
     this.tintDisc.renderOrder = 11; this.tintLink.renderOrder = 10
     for (const o of [this.tintDisc, this.tintLink]) { o.visible = false; this.scene.add(o) }
 
-    // ── 본성 표식 ──
-    // 조르그 요새는 겉보기에 다 똑같은데, 그중 하나(본성)만 지구를 겨눠 광선을
-    // 충전한다. 그걸 먼저 부수면 충전이 취소되고 지휘권이 다음 요새로 넘어간다
-    // (game.recordKill → pickHomeworld) — 즉 **어느 요새를 먼저 치느냐**가 수다.
-    // 그런데 화면에 그 구분이 없어서 툴팁을 열기 전엔 알 수가 없었다.
-    // 광선과 같은 색으로 두 겹 링을 둘러 "이놈이 쏘는 놈"을 한눈에 박아 둔다.
-    // 표적 레티클(붉은색, 반경 2.1배)이 이미 요새마다 붙으므로 색도 자리도
-    // 그것과 겹치면 안 된다 — 호박색으로, 그 바깥에서 반대로 돈다.
-    this.homeMark = new THREE.Group()
-    for (const [r0, r1, n, gap] of [[2.46, 2.66, 3, 0.34], [2.78, 2.86, 12, 0.6]]) {
-      const step = Math.PI * 2 / n
-      for (let i = 0; i < n; i++) {
-        const m = new THREE.Mesh(
-          new THREE.RingGeometry(r0, r1, 12, 1, i * step, step * (1 - gap)),
-          new THREE.MeshBasicMaterial({
-            color: 0xf5b544, transparent: true, opacity: 0.9,
-            depthTest: false, depthWrite: false, side: THREE.DoubleSide,
-          }))
-        m.renderOrder = 14
-        this.homeMark.add(m)
-      }
-    }
-    this.homeMark.visible = false
-    this.scene.add(this.homeMark)
+    // ※ '본성 표식'(호박색 이중 링)은 없앴다. 요새 중 하나만 광선을 쥐던 시절엔
+    //   "이놈이 쏘는 놈"을 따로 박아 줘야 했지만, 이제 **요새는 전부 쏜다** —
+    //   구분할 것이 없으므로 표식도 없다. 대신 요새 자체가 포대로 생겼다
+    //   (fortParts: 초대형 접시 + 적도 참호). 그 접시가 향한 쪽이 곧 총구다.
 
     this.aim = new AimHelper(this.scene, this.rig, this.discGeo)
 
@@ -333,7 +349,7 @@ export class SceneView {
     this.syncBodies(dt)
     this.belt.update(this.game.beltR, dt, this.rig.worldPerPx)
     this.icons.update(this.game, this.rig, dt, (b) => this.renderRadius(b))
-    this.laserView.update(this.game)
+    this.laserView.update(this.game, dt)
     this.orbits.sync(this.game.bodies, this.game.aMax,
       (b) => b.isEarth ? 0x60a5fa : b.isTarget ? 0x22d3ee : this.toneOf(b))
     this.syncMissiles()
@@ -394,6 +410,12 @@ export class SceneView {
       const acc = fx.role.accretion
       if (acc) { this.scene.remove(acc); acc.geometry.dispose(); acc.material.dispose() }
     }
+    if (fx.fort) {
+      // 지오메트리는 fortGeo가 공유한다 — 여기서 버리는 건 재질과 속불의 원반뿐이다
+      for (const m of fx.fort.grp.children) m.material.dispose()
+      fx.fort.core.geometry.dispose()
+      this.scene.remove(fx.fort.grp)
+    }
   }
 
   // 테두리 링 — **화면에서 늘 같은 굵기**여야 한다. 예전엔 반경에 비례하는
@@ -446,10 +468,45 @@ export class SceneView {
     hpArc.renderOrder = 15
     hpArc.visible = false
     this.scene.add(mesh, ring, hpArc)
-    const fx = { mesh, ring, hpArc, hpKey: -1, pi, spin: 0.15 + Math.random() * 0.5, role: null }
+    const fx = { mesh, ring, hpArc, hpKey: -1, pi, spin: 0.15 + Math.random() * 0.5, role: null, fort: null }
     this.bodyFx.set(b.id, fx)
     if (b.role) this.attachRoleFx(fx, b)
+    if (b.role === 'battery') this.attachFortFx(fx)
     return fx
+  }
+
+  // 요새를 포대로 보이게 하는 겹침 도형(fortParts 주석 참고).
+  // 판정에는 아무 영향이 없다 — 공은 여전히 hitRadiusOf 반경의 원이다.
+  attachFortFx(fx) {
+    const G = this.fortGeo, grp = new THREE.Group()
+    const add = (geo, color, opacity, order) => {
+      const m = new THREE.Mesh(geo, G.mat(color, opacity))
+      m.renderOrder = order
+      grp.add(m)
+      return m
+    }
+    const trench = add(G.trench, 0x140309, 0.9, 6)
+    const lip = add(G.trenchLip, 0xd98cae, 0.55, 7)
+    const rim = add(G.dishRim, 0x2a0812, 0.95, 7)
+    const edge = add(G.dishEdge, 0xd98cae, 0.7, 8)
+    const dish = add(G.dish, 0xff5c9e, 0.5, 8)
+    // 포구의 속불 — 충전이 찰수록 커지고 하얗게 달아오른다
+    const core = add(new THREE.CircleGeometry(1, 20), 0xffffff, 0.9, 9)
+    core.material.blending = THREE.AdditiveBlending
+    this.scene.add(grp)
+    fx.fort = { grp, dish, core, rim, edge, lip, trench }
+  }
+
+  // 접시가 향하는 쪽 = 총구. 충전·비행 중이면 그 광선의 진짜 방향이고,
+  // 쉬고 있으면 지구를 겨눈다 — 요새는 늘 지구를 노리고 있다는 뜻이다.
+  fortAim(b) {
+    for (const L of this.game.lasers ?? []) {
+      if (L.from !== b) continue
+      if (L.state === 'charge') return { a: Math.atan2(L.ay - L.oy, L.ax - L.ox), u: Math.min(1, L.t / CFG.LASER_CHARGE) }
+      if (L.state === 'travel' || L.state === 'spent') return { a: Math.atan2(L.uy, L.ux), u: 1 }
+    }
+    const e = this.game.earth
+    return { a: Math.atan2(e.pos.y - b.pos.y, e.pos.x - b.pos.x), u: 0 }
   }
 
   // 역할에 딸린 **그림**을 붙인다. 예전엔 여기서 태그마다 점선 링을 둘렀는데,
@@ -513,18 +570,6 @@ export class SceneView {
     // 락온은 미래 위치에 찍히므로, 현재 위치의 그 공도 물어 줘야 눈이 이어진다.
     const aimHit = g.canAim && !g.bare ? g.predictPath().hit : null
     for (const o of [this.tintDisc, this.tintLink]) o.visible = false
-    // 본성 표식 — 지금 광선을 쥔 요새 하나에만 붙는다(승계되면 따라 옮겨 간다)
-    const home = g.homeworld
-    this.homeMark.visible = !!home && home.alive && !g.bare
-    if (this.homeMark.visible) {
-      this.homeMark.position.set(home.pos.x, home.pos.y, 1)
-      this.homeMark.scale.setScalar(this.markerRadius(home))
-      this.homeMark.rotation.z -= dt * 0.32
-      // 충전·비행 중에는 밝게 — "지금 이놈이 쏘고 있다"가 바로 읽힌다
-      const lit = g.laserCharging || g.laserFlying
-      const pulse = lit ? 0.82 + 0.18 * Math.sin(this.lockT * 4) : 0.55
-      for (const m of this.homeMark.children) m.material.opacity = pulse
-    }
     for (const b of g.bodies) {
       let fx = this.bodyFx.get(b.id)
       if (!fx) fx = this.makeBodyFx(b)
@@ -542,6 +587,27 @@ export class SceneView {
       // 있어서 죽은 공에는 아예 도달하지 않는다 — 그 탓에 부서진 공의 체력 링만
       // 궤도에 유령처럼 남아 돌고 있었다. 켜는 건 아래, 끄는 건 여기다.
       if (!b.alive || waiting) fx.hpArc.visible = false
+      // ── 요새의 포대 실루엣 ──
+      // 워프해 들어오는 동안(warp>0)에는 안 그린다 — 몸통이 아직 반투명한데
+      // 접시만 또렷하면 도형이 공중에 떠 있는 것으로 보인다.
+      if (fx.fort) {
+        const show = b.alive && !waiting && !(b.warp > 0)
+        fx.fort.grp.visible = show
+        if (show) {
+          const { a, u } = this.fortAim(b)
+          const F = fx.fort
+          F.grp.position.set(b.pos.x, b.pos.y, 0.4)
+          F.grp.scale.setScalar(r)
+          F.grp.rotation.z = a
+          // 충전이 찰수록 포구가 달아오른다 — 색 하나로 "지금 물고 있다"가 읽힌다
+          F.dish.material.opacity = 0.45 + 0.55 * u
+          F.dish.material.color.setHex(u > 0 ? 0xff2d4d : 0xff5c9e)
+          F.edge.material.opacity = 0.7 + 0.3 * u
+          F.core.position.set(0.40, 0, 0)
+          F.core.scale.setScalar(0.26 * (0.18 + 0.82 * u) * (u > 0 ? 1 + 0.14 * Math.sin(this.lockT * 9) : 1))
+          F.core.material.opacity = 0.25 + 0.75 * u
+        }
+      }
       if (fx.role) {
         const show = b.alive && !waiting
         if (fx.role.grp) fx.role.grp.visible = show

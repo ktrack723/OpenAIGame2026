@@ -9,9 +9,9 @@ import { hasRole, roleOf, volatileRadius } from './roles.js'
 import { makeGoal } from './objectives.js'
 import { msg, nameOf } from '../i18n/index.js'
 import { bearing } from '../core/angle.js'
-import { createSystem, pickHomeworld, reinforce } from './system.js'
+import { createSystem, reinforce } from './system.js'
 import { makeBody } from './body.js'
-import { chargeLeft, impactLeft, makeDoom, makeLaser, stepDoom, stepLaser, stepSpent, LASER_CHARGE, LASER_TRAVEL } from './laser.js'
+import { chargeLeft, impactLeft, makeDoom, makeLaser, stepDoom, stepLaser, stepSpent, LASER_CHARGE, LASER_SPENT, LASER_TRAVEL } from './laser.js'
 import * as Aim from './aim.js'
 
 // 관측 모드 배속 단계 — 화면의 배속 버튼이 이 사이를 돈다
@@ -52,7 +52,7 @@ export class Game {
     const sys = createSystem(this.seed)
     this.bodies.length = 0; this.bodies.push(...sys.bodies)   // 배열 정체성 유지
     this.earth = sys.earth
-    this.laser = makeLaser(this.rng)
+    this.lasers = []          // 살아 있는 포대 하나당 하나 (syncLasers가 명단을 관리한다)
     this.pairCool.clear()
     this.loadStage()
   }
@@ -97,9 +97,10 @@ export class Game {
     this.arrivals = added
     this.targets = fortresses
     this.goal = makeGoal(fortresses)
-    this.homeworld = pickHomeworld(this.bodies)   // 증원이 도착하면 stepWarpIns가 다시 고른다
-    // 레이저는 판이 바뀌어도 이어진다. 다만 새 판 시작 직후 바로 쏘진 않는다.
-    this.laser.state = 'idle'; this.laser.t = 0; this.laser.nextAt = CFG.LASER_FIRST
+    // 포대 명단은 판마다 새로 짠다 — 시차(순번)를 처음부터 다시 세워야 하고,
+    // 새 판이 시작하자마자 지난 판의 충전이 이어져 발사되면 안 된다.
+    this.lasers.length = 0
+    this.syncLasers()
 
     this.pairCool.clear()
     this.doom = null; this.mothership = null
@@ -248,11 +249,58 @@ export class Game {
       if (b.warpIn > 0) continue
       b.warpIn = 0; b.alive = true; b.warp = 1
       this.addFx({ kind: 'warp', x: b.pos.x, y: b.pos.y, r: hitRadiusOf(b), fort: b.role === 'battery' })
-      // 본성은 요새가 실제로 **도착한 뒤에** 정해진다. 예전엔 loadStage에서
-      // 미리 골랐는데, 순차 워프인이 생기면서 그 시점엔 살아 있는 요새가 0이라
-      // 본성이 영영 null로 남고 레이저가 한 번도 안 나갔다(계측: 420초 무발사).
-      if (b.role === 'battery' && !this.homeworld) this.homeworld = pickHomeworld(this.bodies)
+      // 포대는 요새가 실제로 **도착한 뒤에** 생긴다. loadStage 시점에는 살아 있는
+      // 요새가 0이라(전부 워프 대기 중) 거기서 명단을 짜면 영영 비어 있다.
+      if (b.role === 'battery') this.syncLasers()
     }
+  }
+
+  // ─── 포대 명단 ───────────────────────────────────────────────
+  // 살아 있는 조르그 요새 하나당 광선 하나. 새로 도착한 요새에는 광선을 달아
+  // 주고, 부서진 요새의 광선은 걷어낸다.
+  //
+  // 시차는 **도착 순서**로 준다: 1번은 LASER_FIRST에, 2번은 거기서 SPACING만큼
+  // 뒤에, 3번은 또 그만큼 뒤에. 그래서 첫 판은 "한 기가 물고, 다 지나가면 다음
+  // 기가 문다"로 읽히고, 요새가 늘어도 겹쳐 쏘지 않는다.
+  syncLasers() {
+    const forts = this.bodies.filter(b => b.alive && b.role === 'battery')
+    // 살아 있는지만이 아니라 **성계에 남아 있는지**까지 본다. 오프닝 예고편은
+    // 도착한 요새 중 하나만 남기고 배열에서 통째로 빼내는데(setUp), 그것들은
+    // alive인 채로 빠지므로 살아 있는지만 보면 판에 없는 총구가 계속 쏜다.
+    const live = new Set(forts)
+    // 죽은 포대의 광선은 걷는다. 다만 **아직 화면에 남아 있는 빛**(비행·소진)은
+    // 끝까지 보내 준다 — 요새가 부서진 순간에 이미 나가 있던 광선까지 같이
+    // 사라지면 그 한 발이 무엇을 관통했는지가 화면에서 지워진다.
+    for (let i = this.lasers.length - 1; i >= 0; i--) {
+      const L = this.lasers[i]
+      if (live.has(L.from)) continue
+      if (L.state === LASER_TRAVEL || L.state === LASER_SPENT) continue
+      this.lasers.splice(i, 1)
+    }
+    for (const b of forts) {
+      if (this.lasers.some(L => L.from === b)) continue
+      const idx = this.lasers.length
+      this.lasers.push(makeLaser(this.rng, b, CFG.LASER_FIRST + idx * CFG.LASER_SPACING))
+    }
+  }
+
+  // 지금 살아 있는 포대 수 — 주기를 정하는 값이다(laser.nextPeriod).
+  get batteryCount() { return Math.max(1, this.aliveFortresses) }
+
+  // ─── 대표 광선 ───────────────────────────────────────────────
+  // HUD 경보와 예고편은 "지금 무엇이 제일 급한가" 하나만 알면 된다. 여럿이
+  // 동시에 돌 수 있으므로 그중 하나를 골라 준다: 비행 중 > 충전 중(남은 시간이
+  // 짧은 순) > 나머지. 화면에 그리는 쪽(LaserView)은 이걸 안 쓰고 전부 그린다.
+  get laser() {
+    let best = null, bestRank = -1, bestLeft = Infinity
+    for (const L of this.lasers) {
+      const rank = L.state === LASER_TRAVEL ? 3 : L.state === LASER_CHARGE ? 2 : L.state === LASER_SPENT ? 1 : 0
+      const left = L.state === LASER_CHARGE ? chargeLeft(L) : 0
+      if (rank > bestRank || (rank === bestRank && left < bestLeft)) {
+        best = L; bestRank = rank; bestLeft = left
+      }
+    }
+    return best
   }
 
   // ─── 막 ───────────────────────────────────────────────────────
@@ -287,7 +335,8 @@ export class Game {
     this.stepWarpIns(dtFrame)
     // 이미 박힌 광선의 꼬리는 판이 멈춰 있어도 끝까지 들어간다 — 광선이 지구를
     // 부순 그 순간에도(그때 판이 서 버린다) 빛은 마저 빨려 들어가야 한다.
-    stepSpent(this.laser, dtFrame)
+    const n = this.batteryCount
+    for (const L of this.lasers) stepSpent(L, dtFrame, n)
     this.fadeSpentShots(dtFrame)
     let acc = Math.min(0.1, dtFrame) * this.effTimeScale()
     while (acc >= CFG.DT) { this.step(CFG.DT); acc -= CFG.DT }
@@ -353,19 +402,40 @@ export class Game {
   // 위협 판정은 탄을 실제로 굴려 본다(Aim.firstImpact). 매 스텝 돌리기엔
   // 비싸므로 FORT_DODGE_TICK 간격으로만 묻는다 — 앞서 보는 시간이 10초인데
   // 0.3초 늦게 아는 것은 아무 차이도 만들지 않는다.
+  //
+  // ── 반응 시간 ──
+  // 위협을 본 즉시 태우지 않는다. 요새마다 제 몫의 반응 시간(react)이 있고,
+  // 그 초만큼 **계속 위협받는 상태로 버텨야** 비로소 분사한다. 그래서 즉발이
+  // 아니고, 늦게 알아챈 궤도는 못 피한다 — 스윙바이로 막판에 꺾여 들어오는 탄,
+  // 가까이서 쏜 탄, 반응 중에 진로가 새로 물린 탄이 그렇다.
+  // 위협이 사라지면 경계도 풀린다(다시 처음부터 센다) — 그 자체가 수가 된다.
   stepDodge(dt) {
     this.dodgeT -= dt
     if (this.dodgeT > 0) return
+    const tick = CFG.FORT_DODGE_TICK - this.dodgeT   // 실제로 흐른 시간(밀린 만큼 포함)
     this.dodgeT = CFG.FORT_DODGE_TICK
     // 아직 안 쓴 추진기가 하나도 없으면 물어볼 것도 없다. 한 번의 판정이
     // 1.5ms짜리라 이 두 줄이 곧 "2스테이지까지는 공짜"를 만든다.
     if (!this.bodies.some(b => b.boost && b.alive && b.role === 'battery')) return
+    const threatened = new Set()
     for (const m of this.missiles) {
       if (!m.alive) continue
       const hit = Aim.firstImpact(this, m, CFG.FORT_DODGE_LEAD)
       const b = hit?.body
       if (!b || !b.boost || !b.alive || b.role !== 'battery') continue
-      this.dodgeBoost(b, hit.vx, hit.vy)
+      threatened.add(b)
+      // 반응 시간은 요새마다 다르다. 처음 위협받는 순간에 뽑고, 그 뒤로는
+      // 계속 물려 있는 동안만 깎인다.
+      if (b.alert == null) {
+        b.alert = CFG.FORT_DODGE_REACT + (this.rng.next() * 2 - 1) * CFG.FORT_DODGE_REACT_JITTER
+        b.alertMax = b.alert
+      }
+      b.alert -= tick
+      if (b.alert <= 0) this.dodgeBoost(b, hit.vx, hit.vy)
+    }
+    // 진로에서 벗어난 요새는 경계를 푼다 — 다시 물리면 처음부터 센다
+    for (const b of this.bodies) {
+      if (b.alert != null && !threatened.has(b)) { b.alert = null; b.alertMax = null }
     }
   }
 
@@ -380,6 +450,7 @@ export class Game {
     const dv = Math.hypot(b.vel.x, b.vel.y) * CFG.FORT_DODGE_DV
     b.vel.x += nx * dv; b.vel.y += ny * dv
     b.boost = 0
+    b.alert = null; b.alertMax = null
     b.trailFlash = 2.0
     this.addFx({ kind: 'boost', x: b.pos.x, y: b.pos.y, r: hitRadiusOf(b), a: Math.atan2(-ny, -nx) })
     this.message = msg('msg.boost', { name: nameOf(b) })
@@ -390,18 +461,24 @@ export class Game {
   // 닿는 것은 체력과 무관하게 부서진다. 태양과 특이점만 예외로, 막되 안 부서진다
   // — 원래 부술 수 없는 것들이라 여기서만 예외를 만들면 규칙이 어긋난다.
   tickLaser(dt) {
-    const L = this.laser
-    const ev = stepLaser(L, this, dt)
+    // 포대가 여럿이므로 명단을 먼저 맞춘다 — 부서진 요새의 광선은 여기서 빠지고,
+    // 그러면 남은 포대의 주기가 그만큼 짧아진다(nextPeriod가 마릿수를 본다).
+    this.syncLasers()
+    const n = this.batteryCount
+    for (const L of this.lasers.slice()) this.laserEvent(L, stepLaser(L, this, dt, n))
+  }
+
+  laserEvent(L, ev) {
     if (!ev) return
     if (ev.kind === 'charge') {
-      this.addFx({ kind: 'laserCharge', x: L.ox, y: L.oy })
-      this.setToast(msg('toast.laser.charge', { sec: CFG.LASER_CHARGE }))
+      this.addFx({ kind: 'laserCharge', x: L.ox, y: L.oy, r: hitRadiusOf(ev.src) })
+      this.setToast(msg('toast.laser.charge', { name: nameOf(ev.src), sec: CFG.LASER_CHARGE }))
       this.message = msg('msg.laser.charge', { name: nameOf(ev.src) })
       return
     }
     if (ev.kind === 'abort') {
-      this.setToast(msg('toast.laser.abort'))
-      this.message = msg('msg.laser.abort')
+      this.setToast(msg('toast.laser.abort', { name: nameOf(ev.src) }))
+      this.message = msg('msg.laser.abort', { name: nameOf(ev.src) })
       return
     }
     if (ev.kind === 'fire') {
@@ -456,13 +533,17 @@ export class Game {
     this.killBody(b, 'laser', { fx: false })
   }
 
-  get laserCharging() { return this.laser.state === LASER_CHARGE }
-  get laserFlying() { return this.laser.state === LASER_TRAVEL }
-  get laserLeft() { return chargeLeft(this.laser) }
-  get laserImpactLeft() { return impactLeft(this.laser) }
+  // 경보는 **대표 광선** 하나만 본다(get laser). 여럿이 동시에 충전 중일 수
+  // 있지만, 화면에 띄우는 카운트다운은 제일 급한 하나여야 읽힌다.
+  get laserCharging() { return this.laser?.state === LASER_CHARGE }
+  get laserFlying() { return this.laser?.state === LASER_TRAVEL }
+  get laserLeft() { return this.laser ? chargeLeft(this.laser) : 0 }
+  get laserImpactLeft() { return this.laser ? impactLeft(this.laser) : 0 }
   // 조준선에서 지구까지 예상 수직거리 / 지금 이대로면 빗나가는가
-  get laserMiss() { return this.laser.miss ?? 0 }
-  get laserSafe() { return !!this.laser.safe }
+  get laserMiss() { return this.laser?.miss ?? 0 }
+  get laserSafe() { return !!this.laser?.safe }
+  // 지금 충전 중인 포대 수 — 둘 이상이면 경보에 그 사실을 붙인다
+  get laserChargingCount() { return this.lasers.filter(L => L.state === LASER_CHARGE).length }
 
   // 시한이 줄고 있다는 걸 토스트로 못 박는다 (남은 60/30/10초)
   warnTime() {
@@ -694,14 +775,9 @@ export class Game {
     this.score += gained
     const label = { name: nameOf(b), cause: msg('msg.cause', { cause: msg(`cause.${cause}`), gained }) }
     if (wasFort) {
-      // 본성이 죽으면 남은 요새가 지휘권을 승계한다 (레이저가 끊기지 않는다)
-      if (b.homeworld) {
-        b.homeworld = false
-        const next = pickHomeworld(this.bodies)
-        if (next) this.setToast(msg('toast.home.next', { name: nameOf(next) }))
-        else this.setToast(msg('toast.home.last'))
-        this.homeworld = next
-      }
+      // 요새 하나가 곧 포대 하나다 — 부수면 그 순번이 통째로 사라진다.
+      // (명단 정리는 tickLaser의 syncLasers가 한다. 이미 나가 있는 광선은
+      //  거기서도 안 걷는다 — 쏜 뒤에 부순 건 늦은 것이다.)
       this.goal.update(this.aliveFortresses)
       this.message = msg('msg.kill.goal', { ...label, title: msg('goal.title'), count: this.goal.label() })
       this.setToast(msg('toast.fortDown', { count: this.goal.label() }))

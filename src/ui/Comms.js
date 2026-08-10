@@ -90,7 +90,7 @@ export class Comms {
     this.lineEl = el.querySelector('#commsLine')
   }
 
-  // 지금 말을 걸 수 있는 요새 — 살아 있고 화면 안에 있는 것. 본성 우선.
+  // 지금 말을 걸 수 있는 요새 — 살아 있고 화면 안에 있는 것.
   // any=true면 화면 밖이라도 아무나 잡는다(예고편이 박자를 잡아 부를 때).
   // 창 자체는 place()가 화면 안으로 끌어다 놓으므로 가리키는 데가 없진 않다.
   speaker(any = false) {
@@ -104,7 +104,7 @@ export class Comms {
     })
     const pool = onScreen.length ? onScreen : (any ? forts : [])
     if (!pool.length) return null
-    return pool.find(b => b === g.homeworld) ?? pool[0]
+    return pool[0]
   }
 
   open(line = null, any = false) {

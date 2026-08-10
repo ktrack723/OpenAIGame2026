@@ -79,7 +79,7 @@ export function makeHud(game, view) {
 </section>
 
 <section class="mod alarm" id="laserMod" hidden>
-  <div class="modhead"><span class="tick"></span><span>${t('alarm.title')}</span><span class="clockv" id="laserT">—</span></div>
+  <div class="modhead"><span class="tick"></span><span id="laserTitle">${t('alarm.title')}</span><span class="clockv" id="laserT">—</span></div>
   <div class="alarmtext" id="laserWhy"></div>
 </section>
 
@@ -280,6 +280,7 @@ export function makeHud(game, view) {
     qs('#lang').title = t('ui.lang.tip')
     qs('.hint').textContent = t('ui.hint')
     qs('h1').textContent = t('ui.title')
+    qs('#laserTitle').textContent = t('alarm.title')
     for (const [id, key, unit] of [['angle', 'ui.angle', 'ui.unit.deg'],
       ['power', 'ui.power', 'ui.unit.speed'], ['yield', 'ui.yield', 'ui.unit.mt']]) {
       qs(`#${id} .steplabel`).textContent = t(key)
@@ -517,7 +518,11 @@ export function updateHud(el, game) {
   if (game.laserCharging) {
     lm.hidden = false
     lm.classList.toggle('ok', game.laserSafe)
+    // 포대가 여럿이면 동시에 물 수 있다. 카운트다운은 제일 급한 하나만 띄우되,
+    // **몇 기가 겨누고 있는지**는 붙여 준다 — 하나를 피해도 끝이 아니다.
+    const nCharge = game.laserChargingCount
     el.querySelector('#laserT').textContent = t('alarm.charge.t', { left: game.laserLeft.toFixed(1) })
+      + (nCharge > 1 ? t('alarm.multi', { n: nCharge }) : '')
     el.querySelector('#laserWhy').textContent = t(game.laserSafe ? 'alarm.safe' : 'alarm.hit',
       { miss: game.laserMiss.toFixed(0), need: hitRadiusOf(game.earth).toFixed(0) })
   } else if (game.laserFlying) {
