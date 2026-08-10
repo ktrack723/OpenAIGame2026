@@ -603,19 +603,29 @@ function planBeam(g, cast, victim) {
   // **무대를 세로로 관통한다**(지구도 스윙바이 천체도 큐볼도 요새도 그 선
   // 위에 늘어서 있다). 그래서 설 자리는 대개 총구 바로 앞의 짧은 구간뿐이다 —
   // 그보다 멀면 큐볼이나 가스 행성이 먼저 맞는다.
+  //
+  // 그렇다고 총구 코앞을 고르면 이 막이 하려던 말이 통째로 뒤집힌다. 화면에
+  // 남는 건 "조르그가 도착하자마자 **옆에 있던 돌 하나**를 쐈다"이고, 조준이
+  // 지구였다는 건 아무 데도 안 남는다(계측: 6시드 중 4시드가 지구까지 거리의
+  // 14~19% 지점에서 끝났다). 그래서 **멀수록 크게** 친다 — 광선이 성계를
+  // 가로질러 지구 쪽으로 한참 날아가다 끊기면, 끊기기 전까지의 그 선이
+  // "저건 지구를 겨눴다"를 대신 말해 준다.
+  const flyMax = (ACT_SEC.beam - BEAM_FIRE_AT) * CFG.LASER_SPEED * 0.92
   let best = null
   for (let k = 0; k <= 32; k++) {
     const d = dTot * (0.12 + 0.73 * k / 32)
+    // 광선은 ③ 안에서 제물에 닿아야 한다. 막이 끝난 뒤에 닿으면 그 소멸은
+    // 예측 컷(④)이 조용히 정리하는 일이 되어 화면에서 통째로 사라진다.
+    if (d > flyMax) break
     const qx = ox + ux * d, qy = oy + uy * d
     const rq = Math.hypot(qx, qy)
     if (rq < CFG.R_STAR * 2.2) continue                       // 태양에 너무 붙는다
     if (stage.some(b => Math.hypot(b.pos.x - qx, b.pos.y - qy) < BEAM_SAFE)) continue
     if (!beamClear(sim, ox, oy, ux, uy, d, skip)) continue
-    // 제물의 진행 방향(원궤도 접선)과 광선이 이루는 각의 사인.
-    // 멀수록 좋기도 하다 — 총구 코앞에서 터지면 광선이 날아가는 게 안 보이고
-    // 폭발이 요새를 덮는다. 둘을 곱해 고른다.
+    // 제물의 진행 방향(원궤도 접선)과 광선이 이루는 각의 사인 — 직각으로
+    // 가로지를수록 "끼어들었다"가 읽힌다. 거리와 곱해 고른다.
     const cross = Math.abs(-qy / rq * uy - qx / rq * ux)
-    const score = cross * (0.5 + 1.1 * d / dTot)
+    const score = cross * (0.15 + 1.85 * d / dTot)
     if (!best || score > best.score) best = { x: qx, y: qy, d, score, t: d / CFG.LASER_SPEED }
   }
   if (!best) return null
@@ -684,8 +694,17 @@ function armBeam(g) {
   if (L.state !== LASER_CHARGE) return null
   L.t = Math.max(0, CFG.LASER_CHARGE - BEAM_CHARGE)
   // 충전 시계를 95초에서 2.2초로 당겼으니 조준점도 그 자리에서 다시 풀어야
-  // 한다 — 안 그러면 다음 갱신(0.5초)까지 "95초 뒤의 지구"를 겨누고 서 있다.
+  // 한다 — 안 그러면 다음 갱신까지 "95초 뒤의 지구"를 겨누고 서 있다. 그건
+  // 지구 공전의 62%만큼 앞선 자리라, 화면에 한 프레임이라도 나가면 요새가
+  // 성계 반대편을 겨눈 그림이 된다(조준 마름모도 위험 회랑도 거기로 간다).
+  // **여기서** 끝내 둔다 — 갱신 시계를 넘겨 놓고 한 스텝 더 밀면 상태기가
+  // 남은 충전(2.2초)에 맞는 자리로 다시 잡는다. 예고편이 판을 굴리기 전에
+  // 이미 옳은 조준점을 들고 있으므로, 밖에서 볼 수 있는 잘못된 상태가 없다.
+  //
+  // 판을 두 스텝 민 셈이지만 발사 시각(BEAM_FIRE_AT)은 그대로다: L.t를 못
+  // 박은 뒤의 스텝은 판과 충전 시계를 **같이** 밀기 때문이다.
   L.refresh = 1e9
+  g.step(CFG.DT)
   g.toast = null; g.toastT = 0
   return L
 }
@@ -830,10 +849,11 @@ export class Attract {
     this.after(BEAM_MS, () => this.predict())
   }
 
-  // 한 발. armBeam은 상태기를 돌리려고 판을 한 스텝 미므로 그만큼 예산에서 뺀다.
+  // 한 발. armBeam은 상태기를 돌리고 조준점을 다시 잡느라 판을 두 스텝 미므로
+  // 그만큼 예산에서 뺀다.
   volley() {
     this.beamAt = this.shot.victim      // 카메라가 물고 갈 제물
-    if (armBeam(this.game)) this.actLeft = Math.max(0, this.actLeft - 1)
+    if (armBeam(this.game)) this.actLeft = Math.max(0, this.actLeft - 2)
   }
 
   // ── ④ 예측 — 같은 화면, 같은 판. 조준 가이드만 켠다 ──

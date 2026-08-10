@@ -46,14 +46,20 @@ const AIM_REFRESH = 0.5
 
 // from = 이 광선을 쏘는 요새. 광선은 그 요새의 것이고, 요새가 죽으면 같이 없어진다.
 // nextAt = 첫 조준까지의 대기. 요새마다 다르게 넣어 시차를 만든다.
-export function makeLaser(rng, from, nextAt = CFG.LASER_FIRST) {
+// earth = 조준점의 **첫 값**. 예전에는 0,0으로 두었는데, 그러면 막 워프해 들어온
+//   포대가 아직 아무것도 안 겨눴는데도 "태양을 겨누고 있다"고 기록된다 —
+//   그 값을 읽는 쪽(조준선·회랑)이 한 프레임이라도 먼저 돌면 요새가 엉뚱한 데를
+//   겨눈 그림이 그대로 나간다. 요새의 총구는 도착하는 그 순간부터 지구를
+//   향하므로(Scene.fortAim) 조준점도 같은 자리에서 시작한다.
+export function makeLaser(rng, from, nextAt = CFG.LASER_FIRST, earth = null) {
+  const aim = earth ?? from
   return {
     state: LASER_IDLE,
     t: 0,
     nextAt,
     from,              // 발사하는 요새 — 평생 안 바뀐다
     ox: from ? from.pos.x : 0, oy: from ? from.pos.y : 0,   // 총구 (요새를 따라간다)
-    ax: 0, ay: 0,      // 조준점 — 매 AIM_REFRESH 초마다 다시 푼다
+    ax: aim ? aim.pos.x : 0, ay: aim ? aim.pos.y : 0,       // 조준점 — 매 AIM_REFRESH 초마다 다시 푼다
     ux: 0, uy: 0,      // 발사 방향 (발사 순간 고정)
     aimDist: 0,        // 총구 → 조준점 거리
     head: 0,           // 비행 중 광선 머리가 나아간 거리

@@ -165,7 +165,6 @@ export const ko = {
   'msg.cause': '{cause} (+{gained})',
   'msg.kill': '{cause} — {name}',
   'msg.kill.goal': '{cause} — {name} · {title} {count}',
-  'msg.belt': '{name}이(가) 카이퍼 벨트를 들이받았다 — 속력 {v} 유지, 반사각으로 복귀',
   'msg.win': '작전 성공 — 조르그 요새 전멸. 성계는 그대로 다음 판으로 이어진다',
   'msg.timeBonus': ' · 시간 보너스 +{n}',
   'msg.doom': '그들이 왔다…',
@@ -205,7 +204,6 @@ export const ko = {
   'toast.fortDown': '요새 격파 — {count}',
   'toast.win': '작전 성공',
   'toast.doom': '그들이 왔다…',
-  'toast.belt': '벨트 반사 — {name} (운동량 그대로)',
   'toast.obsSpeed': '관측 배속 {n}×',
 
   // ── 지구 관제 ─────────────────────────────────────────────────

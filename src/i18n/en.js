@@ -150,7 +150,6 @@ export const en = {
   'msg.cause': '{cause} (+{gained})',
   'msg.kill': '{cause} — {name}',
   'msg.kill.goal': '{cause} — {name} · {title} {count}',
-  'msg.belt': '{name} slammed into the Kuiper belt — speed {v} preserved, bounced back in',
   'msg.win': 'Operation complete — every Zorg fortress destroyed. The system carries over to the next stage',
   'msg.timeBonus': ' · time bonus +{n}',
   'msg.doom': 'They have come…',
@@ -189,7 +188,6 @@ export const en = {
   'toast.fortDown': 'Fortress destroyed — {count}',
   'toast.win': 'Operation complete',
   'toast.doom': 'They have come…',
-  'toast.belt': 'Belt bounce — {name} (momentum intact)',
   'toast.obsSpeed': 'Observation speed {n}×',
 
   'gnd.who': 'Earth Control',

@@ -332,7 +332,8 @@ export class Game {
       const wait = this.arrivals?.includes(b)
         ? this.laserFirst + idx * CFG.LASER_SPACING
         : CFG.LASER_SPACING
-      this.lasers.push(makeLaser(this.rng, b, wait))
+      // 조준점의 첫 값은 지구다 — 아직 안 쏘는 포대라도 겨누는 데는 하나뿐이다.
+      this.lasers.push(makeLaser(this.rng, b, wait, this.earth))
     }
   }
 
@@ -990,9 +991,12 @@ export class Game {
         if (this.time - (b.lastBelt ?? -99) < CFG.BELT_COOLDOWN) continue
         b.lastBelt = this.time
         b.trailFlash = 2.0; b.bumpFlash = 0.6
+        // 글자는 안 붙인다. 벨트 반사는 판마다 수십 번 울리는 **배경 규칙**이라
+        // 그때마다 "속력 유지, 반사각으로 복귀"를 적으면 정작 명중·격파 같은
+        // 사건의 보고가 그 잡음에 묻힌다(지상 관제가 벨트에 입을 다무는 것과
+        // 같은 이유다 — Ground.js SAY 주석). 튕기는 건 화면이 이미 말한다:
+        // 꼬리가 번쩍이고, 벨트에 파문이 남고, 공이 각도대로 돌아 들어온다.
         this.addFx({ kind: 'belt', x: hit.x, y: hit.y, nx: hit.nx, ny: hit.ny, v: hit.speed, r: hitRadiusOf(b) })
-        this.message = msg('msg.belt', { name: nameOf(b), v: hit.speed.toFixed(0) })
-        this.setToast(msg('toast.belt', { name: nameOf(b) }))
       }
     }
   }
