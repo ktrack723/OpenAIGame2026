@@ -1,5 +1,9 @@
 import * as THREE from 'three'
 import { CFG, hitRadiusOf } from '../game/config.js'
+// 상태 이름은 laser.js가 소유한다 — 문자열로 다시 적으면 저쪽에서 한 글자만
+// 바뀌어도 판정은 그대로인 채 **그림만 조용히 멎는다**(같은 상수를 game.js와
+// Attract.js는 이미 import해 쓰고 있다).
+import { LASER_CHARGE, LASER_SPENT, LASER_TRAVEL } from '../game/laser.js'
 
 // ─── 조르그 레이저 연출 ─────────────────────────────────────────
 // **단순하게.** 예전엔 흐르는 빗금 + 맥동 + 색 변화 + 번짐을 한꺼번에 얹었더니
@@ -162,9 +166,9 @@ export class LaserView {
       // 판이 끝나면 조준선도 회랑도 걷는다. 다만 **이미 박힌 광선의 꼬리**는
       // 예외다 — 지구를 부순 그 한 발이 화면에서 툭 사라지면 무엇이 지구를
       // 관통했는지가 안 남는다. 0.18초, 마저 들어가는 것만 그린다.
-      if (game.runOver && L.state !== 'spent') continue
-      if (L.state === 'charge') this.showCharge(game, L, dt)
-      else if (L.state === 'travel' || L.state === 'spent') this.showBolt(game, L)
+      if (game.runOver && L.state !== LASER_SPENT) continue
+      if (L.state === LASER_CHARGE) this.showCharge(game, L, dt)
+      else if (L.state === LASER_TRAVEL || L.state === LASER_SPENT) this.showBolt(game, L)
     }
   }
 
@@ -249,7 +253,7 @@ export class LaserView {
   // 쓴다 — 다른 건 머리가 안 움직인다는 것뿐이고, 그래서 막대가 짧아진다.
   showBolt(game, L) {
     const ppw = this.rig.worldPerPx
-    const spent = L.state === 'spent'
+    const spent = L.state === LASER_SPENT
     const ang = Math.atan2(L.uy, L.ux)
     // 아직 안 지나간 앞쪽이 위험한 자리다 — 회랑을 탄두 앞으로만 깔아 둔다.
     // 이미 박힌 뒤에는 앞쪽이랄 게 없으므로 회랑도 걷는다.

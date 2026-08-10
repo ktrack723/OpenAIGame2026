@@ -133,7 +133,10 @@ export class Victory {
         clock: `${Math.floor(g.timeLeft / 60)}:${String(Math.floor(g.timeLeft % 60)).padStart(2, '0')}`,
         bonus: g.timeBonus,
       })],
-      [t('vic.row.score'), `${g.score + g.timeBonus}`],
+      // 시간 보너스는 클리어 시점에 checkEnd()가 이미 score에 넣었다(winBanked).
+      // 여기서 다시 더하면 화면에만 두 번 세어져 HUD 점수 칩·다음 판으로 넘어가는
+      // runScore와 어긋난다 — 바로 윗줄이 그 보너스를 따로 보여 주고 있기도 하다.
+      [t('vic.row.score'), `${g.score}`],
       [t('vic.row.alive'), t('vic.row.alive.v', { n: survivors })],
       [t('vic.row.earth'), t('vic.row.earth.v', { hp: g.earth.hp, hpMax: g.earth.hpMax })],
     ].map(([k, v]) => `<div class="vicrow"><span>${k}</span><b>${v}</b></div>`).join('')
