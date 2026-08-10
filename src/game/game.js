@@ -398,6 +398,7 @@ export class Game {
   step(dt) {
     stepBodies(this.bodies, dt)
     this.stepDodge(dt)
+    this.stepSunBurn(dt)
     this.stepHive(dt)
     for (const m of this.missiles) {
       if (!m.alive) continue
@@ -440,13 +441,14 @@ export class Game {
   }
 
   // ─── 요새의 회피 분사 ───────────────────────────────────────
-  // 3스테이지부터 조르그 요새는 추진기를 하나씩 달고 온다. **한 판에 한 번**,
-  // 제 몸에 꽂힐 궤도로 탄이 들어오는 걸 확인한 순간 쓴다.
+  // 3스테이지부터 조르그 요새는 추진기를 하나씩 달고 온다. 제 몸에 꽂힐 궤도로
+  // 탄이 들어오는 걸 확인하면 쓴다 — **횟수 제한은 없다.** 연료가 남았느냐가
+  // 아니라 제때 알아챘느냐가 회피의 조건이다.
   //
-  // 왜 일회성인가 — 매번 피하면 그 요새는 못 맞히는 표적이 되고, 그러면
-  // 조준 자체가 무의미해진다. 한 번뿐이면 판이 이렇게 읽힌다: **첫 발은 추진기를
-  // 빼는 데 쓰고, 두 번째 발로 잡는다.** 탄은 무제한이고 자원은 시간이므로
-  // 값은 시한으로 치른다 — 이 게임이 이미 쓰고 있는 화폐 그대로다.
+  // 예전에는 한 판에 한 번뿐이었다("첫 발로 추진기를 빼고 둘째 발로 잡는다").
+  // 그 규칙을 걷었으므로 이제 요새를 잡는 방법은 **저쪽이 못 알아채게 치는
+  // 것**뿐이다: 반응 시간(6±2.5초) 안에 꽂히는 가까운 발, 막판에 꺾여 들어오는
+  // 스윙바이, 분사한 직후의 다시 세는 구간. 판을 읽어야 하는 쪽은 그대로다.
   //
   // 미는 방향은 두 조건이 정한다: 탄의 **진입 방향에 직각**(정면으로 도망가면
   // 그대로 따라잡힌다 — 옆으로 비켜야 빗나간다)이고, 그 두 직각 중
@@ -468,7 +470,7 @@ export class Game {
     if (this.dodgeT > 0) return
     const tick = CFG.FORT_DODGE_TICK - this.dodgeT   // 실제로 흐른 시간(밀린 만큼 포함)
     this.dodgeT = CFG.FORT_DODGE_TICK
-    // 아직 안 쓴 추진기가 하나도 없으면 물어볼 것도 없다. 한 번의 판정이
+    // 추진기 달린 요새가 하나도 없으면 물어볼 것도 없다. 한 번의 판정이
     // 1.5ms짜리라 이 두 줄이 곧 "2스테이지까지는 공짜"를 만든다.
     if (!this.bodies.some(b => b.boost && b.alive && b.role === 'battery')) return
     const threatened = new Set()
@@ -544,21 +546,28 @@ export class Game {
     this.setToast(msg(kind === 'fort' ? 'toast.hive.fort' : 'toast.hive.cue'))
   }
 
-  // 이 Δv로 밀고도 요새가 살아남는가 — 태양 둘레의 이체 궤도 원소로 답한다.
-  // 묶인 궤도(a > 0)이고 근일점이 태양 안전 반경 밖이면 통과. 회피하려다 태양에
+  // ─── 태양 둘레의 두 이체 궤도 ────────────────────────────────
+  // 근일점(peri) 하나를 묻는 곳이 둘이다: 회피 분사가 자살인지 보는 곳과,
+  // 요새가 "나 지금 태양으로 떨어지고 있다"를 아는 곳. 같은 질문이므로 식도 하나다.
+  // bound = 태양에 묶여 있는가(탈출 궤도면 근일점은 의미가 없다).
+  sunOrbit(x, y, vx, vy) {
+    const r = Math.hypot(x, y) || CFG.EPS
+    const inv = 2 / r - (vx * vx + vy * vy) / CFG.MU_STAR   // 1/a — 0 이하면 탈출 궤도다
+    if (inv <= 0) return { bound: false, peri: Infinity }
+    const h = x * vy - y * vx
+    const e = Math.sqrt(Math.max(0, 1 - h * h * inv / CFG.MU_STAR))
+    return { bound: true, peri: (1 - e) / inv }
+  }
+
+  // 이 Δv로 밀고도 요새가 살아남는가 — 위 궤도 원소로 답한다.
+  // 묶인 궤도이고 근일점이 태양 안전 반경 밖이면 통과. 회피하려다 태양에
   // 처박는 분사만 걸러내는 판정이라 이 두 가지만 본다(원일점이 커지는 것은
   // 회피의 결과이고, 벨트가 공을 되돌려 보낸다).
   // 이미 조건을 어긴 궤도(앞판 충돌로 찌그러진 요새)면 어떤 Δv도 통과 못 하는데,
   // 그때는 호출부의 바닥값(예전 세기)이 그대로 쓰인다 — 예전과 같은 분사다.
   dodgeSafe(b, nx, ny, dv) {
-    const vx = b.vel.x + nx * dv, vy = b.vel.y + ny * dv
-    const r = Math.hypot(b.pos.x, b.pos.y) || CFG.EPS
-    const inv = 2 / r - (vx * vx + vy * vy) / CFG.MU_STAR   // 1/a — 0 이하면 탈출 궤도다
-    if (inv <= 0) return false
-    const a = 1 / inv
-    const h = b.pos.x * vy - b.pos.y * vx
-    const e = Math.sqrt(Math.max(0, 1 - h * h * inv / CFG.MU_STAR))
-    return a * (1 - e) >= CFG.FORT_DODGE_PERI_MIN
+    const o = this.sunOrbit(b.pos.x, b.pos.y, b.vel.x + nx * dv, b.vel.y + ny * dv)
+    return o.bound && o.peri >= CFG.FORT_DODGE_PERI_MIN
   }
 
   dodgeBoost(b, vx, vy) {
@@ -575,15 +584,85 @@ export class Game {
     let dv = base * k
     // …다만 세진 분사가 요새를 태양으로 밀어 넣어서는 안 된다. 통과할 때까지
     // 세기를 한 단계(0.8배)씩 낮춘다 — 질량 상한이 3배라 다섯 번이면 예전 세기에
-    // 닿고, 거기가 바닥이다. 요새 한 기당 판에 한 번뿐이라 값이 싸다.
+    // 닿고, 거기가 바닥이다. 한 번의 분사에 다섯 번 푸는 것은 싸다.
     while (dv > base && !this.dodgeSafe(b, nx, ny, dv)) dv = Math.max(base, dv * 0.8)
     b.vel.x += nx * dv; b.vel.y += ny * dv
-    b.boost = 0
+    // 추진기는 안 닳는다(횟수 제한 없음). 다만 경계는 처음부터 다시 센다 —
+    // 비켜선 직후의 그 몇 초가 다음 탄이 파고들 수 있는 자리다.
     b.alert = null; b.alertMax = null
     b.trailFlash = 2.0
     this.addFx({ kind: 'boost', x: b.pos.x, y: b.pos.y, r: hitRadiusOf(b), a: Math.atan2(-ny, -nx) })
     this.message = msg('msg.boost', { name: nameOf(b) })
     this.setToast(msg('toast.boost', { name: nameOf(b) }))
+  }
+
+  // ─── 요새의 태양 탈출 분사 ───────────────────────────────────
+  // 회피 분사는 **한 번의 임펄스**다. 이건 다르다 — 제 궤도가 태양으로 떨어지는
+  // 궤도라는 걸 알아챈 요새가 **로켓을 계속 태워서** 거기서 빠져나온다.
+  //
+  // 왜 필요한가 — 추진기 횟수 제한을 걷으면서 요새가 판에 오래 남게 됐다. 그런데
+  // 이 판에서 궤도를 망가뜨리는 건 플레이어의 핵과 충돌이고, 망가진 궤도의 절반은
+  // 태양행이다. 조준하고 있던 표적이 저 혼자 태양에 빨려 들어가 사라지면 그건
+  // 플레이어가 둔 수가 아니다. 조르그도 그 정도는 한다 — 살려고 태운다.
+  //
+  // 미는 방향은 **태양 반대쪽이 아니라 궤도 진행 방향(가로)**이다. 태양 반대로
+  // 곧장 밀면 각운동량은 그대로인 채 에너지만 올라가서 근일점이 오히려 내려간다
+  // (실제로 계측했다). 가로로 밀어야 각운동량이 커지고 근일점이 올라간다.
+  //
+  // 딜레이는 미사일 회피와 같은 규칙이다: 알아채고 나서 제 몫의 반응 시간이
+  // 지나야 점화한다. 그래서 **너무 늦게 밀어 넣으면 못 빠져나온다** — 태양으로
+  // 처박는 한 수는 여전히 성립하고, 대신 어중간하게 밀면 요새가 살아 나온다.
+  stepSunBurn(dt) {
+    for (const b of this.bodies) {
+      if (!b.alive || !b.boost || b.role !== 'battery') continue
+      const o = this.sunOrbit(b.pos.x, b.pos.y, b.vel.x, b.vel.y)
+      // ── 빠져나왔다 ── 근일점이 안전선을 넘었으면 끈다. 끄는 선(SAFE)을 켜는
+      // 선(PERI)보다 높게 잡아야 경계에서 껐다 켰다 하지 않는다.
+      if (!o.bound || o.peri >= CFG.FORT_SUN_SAFE) {
+        if (b.burn > 0) this.setToast(msg('toast.sunBurn.out', { name: nameOf(b) }))
+        b.burn = 0; b.sunDive = false; b.sunAlert = null
+        continue
+      }
+      if (b.burn > 0) { this.sunBurn(b, dt); continue }   // 태우는 중
+      if (b.sunDive) continue                            // 이번 강하의 점화는 이미 끝났다
+      if (o.peri >= CFG.FORT_SUN_PERI) continue          // 아직 위험선 밖이다
+      // ── 알아챘다 ── 요새마다 반응이 조금씩 다르다(회피 분사와 같은 이유).
+      if (b.sunAlert == null) {
+        b.sunAlert = CFG.FORT_SUN_REACT + (this.rng.next() * 2 - 1) * CFG.FORT_SUN_REACT_JITTER
+      }
+      b.sunAlert -= dt
+      if (b.sunAlert > 0) continue
+      b.sunAlert = null
+      b.sunDive = true
+      b.burn = CFG.FORT_SUN_BURN
+      this.addFx({ kind: 'boost', x: b.pos.x, y: b.pos.y, r: hitRadiusOf(b), a: Math.atan2(b.pos.y, b.pos.x) })
+      this.message = msg('msg.sunBurn', { name: nameOf(b) })
+      this.setToast(msg('toast.sunBurn', { name: nameOf(b) }))
+    }
+  }
+
+  // 점화 중 — 매 스텝 가속을 얹는다. 끄는 판단은 호출부가 한다(근일점).
+  // burn은 연료가 아니라 **한 번의 강하에 허용된 점화 시간**이다. 계측에서
+  // 실제로 빠져나오는 데 7~35초가 걸리므로 이 상한(FORT_SUN_BURN)에 닿는 일은
+  // 거의 없다 — 어떤 이유로든 못 빠져나오는 궤도에서 영원히 태우지 않게 하는
+  // 안전장치이고, 여기 닿으면 그 강하는 그대로 끝이다(sunDive가 남는다).
+  sunBurn(b, dt) {
+    const r = Math.hypot(b.pos.x, b.pos.y) || CFG.EPS
+    let tx = -b.pos.y / r, ty = b.pos.x / r          // 반지름에 직각 = 궤도 가로 방향
+    if (tx * b.vel.x + ty * b.vel.y < 0) { tx = -tx; ty = -ty }   // 지금 도는 쪽으로
+    const dv = CFG.FORT_SUN_ACC * dt
+    b.vel.x += tx * dv; b.vel.y += ty * dv
+    b.burn -= dt
+    b.trailFlash = Math.max(b.trailFlash, 0.5)       // 꼬리가 내내 달아올라 있다
+    // 불꽃은 간헐적으로만 — 매 스텝 뿜으면 초당 120개다
+    b.burnFx -= dt
+    if (b.burnFx <= 0) {
+      b.burnFx = CFG.FORT_SUN_FX
+      this.addFx({ kind: 'boost', x: b.pos.x, y: b.pos.y, r: hitRadiusOf(b), a: Math.atan2(-ty, -tx) })
+    }
+    if (b.burn > 0) return
+    b.burn = 0
+    this.setToast(msg('toast.sunBurn.dry', { name: nameOf(b) }))
   }
 
   // ─── 조르그 레이저 ─────────────────────────────────────────
@@ -1067,10 +1146,6 @@ export class Game {
     for (const e of stepDoom(this.doom, this, dt)) {
       if (e.kind === 'beam') {
         this.addFx({ kind: 'laserFire', x: this.doom.x, y: this.doom.y, a: e.a })
-        continue
-      }
-      if (e.kind === 'volley') {   // 지구가 아직 살아 있다 → 또 쏜다
-        this.addFx({ kind: 'laserCharge', x: this.doom.x, y: this.doom.y })
         continue
       }
       const b = e.body

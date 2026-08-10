@@ -256,8 +256,13 @@ export const impactLeft = (L) =>
 //
 // 광선 하나하나는 요새의 것과 똑같이 굴러간다(같은 sweep, 같은 속도, 닿는 첫
 // 천체는 체력 불문 소멸). 다만 조준이 없다 — 부채꼴로 하나씩 돌아가며 뿜는다.
+//
+// 그리고 **쉬지 않는다.** 예전에는 18발을 한 차례로 묶고 5초를 쉰 뒤 다음
+// 차례를 열었는데, 그 5초마다 화면이 조용해져 "이제 끝났나" 하는 틈이 생겼다.
+// 지금은 DOOM_GAP 간격으로 지구가 부서질 때까지 끊김 없이 뿜는다 — 끝을 정하는
+// 것은 시계가 아니라 지구다.
 export function makeDoom(x, y, range, ship) {
-  return { x, y, range, ship, t: 0, warping: true, spawned: 0, volley: 0, beams: [], done: false }
+  return { x, y, range, ship, t: 0, fireT: 0, warping: true, spawned: 0, beams: [], done: false }
 }
 
 // 마지막 한 발의 조준각 — 광선이 날아가는 동안 지구가 이동한 만큼 미리 당긴다.
@@ -279,15 +284,19 @@ export function stepDoom(D, game, dt) {
   if (D.ship?.alive) { D.x = D.ship.pos.x; D.y = D.ship.pos.y }   // 총구는 모성을 따라간다
   if (D.warping) {                       // 워프인 연출이 끝나기 전엔 안 쏜다
     if (D.t < CFG.DOOM_WARP) return ev
-    D.warping = false; D.t = 0
+    D.warping = false; D.t = 0; D.fireT = CFG.DOOM_GAP   // 첫 발은 곧바로
   }
+  D.fireT += dt
   // 부채꼴로 한 발씩. 황금각으로 돌려서 순서가 규칙적으로 안 보이게 한다.
-  // 차례마다 시작 각을 조금씩 틀어 같은 자리만 훑지 않게 한다.
-  // **마지막 한 발만은 지구를 겨눈다.** 나머지가 사방으로 흩어지는 난사라면
-  // 이 한 발이 마침표다 — 판이 쓸려나가는 걸 보여 준 뒤 판돈을 가져간다.
-  while (D.spawned < CFG.DOOM_BEAMS && D.t >= D.spawned * CFG.DOOM_GAP) {
-    const last = D.spawned === CFG.DOOM_BEAMS - 1
-    const a = last ? doomAimEarth(D, game.earth) : D.spawned * 2.399963 + D.volley * 0.37
+  // **DOOM_AIM_EVERY 발마다 한 발은 지구를 정조준한다.** 나머지가 사방으로
+  // 흩어지는 난사라면 그 한 발이 마침표다 — 판이 쓸려나가는 걸 보여 주면서
+  // 동시에 판돈을 가져간다.
+  //
+  // 지구가 부서지면 그 순간 총구가 멎는다. 이미 나간 빛만 마저 들어온다.
+  while (game.earth.alive && D.spawned < CFG.DOOM_MAX_BEAMS && D.fireT >= CFG.DOOM_GAP) {
+    D.fireT -= CFG.DOOM_GAP
+    const aimed = D.spawned % CFG.DOOM_AIM_EVERY === CFG.DOOM_AIM_EVERY - 1
+    const a = aimed ? doomAimEarth(D, game.earth) : D.spawned * 2.399963
     // dead = 머리가 멎었다 / gone = 꼬리까지 다 들어왔다. 요새의 광선과 같은 규칙이다.
     D.beams.push({ ux: Math.cos(a), uy: Math.sin(a), head: 0, back: 0, dead: false, gone: false })
     ev.push({ kind: 'beam', a })
@@ -313,16 +322,13 @@ export function stepDoom(D, game, dt) {
       ev.push({ kind: 'hit', body: hit.body, x: hit.x, y: hit.y })
     } else if (b.head >= D.range) b.dead = true
   }
-  // ── 한 차례가 끝났다 ──
-  // 지구가 아직 살아 있으면 **또 쏜다.** 끝은 시간이 아니라 지구가 정한다.
-  // (행성이 대신 막아 준 만큼 더 사는 것 — 다만 결말은 정해져 있다.)
-  if (D.spawned >= CFG.DOOM_BEAMS && D.beams.every(b => b.gone)) {
-    if (!game.earth.alive || D.volley + 1 >= CFG.DOOM_MAX_VOLLEY) { D.done = true; return ev }
-    if (D.t >= CFG.DOOM_BEAMS * CFG.DOOM_GAP + CFG.DOOM_VOLLEY) {
-      D.volley++
-      D.t = 0; D.spawned = 0; D.beams.length = 0
-      ev.push({ kind: 'volley', n: D.volley })
-    }
-  }
+  // 다 들어온 빛은 명단에서 뺀다 — 난사가 끝이 없으므로 안 걷으면 배열이
+  // 계속 자라고, 렌더러가 매 프레임 그 전부를 훑는다.
+  if (D.beams.length > 24) D.beams = D.beams.filter(b => !b.gone)
+  // ── 끝 ── 총구가 멎는 조건은 하나뿐이다: **지구가 부서졌다.**
+  // (안전 상한에 닿아도 끝낸다 — 행성이 계속 대신 맞아 주는 판에서 난사가
+  //  영영 이어지지 않게 하는 장치이고, 132초어치라 실제로는 거의 안 닿는다.)
+  const ceased = !game.earth.alive || D.spawned >= CFG.DOOM_MAX_BEAMS
+  if (ceased && D.beams.every(b => b.gone)) D.done = true
   return ev
 }

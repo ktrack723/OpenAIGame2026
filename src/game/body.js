@@ -38,9 +38,14 @@ export function makeBody(spec = {}) {
     mothership: !!spec.mothership,   // 시한 종료 시 오는 조르그 모성 — 부술 수 없다
     role,
     mods: spec.mods ?? null,
-    // 남은 회피 분사 횟수. 조르그 요새에만 1로 실리고(3스테이지부터), 한 번 쓰면
-    // 0이 되어 그 판에서는 다시 못 피한다. 0이 기본이라 나머지 천체는 안 피한다.
+    // 추진기를 달고 있는가. 조르그 요새에만 1로 실린다(3스테이지부터).
+    // 횟수 제한은 없다 — 쓴다고 줄지 않는다. 0이 기본이라 나머지 천체는 안 피한다.
     boost: spec.boost ?? 0,
+    // 태양 탈출 점화 — burn = 남은 점화 시간(0이면 안 태우고 있다),
+    // sunAlert = 떨어지는 걸 알아채고 점화까지 남은 반응 시간(null이면 경계 안 함),
+    // sunDive = 이번 강하에서 이미 점화했는가(빠져나오면 풀린다).
+    burn: spec.burn ?? 0, burnFx: spec.burnFx ?? 0,
+    sunAlert: spec.sunAlert ?? null, sunDive: !!spec.sunDive,
     hp, hpMax: spec.hpMax ?? hp,
     hitFlash: spec.hitFlash ?? 0,
     trailFlash: spec.trailFlash ?? 0,
