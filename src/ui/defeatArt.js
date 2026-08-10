@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.js'
 // ─── 패배 일러스트 ──────────────────────────────────────────────
 // 승리 화면(Victory.js)은 환호하는 관제실을 그린다. 패배는 **같은 방**을
 // 그린다 — 불이 꺼지고, 콘솔이 죽고, 창밖의 지구가 없다. 두 그림이 같은
@@ -106,14 +107,9 @@ const WINDOW = {
   EARTH_LOST: brokenEarth(262, 60, 38),
 }
 
-// 사유별 한 줄 — 제목 아래에 붙는 짧은 부제. 길게 설명하지 않는다.
-const TAG = {
-  TIME_UP: '조르그 모성 · 성계 접수',
-  EARTH_LASER: '지구 · 관통',
-  EARTH_LOST: '지구 · 상실',
-}
 
-export const defeatTag = (reason) => TAG[reason] ?? '작전 종료'
+// 사유별 한 줄 — 제목 아래에 붙는 짧은 부제. 길게 설명하지 않는다.
+export const defeatTag = (reason) => t(`over.tag.${reason}`) === `over.tag.${reason}` ? t('over.tag') : t(`over.tag.${reason}`)
 
 export function defeatArt(reason) {
   const view = WINDOW[reason] ?? WINDOW.EARTH_LOST

@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.js'
 // ─── 오프닝 — 동화책 × 리듬 게임 ────────────────────────────────
 // 이 게임은 규칙이 특이하다: 핵은 행성을 부수지 못하고(밀기만 한다),
 // 부수는 건 행성끼리의 충돌뿐이며, 성계 밖으로는 아무것도 나가지 못한다.
@@ -60,8 +61,7 @@ const skull = (x, y, s) => `
 // 규칙 하나에 컷 하나. 이 순서가 곧 이 게임을 배우는 순서다.
 const PANELS = [
   {
-    tag: '옛날 옛적에',
-    line: '태양계는 조용했다. 행성들은 저마다의 궤도를 돌고 있었다.',
+    key: 'intro.1',
     art: `<g>
       <circle cx="60" cy="90" r="34" fill="${C.sun}"/>
       <circle cx="60" cy="90" r="52" fill="none" stroke="${C.sun}" stroke-width="2" opacity=".25"/>
@@ -70,13 +70,11 @@ const PANELS = [
       ${planet(254, 66, 11, '#ff9c6b')}
       ${planet(300, 112, 22, '#fcd34d', C.am)}
       ${planet(360, 74, 8, '#a5f3fc')}
-      <text x="196" y="146" fill="${C.earth}" font-size="13" font-weight="800" text-anchor="middle">지구</text>
+      <text x="196" y="146" fill="${C.earth}" font-size="13" font-weight="800" text-anchor="middle">${t('intro.earth')}</text>
     </g>`,
   },
   {
-    tag: '그러던 어느 날',
-    line: '조르그가 왔다. 워프로, 예고도 없이.',
-    boom: '쿠웅',
+    key: 'intro.2',
     art: `<g transform="translate(210,86)">
       <circle r="72" fill="none" stroke="${C.zorg}" stroke-width="3" opacity=".5" class="ripple"/>
       <circle r="52" fill="none" stroke="${C.rd}" stroke-width="2" opacity=".4" class="ripple2"/>
@@ -84,23 +82,19 @@ const PANELS = [
     </g>`,
   },
   {
-    tag: '조르그 요새',
-    line: '☠ 표식이 붙은 요새가 지구를 겨눈다. 저걸 전부 부숴야 끝난다.',
-    boom: '삐—',
+    key: 'intro.3',
     art: `<g>
       ${planet(86, 96, 16, C.earth)}
-      <text x="86" y="132" fill="${C.earth}" font-size="12" font-weight="800" text-anchor="middle">지구</text>
+      <text x="86" y="132" fill="${C.earth}" font-size="12" font-weight="800" text-anchor="middle">${t('intro.earth')}</text>
       <line x1="330" y1="88" x2="112" y2="94" stroke="${C.rd}" stroke-width="5" opacity=".85" class="beam"/>
       <line x1="330" y1="88" x2="112" y2="94" stroke="#fff" stroke-width="1.5" opacity=".9" class="beam"/>
       ${planet(346, 88, 21, '#7f1d1d', C.rd)}
       ${skull(346, 86, 0.9)}
-      <text x="346" y="132" fill="${C.rd}" font-size="12" font-weight="800" text-anchor="middle">조르그 요새</text>
+      <text x="346" y="132" fill="${C.rd}" font-size="12" font-weight="800" text-anchor="middle">${t('intro.3.foe')}</text>
     </g>`,
   },
   {
-    tag: '하지만',
-    line: '핵으로는 행성을 부술 수 없다. 핵이 하는 일은 **미는 것**뿐이다.',
-    boom: '펑!',
+    key: 'intro.4',
     art: `<g>
       <g class="mv"><path d="M120 92 l30 0" stroke="${C.cy}" stroke-width="3" opacity=".5"/>
         <path d="M150 86 l18 6 -18 6 z" fill="#f87171"/></g>
@@ -110,13 +104,11 @@ const PANELS = [
         <path d="M286 92 l52 0" stroke="${C.am}" stroke-width="6" stroke-linecap="round"/>
         <path d="M338 82 l22 10 -22 10 z" fill="${C.am}"/>
       </g>
-      <text x="322" y="72" fill="${C.am}" font-size="13" font-weight="800" text-anchor="middle">밀린다</text>
+      <text x="322" y="72" fill="${C.am}" font-size="13" font-weight="800" text-anchor="middle">${t('intro.4.push')}</text>
     </g>`,
   },
   {
-    tag: '그러니까',
-    line: '행성으로 행성을 쳐라. 당구처럼. **조르그 요새는 한 번**이면 끝난다.',
-    boom: '딱!',
+    key: 'intro.5',
     art: `<g>
       <circle cx="120" cy="92" r="20" fill="#9aa1a8"/>
       <path d="M146 92 l40 0" stroke="${C.ink}" stroke-width="3" opacity=".45" stroke-dasharray="7 6"/>
@@ -126,14 +118,12 @@ const PANELS = [
          stroke="#fff3cd" stroke-width="4" stroke-linecap="round"/></g>
       <g transform="translate(300,92)">
         <rect x="-46" y="-19" width="92" height="38" rx="6" fill="#0b1826" stroke="${C.rd}" stroke-width="2"/>
-        <text x="0" y="6" fill="${C.rd}" font-size="16" font-weight="900" text-anchor="middle">☠ 체력 ◆ 1</text>
+        <text x="0" y="6" fill="${C.rd}" font-size="16" font-weight="900" text-anchor="middle">${t('intro.5.hp')}</text>
       </g>
     </g>`,
   },
   {
-    tag: '걱정 마라',
-    line: '성계 둘레는 카이퍼 벨트다. 밖으로 나가는 건 없다 — 튕겨서 돌아온다.',
-    boom: '텅!',
+    key: 'intro.6',
     art: `<g>
       <path d="M392 4 a150 150 0 0 0 -150 175" fill="none" stroke="${C.cy}" stroke-width="4" opacity=".65"/>
       <path d="M400 0 a162 162 0 0 0 -162 186" fill="none" stroke="#7dd3fc" stroke-width="14" opacity=".14"/>
@@ -142,24 +132,23 @@ const PANELS = [
       <path d="M270 66 l-140 78" stroke="${C.cy}" stroke-width="5" stroke-linecap="round"/>
       <path d="M130 144 l24 -4 -8 -22 z" fill="${C.cy}"/>
       ${planet(110, 128, 14, '#9aa1a8')}
-      <text x="180" y="176" fill="${C.cy}" font-size="13" font-weight="800" text-anchor="middle">속력 그대로, 방향만 바뀐다</text>
+      <text x="180" y="176" fill="${C.cy}" font-size="13" font-weight="800" text-anchor="middle">${t('intro.6.note')}</text>
     </g>`,
   },
   {
-    tag: '자, 시작이다',
-    line: '조준 모드에서는 시간이 멈춘다. 천천히 재고, 쏘고, 관측해라.',
+    key: 'intro.7',
     boom: '',
     final: true,
     art: `<g>
       <g transform="translate(96,90)"><rect x="-52" y="-30" width="104" height="60" rx="7"
          fill="#0b1826" stroke="${C.cy}" stroke-width="2"/>
-        <text x="0" y="-4" fill="${C.cy}" font-size="14" font-weight="900" text-anchor="middle">◎ 조준</text>
-        <text x="0" y="16" fill="${C.dim}" font-size="11" text-anchor="middle">시간 정지</text></g>
+        <text x="0" y="-4" fill="${C.cy}" font-size="14" font-weight="900" text-anchor="middle">${t('intro.7.aim')}</text>
+        <text x="0" y="16" fill="${C.dim}" font-size="11" text-anchor="middle">${t('intro.7.aim.sub')}</text></g>
       <text x="196" y="96" fill="${C.ink}" font-size="22" font-weight="900" text-anchor="middle">⇄</text>
       <g transform="translate(300,90)"><rect x="-52" y="-30" width="104" height="60" rx="7"
          fill="#0b1826" stroke="${C.am}" stroke-width="2"/>
-        <text x="0" y="-4" fill="${C.am}" font-size="14" font-weight="900" text-anchor="middle">▶ 관측</text>
-        <text x="0" y="16" fill="${C.dim}" font-size="11" text-anchor="middle">TAB 전환</text></g>
+        <text x="0" y="-4" fill="${C.am}" font-size="14" font-weight="900" text-anchor="middle">${t('intro.7.obs')}</text>
+        <text x="0" y="16" fill="${C.dim}" font-size="11" text-anchor="middle">${t('intro.7.obs.sub')}</text></g>
     </g>`,
   },
 ]
@@ -177,7 +166,7 @@ export class Intro {
   <div class="introtop">
     <span class="introttl">PLANETPOOL</span>
     <span class="introbeat" id="introBeat"></span>
-    <button class="introskip" id="introSkip">건너뛰기 (ESC)</button>
+    <button class="introskip" id="introSkip">${t('intro.skip')}</button>
   </div>
   <div class="introframe">
     <svg id="introArt" viewBox="0 0 420 190" preserveAspectRatio="xMidYMid meet"></svg>
@@ -185,7 +174,7 @@ export class Intro {
   </div>
   <div class="introtag" id="introTag"></div>
   <div class="introline" id="introLine"></div>
-  <div class="intronext">아무 곳이나 눌러 다음 ▶</div>
+  <div class="intronext">${t('intro.next')}</div>
   <div class="introdots" id="introDots"></div>
 </div>`
     document.body.appendChild(el)
@@ -228,11 +217,14 @@ export class Intro {
     if (this.i >= PANELS.length) { this.finish(); return }
     const p = PANELS[this.i]
     this.art.innerHTML = p.art
-    this.tag.textContent = p.tag
+    this.tag.textContent = t(`${p.key}.tag`)
     // **강조** 를 굵게 — 규칙의 핵심 단어 하나만 눈에 박히면 된다
-    this.line.innerHTML = p.line.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
-    this.boom.textContent = p.boom || ''
-    this.boom.hidden = !p.boom
+    this.line.innerHTML = t(`${p.key}.line`).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+    // boom 키가 없는 컷도 있다(①·⑦). t()는 못 찾으면 키를 그대로 주므로
+    // "키가 보이는" 사고를 막으려면 여기서 한 번 걸러야 한다.
+    const boomKey = `${p.key}.boom`, boom = t(boomKey)
+    this.boom.textContent = boom === boomKey ? '' : boom
+    this.boom.hidden = boom === boomKey
     this.dots.forEach((d, k) => d.classList.toggle('on', k <= this.i))
     // 컷이 바뀔 때마다 애니메이션을 되감는다(class 재부착 트릭)
     const box = this.el.querySelector('.introbox')

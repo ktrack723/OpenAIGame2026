@@ -48,22 +48,22 @@ export function elementsToState(a, e, w, nu) {
 // 비율을 따라야 목성이 목성처럼 보이고, 질량은 중력(스윙바이·힐 반경)을
 // 좌우하는 게임 수치라 판이 안 터질 만큼만 벌려야 한다.
 const SOLAR = [
-  // 이름, 궤도장반경(AU), 질량(지구=1), 반경(지구=1), 이심률, 종류
-  { name: '수성 Mercury', au: 0.387, m: 0.0553, r: 0.383, e: 0.206, type: 'iron' },
-  { name: '금성 Venus', au: 0.723, m: 0.815, r: 0.949, e: 0.007, type: 'rock' },
-  { name: '지구 Earth', au: 1.000, m: 1.000, r: 1.000, e: 0.017, type: 'earth', isEarth: true },
-  { name: '화성 Mars', au: 1.524, m: 0.107, r: 0.532, e: 0.093, type: 'rock' },
-  { name: '베스타 Vesta', au: 2.362, m: 4.35e-5, r: 0.041, e: 0.089, type: 'rock' },
-  { name: '세레스 Ceres', au: 2.766, m: 1.60e-4, r: 0.074, e: 0.076, type: 'ice' },
-  { name: '히기에이아 Hygiea', au: 3.139, m: 1.40e-5, r: 0.034, e: 0.112, type: 'rock' },
-  { name: '목성 Jupiter', au: 5.204, m: 317.8, r: 11.21, e: 0.049, type: 'gas' },
-  { name: '토성 Saturn', au: 9.583, m: 95.16, r: 9.449, e: 0.057, type: 'gas' },
-  { name: '천왕성 Uranus', au: 19.19, m: 14.54, r: 4.007, e: 0.046, type: 'gas' },
-  { name: '해왕성 Neptune', au: 30.07, m: 17.15, r: 3.883, e: 0.009, type: 'gas' },
-  { name: '명왕성 Pluto', au: 39.48, m: 0.0022, r: 0.187, e: 0.249, type: 'ice' },
-  { name: '하우메아 Haumea', au: 43.13, m: 6.70e-4, r: 0.130, e: 0.191, type: 'ice' },
-  { name: '마케마케 Makemake', au: 45.79, m: 5.20e-4, r: 0.115, e: 0.159, type: 'ice' },
-  { name: '에리스 Eris', au: 67.86, m: 0.0028, r: 0.183, e: 0.436, type: 'ice' },
+  // 이름 키(planet.*), 궤도장반경(AU), 질량(지구=1), 반경(지구=1), 이심률, 종류
+  { key: 'mercury', au: 0.387, m: 0.0553, r: 0.383, e: 0.206, type: 'iron' },
+  { key: 'venus', au: 0.723, m: 0.815, r: 0.949, e: 0.007, type: 'rock' },
+  { key: 'earth', au: 1.000, m: 1.000, r: 1.000, e: 0.017, type: 'earth', isEarth: true },
+  { key: 'mars', au: 1.524, m: 0.107, r: 0.532, e: 0.093, type: 'rock' },
+  { key: 'vesta', au: 2.362, m: 4.35e-5, r: 0.041, e: 0.089, type: 'rock' },
+  { key: 'ceres', au: 2.766, m: 1.60e-4, r: 0.074, e: 0.076, type: 'ice' },
+  { key: 'hygiea', au: 3.139, m: 1.40e-5, r: 0.034, e: 0.112, type: 'rock' },
+  { key: 'jupiter', au: 5.204, m: 317.8, r: 11.21, e: 0.049, type: 'gas' },
+  { key: 'saturn', au: 9.583, m: 95.16, r: 9.449, e: 0.057, type: 'gas' },
+  { key: 'uranus', au: 19.19, m: 14.54, r: 4.007, e: 0.046, type: 'gas' },
+  { key: 'neptune', au: 30.07, m: 17.15, r: 3.883, e: 0.009, type: 'gas' },
+  { key: 'pluto', au: 39.48, m: 0.0022, r: 0.187, e: 0.249, type: 'ice' },
+  { key: 'haumea', au: 43.13, m: 6.70e-4, r: 0.130, e: 0.191, type: 'ice' },
+  { key: 'makemake', au: 45.79, m: 5.20e-4, r: 0.115, e: 0.159, type: 'ice' },
+  { key: 'eris', au: 67.86, m: 0.0028, r: 0.183, e: 0.436, type: 'ice' },
 ]
 const SOLAR_P = 0.28      // 궤도: a = aEarth × AU^P
 const SOLAR_Q = 0.20      // 질량: μ = EARTH_MU × m^Q
@@ -110,7 +110,7 @@ export function buildSolarSystem(rng, A = 1) {
     const w = rng.range(0, Math.PI * 2), nu = rng.range(0, Math.PI * 2)
     const st = elementsToState(s.a, s.ecc, w, nu)
     return makeBody({
-      id: `sol${s.idx}`, name: s.name, mu: s.mu, radius: s.radius,
+      id: `sol${s.idx}`, nameKey: `planet.${s.key}`, mu: s.mu, radius: s.radius,
       pos: st.pos, vel: st.vel, type: s.type, isEarth: !!s.isEarth,
       hp: s.isEarth ? CFG.EARTH_HP : CFG.PLANET_HP,
     })

@@ -23,6 +23,9 @@ export function makeBody(spec = {}) {
   return {
     id: spec.id ?? '?',
     name: spec.name ?? '?',
+    // 이름이 언어 표에 있는 천체(태양계·파편·모성)는 키를 들고 다닌다.
+    // 조르그가 보낸 것은 생성된 고유명이라 키가 없다 — nameOf가 둘을 가른다.
+    nameKey: spec.nameKey ?? null,
     type,
     mu,
     radius: spec.radius ?? radiusOf(mu),

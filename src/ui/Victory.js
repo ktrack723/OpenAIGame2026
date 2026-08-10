@@ -1,3 +1,4 @@
+import { t, onLangChange } from '../i18n/index.js'
 // ─── 승리 화면 ──────────────────────────────────────────────────
 // "다음 스테이지 ▶" 버튼 하나로 넘어가던 걸 축하 장면으로 바꿨다.
 // 이 게임의 판돈은 지구이고, 판을 이겼다는 건 인류가 한 번 더 살아남았다는
@@ -55,7 +56,7 @@ export class Victory {
       <circle cx="392" cy="30" r="40" fill="none" stroke="${C.am}" stroke-width="1.5" opacity=".3"/>
       <circle cx="300" cy="66" r="13" fill="#3b82f6"/>
       <circle cx="300" cy="66" r="20" fill="none" stroke="#60a5fa" stroke-width="1.5" opacity=".55" class="vpulse"/>
-      <text x="300" y="98" fill="#93c5fd" font-size="11" font-weight="800" text-anchor="middle">지구 · 무사</text>
+      <text x="300" y="98" fill="#93c5fd" font-size="11" font-weight="800" text-anchor="middle">${t('vic.earthSafe')}</text>
       <!-- 물러가는 조르그 잔해 -->
       <g opacity=".65" class="vdrift">
         <circle cx="96" cy="40" r="9" fill="#4a1240"/>
@@ -85,14 +86,14 @@ export class Victory {
     </svg>
   </div>
   <div class="victext">
-    <div class="victag" id="vicTag">침공 격퇴</div>
-    <h2 id="vicTitle">조르그 요새 전멸</h2>
-    <p id="vicBody">관제실이 환호로 뒤집혔다. 이번에도 지구는 무사하다.</p>
+    <div class="victag" id="vicTag"></div>
+    <h2 id="vicTitle"></h2>
+    <p id="vicBody"></p>
     <div class="vicstats" id="vicStats"></div>
   </div>
   <button class="vicbtn" id="vicGo">
-    <span class="vicbtnt">다음 침공까지 평화를 즐긴다</span>
-    <span class="vicbtns" id="vicGoSub">조르그가 다시 온다 ▶</span>
+    <span class="vicbtnt" id="vicGoT"></span>
+    <span class="vicbtns" id="vicGoSub"></span>
   </button>
 </div>`
     document.body.appendChild(el)
@@ -103,6 +104,9 @@ export class Victory {
       if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); this.close() }
     }
     addEventListener('keydown', this.onKey)
+    // 언어를 바꿨을 때 **떠 있는 창**도 같이 바뀐다. 그림(SVG)은 한 번 만들고
+    // 마는 것이라 통째로 다시 짓고, 숫자가 든 줄은 open()이 어차피 다시 쓴다.
+    onLangChange(() => { if (!this.el.hidden) this.open() })
   }
 
   // 이긴 순간 main 루프가 걸어 둔다. 실제로 뜨는 건 OPEN_DELAY 뒤다.
@@ -118,13 +122,20 @@ export class Victory {
   open() {
     const g = this.game
     const survivors = g.bodies.filter(b => b.alive && b.type !== 'debris').length
-    this.el.querySelector('#vicTag').textContent = `스테이지 ${g.stageIdx + 1} 돌파 · 안테 ${g.ante}`
+    this.el.querySelector('#vicTag').textContent = t('vic.tag', { stage: g.stageIdx + 1, ante: g.ante })
+    this.el.querySelector('#vicTitle').textContent = t('vic.title')
+    this.el.querySelector('#vicBody').textContent = t('vic.body')
+    this.el.querySelector('#vicGoT').textContent = t('vic.go')
+    this.el.querySelector('#vicGoSub').textContent = t('vic.goSub')
     this.el.querySelector('#vicStats').innerHTML = [
-      ['격파한 요새', `${g.goal.total}기`],
-      ['남은 시한', `${Math.floor(g.timeLeft / 60)}:${String(Math.floor(g.timeLeft % 60)).padStart(2, '0')} (보너스 +${g.timeBonus})`],
-      ['이번 판 점수', `${g.score + g.timeBonus}`],
-      ['살아남은 천체', `${survivors}기 — 그대로 다음 판으로 간다`],
-      ['지구 체력', `${g.earth.hp}/${g.earth.hpMax} — 회복되지 않는다`],
+      [t('vic.row.forts'), t('vic.row.forts.v', { n: g.goal.total })],
+      [t('vic.row.time'), t('vic.row.time.v', {
+        clock: `${Math.floor(g.timeLeft / 60)}:${String(Math.floor(g.timeLeft % 60)).padStart(2, '0')}`,
+        bonus: g.timeBonus,
+      })],
+      [t('vic.row.score'), `${g.score + g.timeBonus}`],
+      [t('vic.row.alive'), t('vic.row.alive.v', { n: survivors })],
+      [t('vic.row.earth'), t('vic.row.earth.v', { hp: g.earth.hp, hpMax: g.earth.hpMax })],
     ].map(([k, v]) => `<div class="vicrow"><span>${k}</span><b>${v}</b></div>`).join('')
     this.el.hidden = false
     this.el.classList.remove('out')

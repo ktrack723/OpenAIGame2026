@@ -1,5 +1,6 @@
 import { CFG, hitRadiusOf } from '../game/config.js'
-import { ROLES, massClass, modsOf, volatileRadius } from '../game/roles.js'
+import { ROLES, massClass, modsOf, roleBrief, roleLabel, volatileRadius } from '../game/roles.js'
+import { t, nameOf } from '../i18n/index.js'
 import { HOSTILE, categoryOf } from '../render/Icons.js'
 
 // ─── 천체 정보창 ────────────────────────────────────────────────
@@ -80,43 +81,42 @@ export class Inspector {
     const out = []
     // 태그 줄 — 다섯 중 붙은 것만. 하나도 없으면 "일반 행성"이라고 못 박는다.
     const tags = []
-    if (hostile) tags.push(['foe', `${HOSTILE.icon} 조르그 요새`])
+    if (hostile) tags.push(['foe', `${HOSTILE.icon} ${HOSTILE.label}`])
     for (const key of [b.role, ...modsOf(b)]) {
       if (!key || key === 'battery') continue
       const R = ROLES[key]
-      if (R) tags.push(['tag', `${R.icon} ${R.label}`])
+      if (R) tags.push(['tag', `${R.icon} ${roleLabel(key)}`])
     }
-    out.push(`<div class="ihead"><span class="iicon">${cat.icon}</span><b>${b.name}</b>`
-      + (b.isEarth ? '<span class="ibadge earth">본대</span>' : '')
-      + (b.homeworld ? '<span class="ibadge foe">본성</span>' : '')
+    out.push(`<div class="ihead"><span class="iicon">${cat.icon}</span><b>${nameOf(b)}</b>`
+      + (b.isEarth ? `<span class="ibadge earth">${t('insp.earth')}</span>` : '')
+      + (b.homeworld ? `<span class="ibadge foe">${t('insp.home')}</span>` : '')
       + '</div>')
     out.push(`<div class="itags">${tags.length
       ? tags.map(([c, t]) => `<span class="ibadge ${c}">${t}</span>`).join('')
-      : '<span class="ibadge plain">태그 없음 · 일반 행성</span>'}</div>`)
+      : `<span class="ibadge plain">${t('insp.plain')}</span>`}</div>`)
     // 분류의 메카닉을 한 줄로 못 박는다 — "이 분류가 게임에서 뭘 하는가"
     out.push(`<div class="isub" style="color:${cat.color}">${cat.label} · ${cat.mech}</div>`)
-    out.push(`<div class="irow"><span>체력</span><b class="${hp <= 1 ? 'crit' : ''}">${pips} ${hp}/${hpMax}</b></div>`)
+    out.push(`<div class="irow"><span>${t('insp.hp')}</span><b class="${hp <= 1 ? 'crit' : ''}">${pips} ${hp}/${hpMax}</b></div>`)
     // 무게 등급 — 태그와 무관하게 모든 행성이 갖는 성질. 밀 수 있는가에 대한 답.
     const mc = massClass(b)
-    out.push(`<div class="irow"><span>무게</span><b style="color:${mc.color}">${mc.label}</b></div>`)
-    out.push(`<div class="irow"><span>질량 μ</span><b>${fmt(b.mu)}</b></div>`)
-    out.push(`<div class="irow"><span>반경 / 판정</span><b>${fmt(b.radius, 1)} / ${fmt(hitRadiusOf(b), 1)} GU</b></div>`)
-    out.push(`<div class="irow"><span>궤도반경</span><b>${fmt(r)} GU</b></div>`)
-    out.push(`<div class="irow"><span>속력</span><b>${fmt(v, 1)} GU/s</b></div>`)
+    out.push(`<div class="irow"><span>${t('insp.mass')}</span><b style="color:${mc.color}">${mc.label}</b></div>`)
+    out.push(`<div class="irow"><span>${t('insp.mu')}</span><b>${fmt(b.mu)}</b></div>`)
+    out.push(`<div class="irow"><span>${t('insp.radius')}</span><b>${fmt(b.radius, 1)} / ${fmt(hitRadiusOf(b), 1)} GU</b></div>`)
+    out.push(`<div class="irow"><span>${t('insp.orbit')}</span><b>${fmt(r)} GU</b></div>`)
+    out.push(`<div class="irow"><span>${t('insp.speed')}</span><b>${fmt(v, 1)} GU/s</b></div>`)
     // 이 공을 지금 작약량으로 치면 얼마나 밀리는가 — 조준의 유일한 근거
     const dv = CFG.NUKE_IMPULSE * g.yieldMt / b.mu
-    out.push(`<div class="irow"><span>핵 Δv (${g.yieldMt}Mt)</span><b>${fmt(dv, 1)} GU/s</b></div>`)
+    out.push(`<div class="irow"><span>${t('insp.dv', { yield: g.yieldMt })}</span><b>${fmt(dv, 1)} GU/s</b></div>`)
     for (const key of [b.role, ...modsOf(b)]) {
       const R = ROLES[key]
       if (!R) continue
       out.push(`<div class="irole" style="color:#${R.color.toString(16).padStart(6, '0')}">`
-        + `${R.icon} ${R.label} — ${R.brief}</div>`)
+        + `${R.icon} ${roleLabel(key)} — ${roleBrief(key)}</div>`)
     }
-    if (b.role === 'volatile') out.push(`<div class="irow"><span>유폭 반경</span><b>${fmt(volatileRadius(b))} GU</b></div>`)
+    if (b.role === 'volatile') out.push(`<div class="irow"><span>${t('insp.volatileR')}</span><b>${fmt(volatileRadius(b))} GU</b></div>`)
     out.push(`<div class="ifoot">${b.isEarth
-      ? '지구는 세 번 처박히면 끝난다 — 폭풍으로도 밀리니 조심해라.'
-      : hostile ? '체력 1 — 한 번만 제대로 처박으면 끝난다. 태양·특이점·유폭도 인정된다.'
-        : `${mc.hint} — 밀어서 표적에 처박는 게 이 게임이다.`}</div>`)
+      ? t('insp.foot.earth')
+      : hostile ? t('insp.foot.foe') : t('insp.foot.cue', { hint: mc.hint })}</div>`)
     return out.join('')
   }
 

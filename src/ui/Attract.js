@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.js'
 import { CFG, hitRadiusOf } from '../game/config.js'
 import { LASER_CHARGE, LASER_IDLE, LASER_TRAVEL } from '../game/laser.js'
 import { makeGoal } from '../game/objectives.js'
@@ -409,7 +410,7 @@ function victimsFor(g, cast, fort) {
 
 // 조르그가 처음 들어와서 하는 말. 이 한 줄이 판의 전제다 —
 // 저쪽이 원하는 건 지구가 아니라 성계 전체고, 지구는 그 앞을 막고 있을 뿐이다.
-const WARP_LINE = '네놈만 없으면 태양계는 우리 것이다.'
+const warpLine = () => t('zorg.warp')
 
 // 광선 한 발을 **지금 당장** 쏘되, 지구는 비껴 가게 한다.
 // 예고편에서 지구가 죽으면 거기서 이야기가 끝난다. 그렇다고 안 쏘면 "저게 뭘
@@ -563,9 +564,9 @@ export class Attract {
 <div class="attractlogo">
   ${LOGOMARK}
   <div class="slogotitle">PLANETPOOL</div>
-  <div class="slogosub">궤도 당구 · ORBITAL BILLIARDS</div>
+  <div class="slogosub">${t('attract.sub')}</div>
 </div>
-<button class="attractskip" id="attractSkip">건너뛰기 (ESC)</button>`
+<button class="attractskip" id="attractSkip">${t('attract.skip')}</button>`
     document.body.appendChild(el)
     this.el = el
     this.fill = el.querySelector('#attractFill')
@@ -646,7 +647,7 @@ export class Attract {
     g.addFx({ kind: 'warp', x: z.pos.x, y: z.pos.y, r: hitRadiusOf(z), fort: true })
     g.homeworld = z
     this.bar(0.1)
-    this.after(WARP_LINE_MS, () => this.comms?.say(WARP_LINE))
+    this.after(WARP_LINE_MS, () => this.comms?.say(warpLine()))
     this.after(WARP_MS, () => this.beams())
   }
 

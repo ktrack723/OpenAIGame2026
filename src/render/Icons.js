@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.js'
 import * as THREE from 'three'
 import { VIS } from '../game/config.js'
 
@@ -15,17 +16,24 @@ import { VIS } from '../game/config.js'
 // 남은 다섯 중 넷은 저마다 **한 줄짜리 메카닉**이 있다(암석만 규칙이 없다).
 // 아이콘도 상징 기호(⚙·☣)가 아니라 그 물건 자체를 그린 것으로 바꿨다 —
 // 보면 무엇인지 알아야 한다.
-export const CATEGORY = {
-  rock: { icon: '🪨', label: '암석 행성', color: '#cbd5e1', mech: '규칙 없음 — 무게대로만 움직인다', desc: '태그 없는 일반 행성. 마음 놓고 큐볼로 써라.' },
-  ice: { icon: '🧊', label: '얼음 행성', color: '#a5f3fc', mech: '가볍다 — 같은 크기 대비 질량 절반, 두 배로 밀린다', desc: '가장 좋은 큐볼. 한 방에 멀리 날아간다.' },
-  iron: { icon: '🔩', label: '금속 행성', color: '#e2e8f0', mech: '무겁다 — 핵 임펄스가 절반만 먹는다', desc: '밀리긴 한다. 다만 같은 작약으로 절반밖에 안 간다.' },
-  gas: { icon: '🪐', label: '가스 행성', color: '#fcd34d', mech: '터진다 — 핵을 맞거나 세게 처박히면 대규모 유폭', desc: '반경 420 GU 이상이 통째로 밀려난다. 판을 뒤집는 수.' },
-  void: { icon: '🕳', label: '특이점', color: '#c084fc', mech: '삼킨다 — 닿는 것을 없앤다. 부술 수 없다', desc: '블랙홀·태양과 같은 부류. 여기로 밀어 넣어라.' },
-  earth: { icon: '🌍', label: '지구', color: '#93c5fd', mech: '우리 집 — 세 번 처박히면 게임 오버', desc: '발사대이자 지켜야 할 것.' },
-  zorg: { icon: '👁', label: '조르그 모성', color: '#e879f9', mech: '부술 수 없다 — 시한이 끝나면 온다', desc: '판돈을 회수하러 직접 온 것.' },
-  debris: { icon: '·', label: '파편', color: '#94a3b8', mech: '미사일을 조기 격발시킨다', desc: '충돌 잔해.' },
+// 아이콘과 색만 여기 둔다. 이름·메카닉 한 줄은 언어 표(cat.*)에 있고,
+// 쓰는 쪽은 cat.label / cat.mech 로 읽으면 된다(그때 번역된다).
+const CAT_STYLE = {
+  rock: { icon: '🪨', color: '#cbd5e1' },
+  ice: { icon: '🧊', color: '#a5f3fc' },
+  iron: { icon: '🔩', color: '#e2e8f0' },
+  gas: { icon: '🪐', color: '#fcd34d' },
+  void: { icon: '🕳', color: '#c084fc' },
+  earth: { icon: '🌍', color: '#93c5fd' },
+  zorg: { icon: '👁', color: '#e879f9' },
+  debris: { icon: '·', color: '#94a3b8' },
 }
-export const HOSTILE = { icon: '☠', label: '조르그 요새', color: '#ff5c6a' }
+export const CATEGORY = Object.fromEntries(Object.entries(CAT_STYLE).map(([k, v]) => [k, {
+  ...v, key: k,
+  get label() { return t(`cat.${k}`) },
+  get mech() { return t(`cat.${k}.mech`) },
+}]))
+export const HOSTILE = { icon: '☠', color: '#ff5c6a', get label() { return t('cat.hostile') } }
 
 export const categoryOf = (type) => CATEGORY[type] ?? CATEGORY.rock
 

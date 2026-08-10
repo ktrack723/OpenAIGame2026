@@ -185,7 +185,7 @@ export function shatter(b, bodies, rnd) {
   for (let k = 0; k < n; k++) {
     const ang = (k / n) * 2 * Math.PI + (rnd() - 0.5), sp = 25 + 40 * rnd()
     bodies.push(makeBody({
-      id: `${b.id}f${bodies.length}`, name: '파편', mu: muF, radius: Math.max(2.5, radiusOf(muF)),
+      id: `${b.id}f${bodies.length}`, nameKey: 'planet.debris', mu: muF, radius: Math.max(2.5, radiusOf(muF)),
       pos: { x: b.pos.x + Math.cos(ang) * b.radius * 1.3, y: b.pos.y + Math.sin(ang) * b.radius * 1.3 },
       vel: { x: b.vel.x + Math.cos(ang) * sp, y: b.vel.y + Math.sin(ang) * sp },
       type: 'debris', hp: 1,
