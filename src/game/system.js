@@ -191,7 +191,8 @@ function warpBody(rng, bodies, aMax, spec) {
     type,
     // 조르그가 보낸 것은 체력 1 — 제대로 한 번 처박으면 끝난다
     hp: spec.hp ?? CFG.ZORG_HP,
-    // 회피 분사 — 3스테이지부터 요새에만 하나씩 실린다(일회성)
+    // 추진기 — 3스테이지부터 요새에만 하나씩 실린다(횟수 제한 없음).
+    // 꽂히는 탄을 피하는 데도, 태양으로 떨어질 때 빠져나오는 데도 같은 물건을 쓴다.
     boost: spec.boost ?? 0,
     zorg: true, warp: 1,            // warp: 1 → 0 으로 렌더러가 실시간 감쇠시킨다
   })

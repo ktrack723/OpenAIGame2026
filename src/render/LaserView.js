@@ -142,13 +142,17 @@ export class LaserView {
   }
 
   // ─── 모성의 난사 ────────────────────────────────────────────
-  // 조준도 조준점도 없다. 뻗어 나간 자리를 흐리게 남기고, 머리에 밝은 막대.
+  // 조준도 조준점도 없다. 움직이는 막대 하나뿐이다.
+  //
+  // **지나간 자리는 안 남긴다.** 요새의 광선은 한 번에 한두 줄기라 흐린 자취가
+  // "어디서 왔는지"를 말해 주지만, 모성은 쉬지 않고 뿜으므로 그 자취가 초당
+  // 다섯 줄씩 쌓인다 — 몇 초면 화면이 붉은 선 뭉치가 되고 정작 지금 날아오는
+  // 막대가 그 안에 묻힌다. 여기서는 자취를 걷고 막대만 그린다.
   showDoom(D) {
     const ppw = this.rig.worldPerPx
     for (const b of D.beams) {
       if (b.gone) continue
       const ang = Math.atan2(b.uy, b.ux)
-      this.place(this.bolt(0xff2d4d, b.dead ? 0.12 : 0.26), D.x, D.y, ang, b.head, Math.max(1.6 * ppw, 2.4), 6.9)
       // 막대는 꼬리(back)에서 머리(head)까지. 머리가 박혀 멎은 뒤에는 꼬리만
       // 다가오므로 막대가 앞에서부터 잡아먹히며 짧아진다.
       const lit = b.head - b.back

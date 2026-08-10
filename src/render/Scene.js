@@ -825,10 +825,17 @@ export class SceneView {
         fx.mesh.material.emissiveIntensity = targeted ? 0.5 : fx.emisBase
       }
 
-      // ── 체력 호 — 다친 공만. 남은 칸이 줄면 호가 짧아지고 색이 식는다 ──
+      // ── 체력 호 — 남은 칸이 줄면 호가 짧아지고 색이 식는다 ──
       // (여기는 살아 있는 공만 도달한다 — 죽은 공은 위에서 이미 껐다.)
+      //
+      // 다친 공에만 그리던 것을 **대형 요새에는 항상** 그린다. 체력 2짜리 요새는
+      // 멀쩡할 때 아무 표시가 없다가 한 대 맞으면 그제야 호가 생겼다 — 즉
+      // "저건 두 방짜리"라는 정보가 치기 전에는 화면에 없고, 치고 나서야
+      // 나타났다가 부수면 사라진다. 정작 그 정보가 필요한 건 **치기 전**이다.
+      // (모든 공으로 넓히지는 않는다. 중립 행성도 체력 3이라 판 전체가 호로
+      //  뒤덮이고, 그러면 아무것도 안 두른 것과 같아진다.)
       const hpMax = b.hpMax ?? CFG.PLANET_HP, hp = b.hp ?? hpMax
-      const hurt = solid && hp < hpMax
+      const hurt = solid && (hp < hpMax || (b.role === 'battery' && hpMax > 1))
       fx.hpArc.visible = hurt
       if (hurt) {
         if (fx.hpKey !== hp) {   // 호 길이는 정점을 다시 굽는다(체력이 바뀔 때만)
