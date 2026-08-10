@@ -6,8 +6,8 @@ import {
   segHitsCircle, shatter, stepBodies, stepMissile, updateEncounters,
 } from './physics.js'
 import { hasRole, roleOf, volatileRadius } from './roles.js'
-import { causeText, makeGoal } from './objectives.js'
-import { msg, nameOf, t } from '../i18n/index.js'
+import { makeGoal } from './objectives.js'
+import { msg, nameOf } from '../i18n/index.js'
 import { bearing } from '../core/angle.js'
 import { createSystem, reinforce } from './system.js'
 import { makeBody } from './body.js'

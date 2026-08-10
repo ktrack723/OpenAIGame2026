@@ -542,8 +542,7 @@ export class SceneView {
     hpArc.visible = false
     this.scene.add(mesh, ring, hpArc)
     const fx = {
-      mesh, ring, hpArc, hpKey: -1, type: b.type, pi,
-      spin: 0.15 + Math.random() * 0.5, role: null, fort: null,
+      mesh, ring, hpArc, hpKey: -1, pi, spin: 0.15 + Math.random() * 0.5, role: null, fort: null,
       emisTone: em.tone, emisBase: em.base, phase: Math.random() * 6.28,
     }
     this.bodyFx.set(b.id, fx)
@@ -703,19 +702,9 @@ export class SceneView {
     for (const b of g.bodies) {
       let fx = this.bodyFx.get(b.id)
       if (!fx) fx = this.makeBodyFx(b)
-      if (fx.type !== b.type) {   // 합성으로 바이옴이 바뀜 → 재질 교체
-        const spec = MATS[b.type] ?? MATS.rock
-        fx.pi = paletteIndex(b.id, b.type)
-        const mat = fx.mesh.material
-        mat.map = this.texFor(b.type, fx.pi)
-        mat.roughness = spec.rough; mat.metalness = spec.metal
-        const em = this.emissiveFor(b, fx.pi, spec)
-        fx.emisTone = em.tone; fx.emisBase = em.base
-        mat.emissiveMap = em.map
-        mat.emissive.setHex(em.tone); mat.emissiveIntensity = em.base
-        mat.needsUpdate = true
-        fx.type = b.type
-      }
+      // (천체 종류는 makeBody에서 한 번 정해진 뒤 바뀌지 않는다. 예전엔 여기서
+      //  b.type이 바뀐 경우 재질을 갈아 끼웠는데, 그 분기를 켜는 기능이 없어져
+      //  한 번도 실행되지 않는 코드로 남아 있었다 — fx.type도 같이 걷었다.)
       const r = this.renderRadius(b)          // 공 = 판정 반경 그대로
       const mr = this.markerRadius(b)         // 표식 = 화면에서 안 사라질 최소 크기
       const solid = b.type !== 'debris'
@@ -801,8 +790,7 @@ export class SceneView {
 
       fx.ring.position.set(b.pos.x, b.pos.y, 0)
       this.fitRing(fx.ring, mr * 1.22)
-      // 목표=시안, 지구=파랑(치면 즉사), 중립=흰색(자유롭게 쓰는 큐볼).
-      // 캐롬 스테이지의 목표는 보라색 — "직격이 안 통하는 공"이라는 뜻이다.
+      // 표적=로즈(맥동), 지구=파랑(치면 즉사), 중립=흰색(자유롭게 쓰는 큐볼).
       if (b.isEarth) { fx.ring.material.color.setHex(0x60a5fa); fx.ring.material.opacity = 0.9 }
       else if (b.isTarget) {
         fx.ring.material.color.setHex(0xf43f5e)
