@@ -17,7 +17,8 @@ export class CameraRig {
     this.pointers = new Map()
     this.pinch = null
     this.dragged = false
-    this.inset = { l: 0, r: 0, t: 0, b: 0 }   // HUD가 가리는 영역(px)
+    this.inset = { l: 0, r: 0, t: 0, b: 0 }       // 프레이밍용(상한을 건 값)
+    this.insetFull = { l: 0, r: 0, t: 0, b: 0 }   // 실제로 가려진 영역(px)
     this.hud = null
     this.bindInput()
     this.snapToAuto()
@@ -43,13 +44,15 @@ export class CameraRig {
   }
 
   // HUD 패널에 가려지지 않는 실제 가시 영역 (월드 좌표)
+  // 여기서는 상한을 걸지 않은 insetFull을 쓴다. 프레이밍은 "패널 뒤로 좀 흘려도
+  // 된다"지만, 라벨은 흘리면 그냥 안 보인다 — 글자는 트인 곳에만 놓는다.
   visibleRect() {
-    const w = this.worldPerPx
+    const w = this.worldPerPx, i = this.insetFull
     return {
-      x0: this.center.x - this.halfW + this.inset.l * w,
-      x1: this.center.x + this.halfW - this.inset.r * w,
-      y0: this.center.y - this.halfH + this.inset.b * w,
-      y1: this.center.y + this.halfH - this.inset.t * w,
+      x0: this.center.x - this.halfW + i.l * w,
+      x1: this.center.x + this.halfW - i.r * w,
+      y0: this.center.y - this.halfH + i.b * w,
+      y1: this.center.y + this.halfH - i.t * w,
     }
   }
 
@@ -57,18 +60,39 @@ export class CameraRig {
 
   // 패널이 어느 변에 붙어 있는지 보고 그만큼을 "못 쓰는 화면"으로 잡는다.
   // 이게 없으면 자동 프레이밍이 지구/목표를 패널 뒤에 숨겨 놓는다.
+  //
+  // 어느 변인지는 **남는 공간**으로 판단한다. 예전에는 패널의 윗변이 화면
+  // 중간보다 아래인지로 봤는데(r.top > H/2), 패널이 커지면서 아래에 도킹된
+  // 패널의 윗변이 화면 37% 지점에 오게 됐다 — 그때부터 이 검사가 "위에
+  // 붙었다"고 답했고, 카메라는 판을 **패널 뒤로** 밀어 넣었다.
+  // (계측: 세로 390×844에서 중심 y가 2041, 도착한 요새 셋 중 하나만 화면에.)
+  // 붙어 있는 변에는 틈이 거의 없다 — 그 사실로 판단하면 패널 높이와 무관하다.
+  //
+  // 상한(MAX_INSET)은 "화면을 다 먹은 셈 치지는 않는다"는 뜻이다. 패널이 62%를
+  // 덮는다고 남은 38%에 성계를 다 우겨넣으면, 자동 프레이밍이 판을 2.6배
+  // 뒤로 빼서 공이 점이 된다. 절반까지만 인정하고 나머지는 패널 뒤로 흘린다 —
+  // 패널은 반투명이고, 정작 봐야 할 것(지구·표적·탄두)은 여전히 트인 쪽에 온다.
   updateInsets() {
-    const i = this.inset
-    i.l = i.r = i.t = i.b = 0
+    const i = this.inset, f = this.insetFull
+    i.l = i.r = i.t = i.b = f.l = f.r = f.t = f.b = 0
     if (!this.hud) return
     const r = this.hud.getBoundingClientRect()
     if (r.width <= 0 || r.height <= 0) return
     const W = innerWidth, H = innerHeight, gap = 10
+    const MAX = 0.5
     if (r.width >= W * 0.7) {   // 가로 전체를 차지하는 도킹(태블릿/모바일)
-      if (r.top > H / 2) i.b = Math.min(H * 0.62, H - r.top + gap)
-      else i.t = Math.min(H * 0.62, r.bottom + gap)
-    } else if (r.left < W / 2) i.l = Math.min(W * 0.62, r.right + gap)
-    else i.r = Math.min(W * 0.62, W - r.left + gap)
+      const above = r.top, below = H - r.bottom
+      const HI = H * 0.9   // 화면이 통째로 가려진 셈이 되지 않게(라벨이 갈 곳은 남긴다)
+      if (below <= above) f.b = Math.min(HI, H - r.top + gap)
+      else f.t = Math.min(HI, r.bottom + gap)
+      i.b = Math.min(H * MAX, f.b); i.t = Math.min(H * MAX, f.t)
+    } else {
+      const left = r.left, right = W - r.right
+      const WI = W * 0.9
+      if (left <= right) f.l = Math.min(WI, r.right + gap)
+      else f.r = Math.min(WI, W - r.left + gap)
+      i.l = Math.min(W * MAX, f.l); i.r = Math.min(W * MAX, f.r)
+    }
   }
 
   // ── 개막 프레이밍: 지금 워프해 들어오는 것들 ────────────────
@@ -131,15 +155,18 @@ export class CameraRig {
     this.center.set(f.cx, f.cy); this.halfH = f.h; this.auto = true
   }
 
-  fullView() {   // §14.1 성계 전체 뷰 = a_max × 1.15 (패널에 가린 만큼 보정)
+  // §14.1 성계 전체 뷰 = a_max × 1.15 (패널에 가린 만큼 보정)
+  // 이 버튼 하나만은 상한 없는 insetFull을 쓴다. "전체"라고 써 놓고 바깥 궤도를
+  // 패널 뒤에 숨겨 두면 그건 전체가 아니다 — 작아지더라도 다 보이는 쪽이 맞다.
+  fullView() {
     this.updateInsets()
-    const W = innerWidth, H = innerHeight
-    const visW = Math.max(80, W - this.inset.l - this.inset.r)
-    const visH = Math.max(80, H - this.inset.t - this.inset.b)
+    const W = innerWidth, H = innerHeight, i = this.insetFull
+    const visW = Math.max(80, W - i.l - i.r)
+    const visH = Math.max(80, H - i.t - i.b)
     const R = this.game.aMax * VIS.FULL_FIT
     this.halfH = Math.max(R * (H / visH), R * (W / visW) / this.aspect)
     const wpp = 2 * this.halfH / Math.max(1, H)
-    this.center.set(-((this.inset.l + visW / 2) - W / 2) * wpp, ((this.inset.t + visH / 2) - H / 2) * wpp)
+    this.center.set(-((i.l + visW / 2) - W / 2) * wpp, ((i.t + visH / 2) - H / 2) * wpp)
     this.auto = false
   }
 
