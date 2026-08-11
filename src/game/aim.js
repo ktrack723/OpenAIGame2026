@@ -1,7 +1,7 @@
 import { fromAngle } from '../core/vector.js'
 import { wrapPi } from '../core/angle.js'
 import { CFG, beltRadius, blastRadius, hitRadiusOf } from './config.js'
-import { cloneBodies, segCircleEntry, segHitsCircle, stepBodies, stepMissile } from './physics.js'
+import { buildBodyTrack, cloneBodies, makeStepCache, segCircleEntry, segHitsCircle, stepBodies, stepMissile, trackFrame } from './physics.js'
 import { effDv, volatileRadius } from './roles.js'
 import { msg } from '../i18n/index.js'
 
@@ -39,15 +39,16 @@ export function predictPath(game) {
   if (game._pred && now - (game._predAt || 0) < 45) return game._pred
   game._predAt = now
 
-  const sim = cloneBodies(game.bodies)
+  const sim = cloneBodies(game.bodies), bc = makeStepCache()
   const p = game.launchPos()
-  const m = { pos: { ...p }, vel: fromAngle(game.aim, game.power), age: 0, pathN: 0, path: [], minSunDist: Infinity, prev: { ...p } }
+  const m = { pos: { ...p }, vel: fromAngle(game.aim, game.power), age: 0, pathN: 0, path: null, minSunDist: Infinity, prev: { ...p } }
   const pts = [{ ...p }]
   let outcome = 'timeout', hit = null
-  const beltR = beltRadius(game.aMax)
+  const beltR = beltRadius(game.aMax), beltR2 = beltR * beltR
+  const rIn = CFG.R_STAR + 8, rIn2 = rIn * rIn
   const steps = Math.round(CFG.MISSILE_TTL / CFG.DT)
   for (let i = 0; i < steps; i++) {
-    if (bodyTurn(i, BODY_EVERY)) stepBodies(sim, CFG.DT * BODY_EVERY)
+    if (bodyTurn(i, BODY_EVERY)) stepBodies(sim, CFG.DT * BODY_EVERY, bc)
     stepMissile(m, sim, CFG.DT)
     if (i % 8 === 0) pts.push({ x: m.pos.x, y: m.pos.y })
     let bodyHit = null, point = null, bestD = Infinity
@@ -65,12 +66,13 @@ export function predictPath(game) {
       outcome = hit.outcome
       break
     }
-    const r = Math.hypot(m.pos.x, m.pos.y)
-    if (r < CFG.R_STAR + 8) { outcome = 'sun'; pts.push({ x: m.pos.x, y: m.pos.y }); break }
+    const r2 = m.pos.x * m.pos.x + m.pos.y * m.pos.y
+    if (r2 < rIn2) { outcome = 'sun'; pts.push({ x: m.pos.x, y: m.pos.y }); break }
     // 카이퍼 벨트 = 탄이 끝나는 자리. 공은 튕기지만 탄두는 거기서 터진다
     // (game.beltDetonate) — 예측선도 같은 자리에서 끊겨야 거짓말이 아니다.
-    if (r >= beltR) {
+    if (r2 >= beltR2) {
       outcome = 'belt'
+      const r = Math.sqrt(r2)
       pts.push({ x: m.pos.x / r * beltR, y: m.pos.y / r * beltR })
       break
     }
@@ -97,14 +99,19 @@ export function predictPath(game) {
 // (inFlight) 이 질의는 초당 세 번이라 이 해상도가 프레임을 먹지 않는다.
 const THREAT_DT = 1 / 30, THREAT_BODY_EVERY = 5
 export function firstImpact(game, m, horizon) {
-  const sim = cloneBodies(game.bodies)
+  // 트랙(buildBodyTrack)을 쓰지 않는 이유: 여기서는 닿는 순간의 **천체 속도**가
+  // 필요하다(상대 진입 속도) — 트랙에는 위치뿐이다. 탄은 한 번에 한 발이고
+  // 이 질의는 초당 몇 번이라, 캐시 넘긴 정직한 적분으로 충분히 싸다.
+  const sim = cloneBodies(game.bodies), bc = makeStepCache()
   const probe = {
-    pos: { ...m.pos }, vel: { ...m.vel }, age: 0, pathN: 0, path: [],
+    pos: { ...m.pos }, vel: { ...m.vel }, age: 0, pathN: 0, path: null,
     minSunDist: Infinity, prev: { ...m.pos },
   }
+  const beltR = beltRadius(game.aMax), beltR2 = beltR * beltR
+  const rIn = CFG.R_STAR + 8, rIn2 = rIn * rIn
   const steps = Math.round(horizon / THREAT_DT)
   for (let i = 0; i < steps; i++) {
-    if (bodyTurn(i, THREAT_BODY_EVERY)) stepBodies(sim, THREAT_DT * THREAT_BODY_EVERY)
+    if (bodyTurn(i, THREAT_BODY_EVERY)) stepBodies(sim, THREAT_DT * THREAT_BODY_EVERY, bc)
     stepMissile(probe, sim, THREAT_DT)
     for (const o of sim) {
       if (!o.alive) continue
@@ -118,9 +125,9 @@ export function firstImpact(game, m, horizon) {
         vx: probe.vel.x - o.vel.x, vy: probe.vel.y - o.vel.y,
       }
     }
-    const r = Math.hypot(probe.pos.x, probe.pos.y)
-    if (r < CFG.R_STAR + 8) return null            // 태양에 삼켜진다
-    if (r >= beltRadius(game.aMax)) return null    // 벨트에서 기폭 — 더 갈 곳이 없다
+    const r2 = probe.pos.x * probe.pos.x + probe.pos.y * probe.pos.y
+    if (r2 < rIn2) return null      // 태양에 삼켜진다
+    if (r2 >= beltR2) return null   // 벨트에서 기폭 — 더 갈 곳이 없다
   }
   return null
 }
@@ -148,10 +155,15 @@ export function scanContact(game, dir = 1) {
   if (!game.canAim) return false
   const step = dir * SCAN_DEG * Math.PI / 180
   const usable = (h) => h && h !== 'earth' && h !== 'debris'
-  const cur = coarseContact(game, game.aim)          // 지금 물고 있는 공(없으면 null)
+  // 천체 궤적은 각도와 무관하다(미사일은 천체를 못 민다) — 최대 241번의
+  // coarseContact가 전부 같은 궤적 위를 난다. 한 번만 굴려 두고 재생한다.
+  // 예전에는 각도마다 판 복제 + 천체 적분 전체를 다시 돌았고, 그게 이 버튼이
+  // 화면을 얼리던 비용의 대부분이었다(주석 역사: 2.4~3.4초 → 규칙 수정 → 이제 트랙).
+  const track = buildBodyTrack(game.bodies, COARSE_DT, COARSE_BODY_EVERY, COARSE_STEPS)
+  const cur = coarseContact(game, game.aim, track)   // 지금 물고 있는 공(없으면 null)
   for (let i = 1; i <= SCAN_N; i++) {
     const ang = game.aim + step * i
-    const h = coarseContact(game, ang)
+    const h = coarseContact(game, ang, track)
     if (!usable(h)) continue
     if (usable(cur) && h === cur) continue           // 같은 공이면 계속 — 다음 "다른" 공을 찾는다
     game.aim = wrapPi(ang)
@@ -168,16 +180,22 @@ export function scanContact(game, dir = 1) {
 // 지평은 TTL의 60%로 자른다: 계측상 접촉의 92%가 그 안에 일어나고,
 // 나머지는 어차피 굴러가다 만나는 샷이라 "칠 수 있는 각도" 목록에 안 넣는 게 낫다.
 const COARSE_HORIZON = 0.6
-function coarseContact(game, ang) {
-  const sim = cloneBodies(game.bodies)
-  const dt = 1 / 32
+const COARSE_DT = 1 / 32
+const COARSE_STEPS = Math.round(CFG.MISSILE_TTL * COARSE_HORIZON / COARSE_DT)
+// track: buildBodyTrack(game.bodies, COARSE_DT, COARSE_BODY_EVERY, COARSE_STEPS).
+// scanContact가 한 번 만들어 최대 241회 재생한다. export는 검증 하네스가
+// 각도별 반환 id의 전/후 동치를 확인하는 데 쓴다.
+export function coarseContact(game, ang, track) {
+  const sim = track.view
+  trackFrame(track, 0)                     // 뷰를 판의 현재(0프레임)로 되감는다
   const p = { x: game.earth.pos.x + Math.cos(ang) * CFG.LAUNCH_OFFSET, y: game.earth.pos.y + Math.sin(ang) * CFG.LAUNCH_OFFSET }
-  const m = { pos: { ...p }, vel: fromAngle(ang, game.power), age: 0, pathN: 0, path: [], minSunDist: Infinity, prev: { ...p } }
-  const beltR = beltRadius(game.aMax)
-  const steps = Math.round(CFG.MISSILE_TTL * COARSE_HORIZON / dt)
-  for (let i = 0; i < steps; i++) {
-    if (bodyTurn(i, COARSE_BODY_EVERY)) stepBodies(sim, dt * COARSE_BODY_EVERY)
-    stepMissile(m, sim, dt)
+  const m = { pos: { ...p }, vel: fromAngle(ang, game.power), age: 0, pathN: 0, path: null, minSunDist: Infinity, prev: { ...p } }
+  const beltR = beltRadius(game.aMax), beltR2 = beltR * beltR
+  const rIn = CFG.R_STAR + 8, rIn2 = rIn * rIn
+  let f = 0
+  for (let i = 0; i < COARSE_STEPS; i++) {
+    if (bodyTurn(i, COARSE_BODY_EVERY)) trackFrame(track, ++f)
+    stepMissile(m, sim, COARSE_DT)
     for (const o of sim) {
       if (!o.alive) continue
       if (!segHitsCircle(m.prev.x, m.prev.y, m.pos.x, m.pos.y, o.pos.x, o.pos.y, hitRadiusOf(o))) continue
@@ -185,9 +203,9 @@ function coarseContact(game, ang) {
       if (o.isEarth) return 'earth'
       return o.id
     }
-    const r = Math.hypot(m.pos.x, m.pos.y)
-    if (r < CFG.R_STAR + 8) return null
-    if (r >= beltR) return null            // 벨트에서 기폭 — 이 각도는 아무것에도 안 닿는다
+    const r2 = m.pos.x * m.pos.x + m.pos.y * m.pos.y
+    if (r2 < rIn2) return null
+    if (r2 >= beltR2) return null          // 벨트에서 기폭 — 이 각도는 아무것에도 안 닿는다
   }
   return null
 }

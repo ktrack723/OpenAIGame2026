@@ -1,17 +1,27 @@
 import { CFG, blastRadius, contactDist, radiusOf } from './config.js'
 import { cloneBody, makeBody } from './body.js'
 import { effDv } from './roles.js'
-import { clone, len, sub, vec } from '../core/vector.js'
+import { clone, vec } from '../core/vector.js'
 
 // ─── T1-1: N체 가속도 — 태양(원점 고정) + 행성 상호작용 (§4.2) ───
-function accelOn(i, bodies, out) {
-  const bi = bodies[i]; let dx = -bi.pos.x, dy = -bi.pos.y
-  let d2 = dx * dx + dy * dy + CFG.EPS * CFG.EPS, inv = CFG.MU_STAR / (d2 * Math.sqrt(d2))
-  out.x = dx * inv; out.y = dy * inv
-  for (let j = 0; j < bodies.length; j++) if (j !== i && bodies[j].alive) {
-    const bj = bodies[j]; dx = bj.pos.x - bi.pos.x; dy = bj.pos.y - bi.pos.y
-    d2 = dx * dx + dy * dy + CFG.EPS * CFG.EPS; inv = bj.mu / (d2 * Math.sqrt(d2))
-    out.x += dx * inv; out.y += dy * inv
+// 전 천체를 한 번에 훑어 평탄 배열에 쓴다. 천체마다의 합산 순서(태양 → j 오름차순)는
+// 예전 accelOn과 완전히 같다 — **순서가 바뀌면 부동소수 결과가 바뀐다.** 예측이
+// 실제 판과 비트 단위로 같은 궤적을 내야 하므로 이 순서는 성능보다 우선한다.
+// (쌍대칭으로 절반을 아낄 수 있지만 그건 합산 순서를 바꾼다 — 하지 않는다.)
+function accelAll(bodies, ax, ay) {
+  const n = bodies.length
+  for (let i = 0; i < n; i++) {
+    const bi = bodies[i]
+    if (!bi.alive) continue
+    let dx = -bi.pos.x, dy = -bi.pos.y
+    let d2 = dx * dx + dy * dy + CFG.EPS * CFG.EPS, inv = CFG.MU_STAR / (d2 * Math.sqrt(d2))
+    let x = dx * inv, y = dy * inv
+    for (let j = 0; j < n; j++) if (j !== i && bodies[j].alive) {
+      const bj = bodies[j]; dx = bj.pos.x - bi.pos.x; dy = bj.pos.y - bi.pos.y
+      d2 = dx * dx + dy * dy + CFG.EPS * CFG.EPS; inv = bj.mu / (d2 * Math.sqrt(d2))
+      x += dx * inv; y += dy * inv
+    }
+    ax[i] = x; ay[i] = y
   }
 }
 
@@ -20,15 +30,33 @@ function accelOn(i, bodies, out) {
 // 천체 수만큼 객체를 새로 만들면 그게 곧 프레임 드랍이다(행성이 20개로 늘면서
 // 이 비용이 세 배가 됐다). 재귀 호출이 없으므로 모듈 스코프 버퍼로 충분하다.
 let _frame = 0
-const _acc = []
-export function stepBodies(bodies, dt) {
+let _ax = new Float64Array(0), _ay = new Float64Array(0)
+
+// stepBodies의 가속도 캐시. KDK에서 스텝 끝 가속도와 다음 스텝 시작 가속도는
+// 같은 위치에서 계산되므로 **같은 값**인데, 예전에는 매 스텝 두 번 다 새로 풀었다.
+// 캐시를 넘기면 절반이 사라진다 — 예측 루프(수백~수천 스텝 연속 호출)용이다.
+// 규약: 캐시는 **하나의 연속된 시뮬 루프 안에서만** 쓴다. 두 stepBodies 호출 사이에
+// 천체 위치를 밖에서 바꾸면(충돌 해소·워프·핵 폭풍의 위치 보정 등) 캐시가 거짓이
+// 된다 — 그래서 라이브 루프(game.step)에는 넘기지 않는다. 예측 sim에서는 미사일이
+// 천체를 못 건드리므로 항상 안전하다. 속도 변경은 무관하다(중력은 위치만의 함수).
+export function makeStepCache() { return { ax: null, ay: null, n: -1, valid: false } }
+
+export function stepBodies(bodies, dt, cache) {
   const n = bodies.length, h = dt / 2
-  while (_acc.length < n) _acc.push(vec())
+  let ax, ay
+  if (cache) {
+    if (cache.n !== n) { cache.ax = new Float64Array(n); cache.ay = new Float64Array(n); cache.n = n; cache.valid = false }
+    ax = cache.ax; ay = cache.ay
+    if (!cache.valid) accelAll(bodies, ax, ay)
+  } else {
+    if (_ax.length < n) { _ax = new Float64Array(n); _ay = new Float64Array(n) }
+    ax = _ax; ay = _ay
+    accelAll(bodies, ax, ay)
+  }
   for (let i = 0; i < n; i++) {
     const b = bodies[i]
     if (!b.alive) continue
-    accelOn(i, bodies, _acc[i])
-    b.vel.x += _acc[i].x * h; b.vel.y += _acc[i].y * h
+    b.vel.x += ax[i] * h; b.vel.y += ay[i] * h
   }
   _frame++
   for (let i = 0; i < n; i++) {
@@ -39,18 +67,19 @@ export function stepBodies(bodies, dt) {
     b.bumpFlash = Math.max(0, (b.bumpFlash || 0) - dt)
     if (b.trail && _frame % 8 === 0 && b.trail.push(clone(b.pos)) > 300) b.trail.shift()
   }
+  accelAll(bodies, ax, ay)
   for (let i = 0; i < n; i++) {
     const b = bodies[i]
     if (!b.alive) continue
-    accelOn(i, bodies, _acc[i])
-    b.vel.x += _acc[i].x * h; b.vel.y += _acc[i].y * h
+    b.vel.x += ax[i] * h; b.vel.y += ay[i] * h
   }
+  if (cache) cache.valid = true
 }
 
 // ─── T1-3: 미사일 중력장 — 행성은 κ, 태양은 κ★ 배율 (§4.3). 예측선과 공용 ───
 // κ★는 기획서 원본의 "태양 κ=1"을 노브로 뺀 것. 태양이 미사일을 지나치게
 // 빨아들여 행성 곁을 그냥 스쳐 지나가던 문제(R1)를 잡는 용도이며,
-// 행성끼리의 상호작용(accelOn)은 여전히 진짜 물리 κ=1이라 세계는 왜곡되지 않는다.
+// 행성끼리의 상호작용(accelAll)은 여전히 진짜 물리 κ=1이라 세계는 왜곡되지 않는다.
 function fieldAccel(px, py, bodies, out) {
   let dx = -px, dy = -py
   let d2 = dx * dx + dy * dy + CFG.EPS * CFG.EPS, inv = CFG.KAPPA_STAR * CFG.MU_STAR / (d2 * Math.sqrt(d2))
@@ -93,11 +122,22 @@ export function segCircleEntry(ax, ay, bx, by, cx, cy, r) {
   return { x: ax + dx * tc, y: ay + dy * tc }
 }
 
+// 스텝당 객체를 만들지 않는다 — 예측 한 발이 6천여 스텝 × 천체 수를 돌므로
+// 여기서의 할당(직전 위치·가속도 스크래치·근접 판정의 임시 벡터)이 곧 GC다.
+// m.prev는 **제자리 갱신**한다: 붙들어 두는 호출부가 없음을 확인했고(모두 스텝
+// 직후 읽고 버린다), 새로 생기는 호출부도 참조를 저장하면 안 된다.
+const _fa = vec()   // fieldAccel 스크래치 — stepMissile은 재귀·중첩 호출이 없다
 export function stepMissile(m, bodies, dt) {
-  m.prev = { x: m.pos.x, y: m.pos.y }   // 스윕 판정용 직전 위치
+  const pv = m.prev ?? (m.prev = { x: 0, y: 0 })   // 실탄은 prev 없이 생성된다(game.launch)
+  pv.x = m.pos.x; pv.y = m.pos.y                    // 스윕 판정용 직전 위치
   let n = 1
-  for (const b of bodies) if (b.alive && len(sub(b.pos, m.pos)) < CFG.SUBSTEP_DIST * b.radius) { n = CFG.SUBSTEP_N; break }
-  const a = vec(), sd = dt / n
+  for (let i = 0; i < bodies.length; i++) {
+    const b = bodies[i]
+    if (!b.alive) continue
+    const dx = b.pos.x - m.pos.x, dy = b.pos.y - m.pos.y, R = CFG.SUBSTEP_DIST * b.radius
+    if (dx * dx + dy * dy < R * R) { n = CFG.SUBSTEP_N; break }
+  }
+  const a = _fa, sd = dt / n
   for (let s = 0; s < n; s++) {
     fieldAccel(m.pos.x, m.pos.y, bodies, a)
     m.vel.x += a.x * sd / 2; m.vel.y += a.y * sd / 2
@@ -106,10 +146,13 @@ export function stepMissile(m, bodies, dt) {
     m.vel.x += a.x * sd / 2; m.vel.y += a.y * sd / 2
   }
   m.age += dt
-  m.minSunDist = Math.min(m.minSunDist, len(m.pos))   // 태양 가속 보너스 판정용 (§9.1)
+  // 태양 가속 보너스 판정용 (§9.1). sqrt(x²+y²)는 hypot과 마지막 ulp에서만 다를
+  // 수 있고, 이 값은 반경 450과 비교될 뿐이다.
+  m.minSunDist = Math.min(m.minSunDist, Math.sqrt(m.pos.x * m.pos.x + m.pos.y * m.pos.y))
   // 트레일은 최근 ~6초만 (매 4스텝 기록 × 180점). TTL 52초치를 다 남기면
   // 화면이 실오라기로 뒤덮여 정작 공이 안 보인다.
-  if (++m.pathN % 4 === 0 && m.path.push(clone(m.pos)) > 180) m.path.shift()
+  // 예측 프로브는 path: null로 만들어 기록을 통째로 건너뛴다 — 아무도 안 읽는다.
+  if (m.path && ++m.pathN % 4 === 0 && m.path.push(clone(m.pos)) > 180) m.path.shift()
 }
 
 // ─── T1-4: 인카운터 트래커 (§5.2/5.4) — 진입/이탈 굴절각, 니어미스, 포획 ───
@@ -256,7 +299,9 @@ export function resolveBodyPairs(bodies, game) {
     if (!a || !b || !a.alive || !b.alive) continue
     const aD = a.type === 'debris', bD = b.type === 'debris'
     if (aD && bD) continue
-    if (len(sub(a.pos, b.pos)) >= contactDist(a, b)) continue
+    // 제곱 비교 — n=34면 스텝마다 561쌍이라 임시 벡터·hypot이 그대로 GC 압력이다
+    const dx = b.pos.x - a.pos.x, dy = b.pos.y - a.pos.y, cd = contactDist(a, b)
+    if (dx * dx + dy * dy >= cd * cd) continue
     if (aD || bD) {   // 파편은 행성 대기권에서 소멸 — 미사일 해저드일 뿐이다
       (aD ? a : b).alive = false
       continue
@@ -269,3 +314,44 @@ export function resolveBodyPairs(bodies, game) {
 // 복제본도 정본 형태로 만든다 — 예측선이 이 배열 위에서 수천 스텝을 도는데,
 // 형태가 흐트러지면 그 자리에서 프레임이 무너진다(body.js 주석 참고).
 export function cloneBodies(bodies) { return bodies.map(cloneBody) }
+
+// ─── 예측 공용: 천체 궤적 트랙 ──────────────────────────────────
+// 예측 안에서 미사일은 천체에 아무 영향도 주지 않는다 — fieldAccel은 단방향이고,
+// 예측 sim에서는 충돌 해소도 기폭도 돌지 않는다. 그러므로 같은 판에서 각도·파워만
+// 바꿔 가며 수백 발을 굴릴 때 **천체 궤적은 전부 같다.** 발마다 판을 복제해
+// 처음부터 다시 적분하는 대신(접촉각 탐색이 정확히 그랬다 — 240각도 × 천체 적분
+// 전체), 한 번만 굴려 위치를 기록해 두고 발마다 재생한다.
+//
+// 기록 스케줄은 소비자 루프와 동일하다: 미사일 스텝 i마다 i % every === every>>1
+// 일 때 천체가 dt×every 만큼 굴러간다(aim.js bodyTurn과 같은 규칙). 같은
+// stepBodies를 같은 순서로 돌려 기록하므로, 재생된 위치는 발마다 따로 굴렸을
+// 때와 비트 단위로 같다 — 답이 달라질 여지가 없다.
+export function buildBodyTrack(bodies, dt, every, steps) {
+  const view = cloneBodies(bodies), n = view.length
+  let frames = 1
+  for (let i = 0; i < steps; i++) if (i % every === (every >> 1)) frames++
+  const pos = new Float64Array(frames * n * 2)
+  const cache = makeStepCache()
+  for (let j = 0; j < n; j++) { pos[j * 2] = view[j].pos.x; pos[j * 2 + 1] = view[j].pos.y }
+  let f = 0
+  for (let i = 0; i < steps; i++) {
+    if (i % every !== (every >> 1)) continue
+    stepBodies(view, dt * every, cache)
+    const base = ++f * n * 2
+    for (let j = 0; j < n; j++) { pos[base + j * 2] = view[j].pos.x; pos[base + j * 2 + 1] = view[j].pos.y }
+  }
+  return { view, pos, n }
+}
+
+// f프레임(= 천체 스텝 f회 뒤)의 위치를 뷰에 되쓴다. 재생은 프레임 0부터:
+// trackFrame(t, 0) → 스텝 루프에서 bodyTurn마다 trackFrame(t, ++f).
+// ※ 트랙에는 **위치만** 있다 — 뷰의 vel은 빌드가 끝난 시점의 값으로 남아 있다.
+//   트랙 소비자(coarseContact·reachable)는 천체 속도를 읽지 않으므로 충분하고,
+//   속도를 읽어야 하는 예측(firstImpact의 상대 진입속도 등)은 트랙을 쓰면 안 된다.
+export function trackFrame(t, f) {
+  const base = f * t.n * 2, view = t.view, pos = t.pos
+  for (let j = 0; j < t.n; j++) {
+    const p = view[j].pos
+    p.x = pos[base + j * 2]; p.y = pos[base + j * 2 + 1]
+  }
+}
