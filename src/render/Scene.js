@@ -229,6 +229,80 @@ function glowTexture() {
   return t
 }
 
+// ─── 하늘 ───────────────────────────────────────────────────────
+// 배경은 **판보다 훨씬 뒤**에 있는 진짜 3차원 물체다. 그래서 카메라가 움직이면
+// 원근만으로 시차가 생긴다 — 별을 화면에 붙여 놓고 손으로 밀어 주는 가짜가
+// 아니다. 층을 z로 크게 벌려 두는 것(-900 ~ -34000)이 시차의 전부다:
+// 가까운 먼지는 성큼성큼 흐르고, 은하 원반은 거의 붙박여 있는다.
+//
+// 하늘은 매번 같아야 한다(시드 고정). 판은 날마다 달라지지만 하늘까지 흔들리면
+// 스크린샷끼리 비교가 안 되고, 무엇보다 "여기가 어디였지"가 사라진다.
+const skyRng = (seed) => {
+  let s = (seed * 2654435761 + 1013904223) >>> 0
+  return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296)
+}
+
+// 별 하나. 화면에서 2~4px밖에 안 되는 점이라 **심지가 단단해야** 한다 —
+// 예쁘게 퍼뜨리면 그 크기에서는 그냥 사라진다. 가운데를 꽉 채우고 바깥에만
+// 옅은 무리를 남긴다. 가장자리는 완전히 0이어야 가산 합성에서 네모가 안 보인다.
+function softDotTexture(size = 64) {
+  const c = document.createElement('canvas'); c.width = c.height = size
+  const g = c.getContext('2d')
+  const h = size / 2
+  const grd = g.createRadialGradient(h, h, 0, h, h, h)
+  grd.addColorStop(0, 'rgba(255,255,255,1)')
+  grd.addColorStop(0.30, 'rgba(255,255,255,.92)')
+  grd.addColorStop(0.52, 'rgba(255,255,255,.32)')
+  grd.addColorStop(0.78, 'rgba(255,255,255,.07)')
+  grd.addColorStop(1, 'rgba(255,255,255,0)')
+  g.fillStyle = grd; g.fillRect(0, 0, size, size)
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace
+  return t
+}
+
+// 성운 한 조각 — 부드러운 얼룩을 여러 겹 겹쳐 뭉게구름을 만든다.
+// 값비싼 노이즈 대신 반투명 원 수십 개면 충분하다: 어차피 화면에서 수천 px로
+// 늘어나 흐려지므로, 필요한 건 "가장자리가 균일하지 않다"는 것뿐이다.
+function nebulaTexture(seed = 1) {
+  const S = 256
+  const c = document.createElement('canvas'); c.width = c.height = S
+  const g = c.getContext('2d')
+  const rnd = skyRng(seed)
+  g.globalCompositeOperation = 'lighter'
+  for (let i = 0; i < 46; i++) {
+    // 중심 쪽에 몰아 둔다 — 가장자리까지 꽉 차면 사각형 경계가 드러난다
+    const a = rnd() * Math.PI * 2, d = Math.pow(rnd(), 0.7) * S * 0.3
+    const x = S / 2 + Math.cos(a) * d, y = S / 2 + Math.sin(a) * d
+    const r = S * (0.06 + rnd() * 0.22)
+    const alpha = 0.05 + rnd() * 0.10
+    const grd = g.createRadialGradient(x, y, 0, x, y, r)
+    grd.addColorStop(0, `rgba(255,255,255,${alpha.toFixed(3)})`)
+    grd.addColorStop(0.5, `rgba(255,255,255,${(alpha * 0.34).toFixed(3)})`)
+    grd.addColorStop(1, 'rgba(255,255,255,0)')
+    g.fillStyle = grd
+    g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill()
+  }
+  // 사각 경계를 확실히 지운다 — 큰 스프라이트에서는 이 한 겹이 전부다
+  g.globalCompositeOperation = 'destination-in'
+  const mask = g.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2)
+  mask.addColorStop(0, 'rgba(255,255,255,1)')
+  mask.addColorStop(0.62, 'rgba(255,255,255,.85)')
+  mask.addColorStop(1, 'rgba(255,255,255,0)')
+  g.fillStyle = mask; g.fillRect(0, 0, S, S)
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace
+  return t
+}
+
+// 별빛의 색 — 온도 순서(푸른 거성 → 흰 → 노랑 → 주황 왜성)로 섞는다.
+// 실제 하늘이 그렇듯 대부분은 흐릿한 흰빛이고, 눈에 띄는 색은 소수다.
+function starHue(u) {
+  if (u < 0.10) return [0.60, 0.55]        // 청백 거성 — 드물고 밝다
+  if (u < 0.30) return [0.56, 0.28]
+  if (u < 0.62) return [0.14, 0.10]        // 흰빛 — 대다수
+  if (u < 0.86) return [0.11, 0.42]        // 노랑
+  return [0.045, 0.60]                     // 주황 왜성
+}
+
 export class SceneView {
   constructor(el, game) {
     this.el = el; this.game = game
@@ -267,7 +341,7 @@ export class SceneView {
     this.texCache = new Map()
     this.circuitCache = new Map()   // 요새 표면의 회로 불빛 (팔레트 번호별)
 
-    this.buildStars()
+    this.buildSky()
     this.buildSun()
 
     this.parts = new Particles(this.scene)
@@ -354,38 +428,225 @@ export class SceneView {
     return Math.max(hitRadiusOf(b), minPx * 0.5 * this.rig.worldPerPx)
   }
 
-  // 별 배경 — 성계 "바깥"에만 뿌리면 정작 판 위가 텅 빈다.
-  // 원점을 포함한 원반 전체에 면적 균일로 깔고, 깊이를 3층으로 나눠 시차를 준다.
-  buildStars() {
+  // ─── 하늘 ─────────────────────────────────────────────────────
+  // 예전에는 같은 반경(11000)에 뿌린 점 세 층이 전부였다. z가 -2200~-7000으로
+  // 붙어 있어 시차가 2배 남짓밖에 안 났고, 그래서 "어두운 데 별이 박혀 있다"
+  // 이상으로는 안 읽혔다. 지금은 여섯 켜다:
+  //
+  //   -900   가까운 먼지 — 카메라를 조금만 움직여도 성큼성큼 흐른다
+  //   -2400  ┐
+  //   -5200  ┤ 앞·중간·뒤 별밭. 층마다 다른 속도로 흘러 깊이가 생긴다
+  //   -9800  ┘
+  //   -15000 성간 구름(성운) — 색이 여기서 나온다
+  //   -34000 은하 원반 — 나선팔·중심 팽대부. 거의 붙박여 있다
+  //
+  // 시차는 원근 그 자체다. 카메라(z ≈ +1600~4800)에서 가까운 먼지까지는
+  // 2500, 은하까지는 36000 — 13배가 넘게 벌어져 있으니 같은 팬에도 앞은
+  // 크게, 뒤는 거의 안 움직인다. 화면 좌표로 손대는 데는 한 군데도 없다.
+  //
+  // 판을 가리지 않는 것이 조건이다. 은하는 원반을 기울여 화면 **한쪽 구석**을
+  // 지나가게 두고(중심 팽대부는 판 밖), 성운은 불투명도를 0.2 아래로 눌러
+  // 놓았다. 배경이 눈에 띄는 순간 그건 배경이 아니다.
+  buildSky() {
+    this.sky = []
+    this.dotTex = softDotTexture()
+    this.buildStarLayers()
+    this.buildNebulae()
+    this.buildGalaxy()
+  }
+
+  // 층별 별밭 — 층마다 반경도 크기도 다르다. 뒤로 갈수록 촘촘하고 잘게.
+  //
+  // size는 **월드 단위**다(sizeAttenuation). 화면 px = size × scale ÷ 거리 이므로
+  // 층이 멀수록 같은 굵기를 내려면 size를 그만큼 키워야 한다 — 뒤 층에 40을
+  // 주면 1px로 뭉개져 사라진다. 아래 값은 층마다 보통 별이 2~3px, 밝은 별이
+  // 5~6px로 찍히도록 거리에 비례해 잡은 것이다.
+  buildStarLayers() {
     const layers = [
-      { n: 700, z: -2200, size: 20, op: 0.95 },
-      { n: 700, z: -4200, size: 26, op: 0.75 },
-      { n: 700, z: -7000, size: 34, op: 0.55 },
+      { n: 110, z: -900, r: 3000, size: 22, op: 0.55, tw: 0.30 },   // 가까운 먼지
+      { n: 700, z: -2400, r: 7000, size: 38, op: 1.0, tw: 0.16 },
+      { n: 820, z: -5200, r: 13000, size: 58, op: 0.88, tw: 0.11 },
+      { n: 950, z: -9800, r: 24000, size: 96, op: 0.72, tw: 0.07 },
     ]
     const c = new THREE.Color()
+    let seed = 7
     for (const L of layers) {
+      const rnd = skyRng(seed++)
       const pos = new Float32Array(L.n * 3), col = new Float32Array(L.n * 3)
+      const siz = new Float32Array(L.n)
       for (let i = 0; i < L.n; i++) {
         // sqrt 샘플링 = 원반 면적 균일. 중심(성계 위)에도 별이 깔린다
-        const a = Math.random() * Math.PI * 2
-        const r = Math.sqrt(Math.random()) * 11000
+        const a = rnd() * Math.PI * 2
+        const r = Math.sqrt(rnd()) * L.r
         pos[i * 3] = Math.cos(a) * r; pos[i * 3 + 1] = Math.sin(a) * r
-        pos[i * 3 + 2] = L.z - Math.random() * 600
-        const bright = Math.random() < 0.08 ? 0.95 : 0.4 + Math.random() * 0.4
-        c.setHSL(0.52 + Math.random() * 0.16, 0.3 + Math.random() * 0.4, bright)
+        pos[i * 3 + 2] = L.z - rnd() * L.r * 0.06
+        // 밝기는 멱분포에 가깝게 — 아주 밝은 몇 개가 하늘의 인상을 만든다
+        const u = rnd()
+        const bright = u < 0.05 ? 1.0 : u < 0.20 ? 0.74 : 0.40 + rnd() * 0.30
+        const [hue, sat] = starHue(rnd())
+        c.setHSL(hue, sat, bright)
         col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b
+        siz[i] = L.size * (0.6 + rnd() * (u < 0.05 ? 1.6 : 0.7))
       }
-      const geo = new THREE.BufferGeometry()
-      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3))
-      geo.setAttribute('color', new THREE.BufferAttribute(col, 3))
-      geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e6)
-      const stars = new THREE.Points(geo, new THREE.PointsMaterial({
-        size: L.size, sizeAttenuation: true, vertexColors: true,
-        transparent: true, opacity: L.op, depthWrite: false, depthTest: false,
+      this.addPoints(pos, col, siz, L.op, -12, L.tw)
+    }
+  }
+
+  // 성간 구름 — 하늘에 색을 넣는 유일한 물건. 청록·남보라·자홍 셋만 쓴다
+  // (판의 색과 부딪히지 않는 범위다). 크게, 흐리게, 드문드문.
+  buildNebulae() {
+    const rnd = skyRng(41)
+    const tex = [nebulaTexture(3), nebulaTexture(11), nebulaTexture(29)]
+    const tone = [0x2a4a8f, 0x175c6b, 0x4a2a6e, 0x1f3f7a, 0x5c2a55]
+    for (let i = 0; i < 9; i++) {
+      const a = rnd() * Math.PI * 2
+      const d = (0.35 + rnd() * 0.8) * 17000
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: tex[i % tex.length], color: tone[i % tone.length],
+        transparent: true, opacity: 0.10 + rnd() * 0.09,
+        depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending,
       }))
-      stars.frustumCulled = false
-      stars.renderOrder = -10
-      this.scene.add(stars)
+      s.position.set(Math.cos(a) * d, Math.sin(a) * d * 0.72, -15000 - rnd() * 5000)
+      s.scale.setScalar(9000 + rnd() * 13000)
+      s.renderOrder = -20
+      this.scene.add(s)
+      this.sky.push({ obj: s, base: s.material.opacity, tw: 0.05, ph: rnd() * 6.283 })
+    }
+  }
+
+  // 은하 원반 — 로그 나선 네 팔 + 중심 팽대부 + 헐로.
+  // 통째로 기울여(X축 62°) 원반이 **비스듬히 누워** 보이게 한다. 이 기울기가
+  // 없으면 아무리 팔을 잘 그려도 벽에 붙인 그림으로 읽힌다. 기울여 두면
+  // 가까운 쪽 팔과 먼 쪽 팔의 거리가 실제로 달라져서, 카메라가 움직일 때
+  // 원반 안에서도 시차가 생긴다.
+  buildGalaxy() {
+    const g = new THREE.Group()
+    const rnd = skyRng(97)
+    const ARMS = 4, SWEEP = Math.PI * 2.05, R0 = 2600, R1 = 34000
+    const N = 5200
+    const pos = new Float32Array(N * 3), col = new Float32Array(N * 3)
+    const siz = new Float32Array(N)
+    const c = new THREE.Color()
+    for (let i = 0; i < N; i++) {
+      const arm = i % ARMS
+      // t^0.6 — 중심 쪽이 촘촘하다(실제 은하가 그렇다)
+      const t = Math.pow(rnd(), 0.6)
+      const th = t * SWEEP + arm * (Math.PI * 2 / ARMS)
+      const r = R0 + t * (R1 - R0)
+      // 팔의 흐트러짐. 안쪽은 단단하고 바깥으로 갈수록 풀어진다.
+      const spread = 0.06 + t * 0.20
+      const jt = (rnd() + rnd() + rnd() - 1.5) * spread          // 대략 정규분포
+      const jr = (rnd() + rnd() - 1) * r * 0.16
+      const a = th + jt
+      const rr = r + jr
+      pos[i * 3] = Math.cos(a) * rr
+      pos[i * 3 + 1] = Math.sin(a) * rr
+      pos[i * 3 + 2] = (rnd() + rnd() - 1) * 900                 // 원반 두께
+      // 안쪽은 늙어서 노랗고 바깥 팔은 젊어서 푸르다
+      const u = rnd()
+      const [hue, sat] = t < 0.28 ? [0.10, 0.45] : starHue(u * 0.7)
+      c.setHSL(hue, sat, u < 0.05 ? 0.92 : 0.34 + rnd() * 0.28)
+      col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b
+      // 36000쯤 떨어져 있으므로 화면에서 1.5~3px이 되려면 이 정도가 필요하다
+      siz[i] = 150 + rnd() * (u < 0.05 ? 420 : 170)
+    }
+    g.add(this.makePoints(pos, col, siz, 0.78, -24))
+
+    // 헐로 — 원반 밖에 흩뿌려진 늙은 별. 원반의 경계를 흐려 준다.
+    const H = 1100
+    const hp = new Float32Array(H * 3), hc = new Float32Array(H * 3), hs = new Float32Array(H)
+    for (let i = 0; i < H; i++) {
+      const a = rnd() * Math.PI * 2
+      const r = Math.pow(rnd(), 0.5) * R1 * 1.25
+      hp[i * 3] = Math.cos(a) * r
+      hp[i * 3 + 1] = Math.sin(a) * r
+      hp[i * 3 + 2] = (rnd() + rnd() - 1) * R1 * 0.22
+      c.setHSL(0.09, 0.35, 0.22 + rnd() * 0.20)
+      hc[i * 3] = c.r; hc[i * 3 + 1] = c.g; hc[i * 3 + 2] = c.b
+      hs[i] = 140 + rnd() * 170
+    }
+    g.add(this.makePoints(hp, hc, hs, 0.5, -25))
+
+    // 팔의 성간 먼지 — 은하를 은하로 읽히게 하는 건 사실 **점 사이의 빛**이다.
+    // 점만 찍으면 아무리 나선을 잘 그려도 흩뿌린 모래로 보인다. 팔을 따라
+    // 흐린 얼룩을 앉혀 점들 사이를 메워 준다.
+    const haze = [nebulaTexture(5), nebulaTexture(17)]
+    for (let i = 0; i < 16; i++) {
+      const arm = i % ARMS
+      const t = 0.12 + (i / 16) * 0.88
+      const th = t * SWEEP + arm * (Math.PI * 2 / ARMS) + (rnd() - 0.5) * 0.16
+      const r = R0 + t * (R1 - R0)
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: haze[i % haze.length],
+        color: t < 0.3 ? 0xffc27a : (i % 3 ? 0x6f9bdd : 0x8d6fd0),
+        transparent: true, opacity: 0.13 + rnd() * 0.07,
+        depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending,
+      }))
+      s.position.set(Math.cos(th) * r, Math.sin(th) * r, 0)
+      s.scale.setScalar(7000 + t * 15000)
+      s.renderOrder = -25
+      g.add(s)
+    }
+
+    // 중심 팽대부 — 겹친 글로우 두 장.
+    for (const [sc, op, tint] of [[17000, 0.26, 0xffd9a2], [31000, 0.14, 0xdb9548]]) {
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: this.glowTex, color: tint, transparent: true, opacity: op,
+        depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending,
+      }))
+      s.scale.setScalar(sc); s.renderOrder = -26
+      g.add(s)
+    }
+
+    // 원반을 눕히고(64°) 팔이 화면을 비스듬히 가로지르도록 굴린다(-26°).
+    // 눕혀 두면 가까운 쪽 팔과 먼 쪽 팔의 거리가 실제로 달라져, 카메라가 움직일
+    // 때 **원반 안에서도** 시차가 난다 — 벽에 붙인 그림과 갈리는 지점이 여기다.
+    g.rotation.set(THREE.MathUtils.degToRad(64), 0, THREE.MathUtils.degToRad(-26))
+    // 중심 팽대부가 판 한가운데 앉으면 태양과 겹친다 — 왼쪽 위로 비껴 둔다.
+    // 팔은 화면 안까지 흘러들어오고 팽대부만 프레임 밖에 걸치는 자리다.
+    g.position.set(-13000, 14000, -34000)
+    this.scene.add(g)
+    this.galaxy = g
+  }
+
+  // 점구름 하나 만들기 — 별마다 크기가 다르므로 셰이더를 한 줄 손본다
+  // (PointsMaterial은 size가 재질 전체에 하나뿐이다).
+  makePoints(pos, col, siz, opacity, order) {
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3))
+    geo.setAttribute('aSize', new THREE.BufferAttribute(siz, 1))
+    geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e6)
+    const mat = new THREE.PointsMaterial({
+      size: 1, sizeAttenuation: true, vertexColors: true, map: this.dotTex,
+      transparent: true, opacity, depthWrite: false, depthTest: false,
+      blending: THREE.AdditiveBlending,
+    })
+    mat.onBeforeCompile = (sh) => {
+      sh.vertexShader = sh.vertexShader
+        .replace('void main() {', 'attribute float aSize;\nvoid main() {')
+        .replace('gl_PointSize = size;', 'gl_PointSize = aSize;')
+    }
+    const pts = new THREE.Points(geo, mat)
+    pts.frustumCulled = false
+    pts.renderOrder = order
+    return pts
+  }
+
+  addPoints(pos, col, siz, opacity, order, tw) {
+    const pts = this.makePoints(pos, col, siz, opacity, order)
+    this.scene.add(pts)
+    this.sky.push({ obj: pts, base: opacity, tw, ph: Math.random() * 6.283 })
+  }
+
+  // 반짝임 — 층마다 위상이 다른 아주 느린 맥동. 별 하나하나가 깜빡이는 게
+  // 아니라 하늘 전체가 미세하게 숨 쉰다. 층이 어긋나 있어서 규칙이 안 읽힌다.
+  stepSky(dt) {
+    if (!this.sky) return
+    this.skyT = (this.skyT ?? 0) + dt
+    for (const s of this.sky) {
+      if (!s.tw) continue
+      s.obj.material.opacity = s.base * (1 + Math.sin(this.skyT * 0.55 + s.ph) * s.tw)
     }
   }
 
@@ -415,6 +676,7 @@ export class SceneView {
     this.aim.bind(this.game.bodies, (b) => this.renderRadius(b))
     if (this.lastBodies !== this.game.bodies) this.resetStage()
     this.rig.update(dt)
+    this.stepSky(dt)
     this.boom.drain(this.game)
     // 떠오르는 "+1"은 실시간으로 움직인다 — 판이 멈춰 있어도(조준 모드) 끝까지
     // 올라가야 하고, 8배속에서도 같은 속도로 사라져야 읽힌다.

@@ -7,12 +7,14 @@ import { CFG, VIS, hitRadiusOf } from '../game/config.js'
 export class CameraRig {
   constructor(game, dom) {
     this.game = game; this.dom = dom
-    this.camera = new THREE.PerspectiveCamera(VIS.FOV, 1, 1, 60000)
+    this.camera = new THREE.PerspectiveCamera(VIS.FOV, 1, 1, VIS.SKY_FAR * 2)
     this.camera.up.set(0, 1, 0)
     this.center = new THREE.Vector2(0, 0)
     this.halfH = game.aMax * VIS.FULL_FIT
     this.auto = true          // 자동 프레이밍 (사용자가 만지면 해제)
-    this.shake = 0
+    this.shake = 0            // 남은 세기(px 진폭) — hit()가 채우고 update()가 뺀다
+    this.shakeT = 0           // 이번 충격이 시작된 뒤 흐른 시간(초)
+    this.shakeAx = 1; this.shakeAy = 0   // 이번 충격이 흔드는 축(단위벡터)
     this.aspect = 1
     this.pointers = new Map()
     this.pinch = null
@@ -269,7 +271,28 @@ export class CameraRig {
   }
 
   // ── 프레임 갱신 ─────────────────────────────────────────────
-  hit(strength) { this.shake = Math.min(VIS.SHAKE_MAX, this.shake + strength) }
+  // ── 화면 흔들림 ──
+  // 두 가지를 고쳤다.
+  //
+  // ① 세기의 단위. 예전에는 진폭을 **월드 좌표(GU)** 그대로 center에 더했다.
+  //    화면에서의 크기는 줌에 반비례하므로(worldPerPx) 같은 hit(14)라도 줌인
+  //    상태에서는 진폭이 몇 배로 뛰었다. 이제는 px로 재고 쓸 때 환산한다 —
+  //    어느 줌에서나 같은 크기로 흔들린다.
+  //
+  // ② 흔드는 결. 예전에는 매 프레임 Math.random()으로 튕겼다. 60Hz 백색잡음이라
+  //    **얇고 밝은 가산 리본(궤적)이 진폭만큼 번졌다** — 레이저가 나가는 순간
+  //    (hit(14)) 성계의 트레일이 통째로 두꺼워져 보인 것이 이것이다.
+  //    계측: 그 순간 리본 폭·줌·trailFlash는 전부 그대로였고(5.30px → 5.29px),
+  //    바뀌는 값은 shake 하나뿐이었다. 진폭 ±14px가 5.5px 리본에 얹히면
+  //    잔상 폭이 30px를 넘는다.
+  //    지금은 충격마다 축을 하나 정하고 그 축으로 감쇠 진동한다. 눈이 따라갈 수
+  //    있는 결이라 번지지 않고 "쿵" 하는 한 방으로 읽힌다.
+  hit(strength) {
+    this.shake = Math.min(VIS.SHAKE_MAX, this.shake + strength)
+    const a = Math.random() * Math.PI * 2
+    this.shakeAx = Math.cos(a); this.shakeAy = Math.sin(a)
+    this.shakeT = 0
+  }
 
   // 자동 프레이밍이 잠시 물고 있을 지점 (폭발 지점 등)
   focus(x, y, r = 220, t = 3) { this.focusPt = { x, y, r, t } }
@@ -307,15 +330,26 @@ export class CameraRig {
       this.center.y += (f.cy - this.center.y) * k
       this.halfH += (f.h - this.halfH) * k
     }
-    this.shake = Math.max(0, this.shake - this.shake * 6 * dt - 2 * dt)
-    const sx = this.shake ? (Math.random() - 0.5) * this.shake : 0
-    const sy = this.shake ? (Math.random() - 0.5) * this.shake : 0
+    // 감쇠 진동 — 진폭(px)은 빠르게 줄고, 그 위에 SHAKE_HZ의 흔들림이 얹힌다.
+    // 진폭을 월드로 환산해 쓰므로 줌과 무관하게 같은 크기로 보인다.
+    let sx = 0, sy = 0
+    if (this.shake > 0.05) {
+      this.shakeT += dt
+      this.shake = Math.max(0, this.shake - this.shake * 7 * dt - 2 * dt)
+      const s = Math.sin(this.shakeT * VIS.SHAKE_HZ * Math.PI * 2)
+        * Math.exp(-this.shakeT * 8) * this.shake * VIS.SHAKE_PX * this.worldPerPx
+      sx = this.shakeAx * s; sy = this.shakeAy * s
+    } else this.shake = 0
     const dist = this.halfH / Math.tan(VIS.FOV * Math.PI / 360)
     this.camera.aspect = this.aspect
     this.camera.position.set(this.center.x + sx, this.center.y + sy, dist)
     this.camera.lookAt(this.center.x + sx, this.center.y + sy, 0)
     this.camera.near = Math.max(1, dist * 0.02)
-    this.camera.far = dist * 4
+    // 원거리면은 **하늘까지** 덮어야 한다. 예전엔 dist*4였는데, 그러면 줌인할수록
+    // 같이 당겨져서 제일 뒤 별층이 잘려 나갔다(halfH 600이면 far 6252 < 별층 8563).
+    // 은하 원반은 z=-34000에 있으므로 아예 고정 여유를 얹는다.
+    // near/far 비가 커져도 2000:1 수준이라 24비트 깊이 버퍼에 무리가 없다.
+    this.camera.far = dist * 4 + VIS.SKY_FAR
     this.camera.updateProjectionMatrix()
   }
 }
