@@ -1065,6 +1065,14 @@ export class Game {
   // 태양 낙하는 그대로 파괴다(안쪽 벽은 없다 — 태양이 곧 포켓이다).
   // 바깥쪽은 추방 대신 **카이퍼 벨트 쿠션**이다: 박으면 폭발하고, 속력을
   // 그대로 유지한 채 반사각으로 판 안으로 되돌아온다. 잃는 공은 없다.
+  //
+  // 예외는 파편이다. 파편은 애초에 체력으로 안 죽는다(damage()가 debris를
+  // 걸러낸다) — 유일한 퇴장은 행성 대기권 소멸(physics.resolveBodyPairs)과
+  // 태양 낙하뿐이었다. 벨트에서마저 당구공처럼 튕겨 돌려보내면 어느 쪽에도
+  // 안 걸린 파편은 이번 판이 끝날 때까지 벨트를 무한히 왕복한다 — 이미
+  // 박살난 행성의 부스러기가 화면에는 거의 안 보이는 채로 벨트를 계속
+  // "들이받는" 것처럼 보이는 원인이었다. 대기권·태양과 같은 취급으로
+  // 맞춘다: 벨트에 닿으면 그 자리에서 조용히 소멸한다(폭발 연출 없음).
   bodyBounds() {
     for (const b of this.bodies) {
       if (!b.alive) continue
@@ -1077,6 +1085,8 @@ export class Game {
           return
         }
         this.killBody(b, 'sun', { shatterIt: false })
+      } else if (r >= this.beltR && b.type === 'debris') {
+        this.killBody(b, 'belt', { fx: false, shatterIt: false })
       } else if (r >= this.beltR) {
         const hit = beltBounce(b, this.beltR)
         if (!hit) continue
