@@ -6,8 +6,10 @@
     <title>PLANETPOOL</title>
     <link rel="stylesheet" href="./src/style.css" />
     <!-- three.js·Tone.js는 로컬 번들 사용: CDN이 막혀도 로딩이 멈추지 않는다.
-         오디오 파일은 한 개도 없다 — 효과음은 ZzFX, 음악은 Tone.js가 그 자리에서
-         계산해서 만든다(src/audio/). -->
+         오디오 파일은 한 개도 없다 — 효과음은 ZzFX가 그 자리에서 계산해서
+         만든다(src/audio/). 음악(Tone.js 관현악)은 현재 꺼져 있다 — 나중에
+         오디오 파일 기반 BGM으로 다시 켤 자리만 남겨 두었다(src/audio/index.js
+         의 MUSIC_ENABLED). -->
     <script type="importmap">{"imports":{"three":"./src/vendor/three.module.js","tone":"./src/vendor/tone.module.js"}}</script>
     <script>
       (function () {
