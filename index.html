@@ -5,8 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>PLANETPOOL</title>
     <link rel="stylesheet" href="./src/style.css" />
-    <!-- three.js는 로컬 번들 사용: CDN이 막혀도 로딩이 멈추지 않는다 -->
-    <script type="importmap">{"imports":{"three":"./src/vendor/three.module.js"}}</script>
+    <!-- three.js·Tone.js는 로컬 번들 사용: CDN이 막혀도 로딩이 멈추지 않는다.
+         오디오 파일은 한 개도 없다 — 효과음은 ZzFX, 음악은 Tone.js가 그 자리에서
+         계산해서 만든다(src/audio/). -->
+    <script type="importmap">{"imports":{"three":"./src/vendor/three.module.js","tone":"./src/vendor/tone.module.js"}}</script>
     <script>
       (function () {
         function fail(msg) {
