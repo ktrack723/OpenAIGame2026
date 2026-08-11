@@ -4,11 +4,11 @@ import { t as loc } from '../i18n/index.js'
 import { CFG } from '../game/config.js'
 import * as THREE from 'three'
 
-// 목표와 지구를 한눈에: **이름표 둘과, 화면 밖으로 나간 것들의 방향 화살표.**
-// "조르그 행성이 어딘지 모르겠다"를 없애는 게 이 파일의 유일한 목적이다.
+// 목표와 지구를 한눈에: **이름표(살아 있는 요새·모함 전부 + 지구)와,
+// 화면 밖으로 나간 것들의 방향 화살표.**
+// "조르그 행성이 어딘지 모르겠다"와 "저 요새 체력이 얼마나 남았는지 모르겠다"를
+// 없애는 게 이 파일의 유일한 목적이다.
 //
-// 이름표는 둘뿐이다(지금 물고 있는 표적 하나 + 지구). 요새가 여덟이면
-// 이름표도 여덟이 되어 판이 글자로 덮인다.
 // 화살표는 **살아 있는 위협 전부**(요새와 모함)에 하나씩 붙는다. 화면 밖에
 // 뭐가 몇 개 남았는지는 방향만 있으면 읽히고, 그게 이 게임에서 제일 자주
 // 필요한 정보다.
@@ -71,11 +71,12 @@ function arrowMesh(color) {
 export class Markers {
   constructor(scene) {
     this.scene = scene
-    this.targetLabel = null; this.earthLabel = null
+    this.earthLabel = null
     this.earthArrow = arrowMesh(EARTH_TONE)
     scene.add(this.earthArrow)
     this.foeArrows = new Map()   // 요새 id → 화살표 (살아 있는 요새 하나당 하나)
-    this.names = { target: null, earth: null }
+    this.foeLabels = new Map()   // 요새 id → 체력 이름표 (살아 있는 요새 하나당 하나)
+    this.earthName = null
     this.t = 0
   }
 
@@ -90,23 +91,38 @@ export class Markers {
     return a
   }
 
-  // 성계에서 사라진 요새의 화살표를 걷는다(부서졌거나 다음 판으로 넘어갔거나).
+  // 성계에서 사라진 요새의 화살표·이름표를 걷는다(부서졌거나 다음 판으로 넘어갔거나).
   reap(live) {
     for (const [id, a] of this.foeArrows) {
       if (live.has(id)) continue
       this.scene.remove(a); a.geometry.dispose(); a.material.dispose()
       this.foeArrows.delete(id)
     }
+    for (const [id, sp] of this.foeLabels) {
+      if (live.has(id)) continue
+      this.scene.remove(sp); sp.material.map.dispose(); sp.material.dispose()
+      this.foeLabels.delete(id)
+    }
   }
 
-  setLabel(key, text, color, bg) {
-    if (this.names[key] === text) return
-    this.names[key] = text
-    const old = key === 'target' ? this.targetLabel : this.earthLabel
-    if (old) { this.scene.remove(old); old.material.map.dispose(); old.material.dispose() }
-    const sp = labelSprite(text, color, bg)
+  // 요새 하나의 체력 이름표. 텍스트가 안 바뀌었으면 텍스처를 다시 굽지 않는다.
+  fortLabel(b, text, color, bg) {
+    let sp = this.foeLabels.get(b.id)
+    if (sp && sp.userData.text === text) return sp
+    if (sp) { this.scene.remove(sp); sp.material.map.dispose(); sp.material.dispose() }
+    sp = labelSprite(text, color, bg)
+    sp.userData.text = text
     this.scene.add(sp)
-    if (key === 'target') this.targetLabel = sp; else this.earthLabel = sp
+    this.foeLabels.set(b.id, sp)
+    return sp
+  }
+
+  setEarthLabel(text, color, bg) {
+    if (this.earthName === text) return
+    this.earthName = text
+    if (this.earthLabel) { this.scene.remove(this.earthLabel); this.earthLabel.material.map.dispose(); this.earthLabel.material.dispose() }
+    this.earthLabel = labelSprite(text, color, bg)
+    this.scene.add(this.earthLabel)
   }
 
   // 화면 밖이면 (HUD에 가리지 않는) 테두리에 화살표, 안이면 라벨을 천체 위에 띄운다
@@ -147,39 +163,39 @@ export class Markers {
 
   // 화면에서 통째로 걷는다 — 판이 열리는 순간과 예고편 도입부는 성계만 보인다.
   hide() {
-    for (const o of [this.targetLabel, this.earthLabel, this.earthArrow]) if (o) o.visible = false
+    for (const o of [this.earthLabel, this.earthArrow]) if (o) o.visible = false
     for (const a of this.foeArrows.values()) a.visible = false
+    for (const l of this.foeLabels.values()) l.visible = false
   }
 
   update(game, rig, dt, radiusOfRender) {
     this.t += dt
     if (game.bare) return this.hide()
-    for (const o of [this.targetLabel, this.earthLabel, this.earthArrow]) if (o) o.visible = true
-    const t = game.target, e = game.earth
+    if (this.earthLabel) this.earthLabel.visible = true
+    this.earthArrow.visible = true
+    const e = game.earth
     // ── 이름표는 **체력만** 말한다 ──
     // 예전에는 "☠ 표적 Zorg Mogul-1 · 체력 1/1 (남은 요새 2)"였다. 그 안에서
     // 매 순간 달라지는 값은 체력 하나뿐이고, 나머지는 화면이 이미 말하고 있다:
-    // 무엇인가는 해골·이름표 색이, 몇 기 남았는가는 작전 줄(0/2)이, 이름은
-    // 공을 짚으면 뜨는 정보창이 말한다. 판 위에 문장이 길게 누워 있으면 정작
-    // 그 밑의 공과 궤도가 안 보인다.
-    this.setLabel('target', loc('mark.target', {
-      hp: t.hp ?? CFG.PLANET_HP, hpMax: t.hpMax ?? CFG.PLANET_HP,
-    }), '#ffc9cf', 'rgba(58,10,17,.92)')
-    this.setLabel('earth', loc('mark.earth', {
+    // 무엇인가는 해골·이름표 색이, 이름은 공을 짚으면 뜨는 정보창이 말한다.
+    // 판 위에 문장이 길게 누워 있으면 정작 그 밑의 공과 궤도가 안 보인다.
+    this.setEarthLabel(loc('mark.earth', {
       hp: e.hp ?? CFG.PLANET_HP, hpMax: e.hpMax ?? CFG.PLANET_HP,
     }), '#bfdbfe', 'rgba(23,37,84,.92)')
 
-    // ── 화살표는 살아 있는 요새 전부 ──
-    // 이름표는 지금 물고 있는 하나뿐이지만, 화면 밖에 남은 요새가 몇 기이고
-    // 어느 쪽에 있는지는 전부 보여 준다. 아직 워프해 들어오지 않은 증원은
-    // 아직 성계에 없는 것이므로 세지 않는다(place가 걸러 낸다).
+    // ── 살아 있는 요새·모함은 전부 체력 이름표 + 화살표를 갖는다 ──
+    // 예전에는 지금 물고 있는 표적 하나만 이름표가 붙었다 — 화면에 요새가
+    // 여럿이면 나머지는 체력을 알 길이 없었다(화살표는 방향만 말한다).
+    // 아직 워프해 들어오지 않은 증원은 아직 성계에 없는 것이므로 세지
+    // 않는다(place가 걸러 낸다).
     const forts = game.bodies.filter(b => b.alive && game.isTarget(b))
     this.reap(new Set(forts.map(b => b.id)))
     for (const b of forts) {
-      this.place(b === t ? this.targetLabel : null, this.foeArrow(b), b, rig, radiusOfRender(b))
+      const label = this.fortLabel(b, loc('mark.target', {
+        hp: b.hp ?? CFG.PLANET_HP, hpMax: b.hpMax ?? CFG.PLANET_HP,
+      }), '#ffc9cf', 'rgba(58,10,17,.92)')
+      this.place(label, this.foeArrow(b), b, rig, radiusOfRender(b))
     }
     this.place(this.earthLabel, this.earthArrow, e, rig, radiusOfRender(e))
-    // 요새가 하나도 안 남았으면(=클리어) 이름표는 마지막 표적 자리에 그대로 둔다
-    if (!forts.includes(t) && this.targetLabel) this.targetLabel.visible = false
   }
 }
