@@ -58,6 +58,8 @@ export const zhHans = {
   'lcd.warn.eject': '↩ 冲到带边再弹回来（{v}>{esc}）',
 
   'goal.title': '歼灭佐格',
+  // 连接两句话的占位符 — 每一关只挑选实际生效的规则拼接（game.loadStage）。
+  'ui.join': '{a} {b}',
   'goal.rule': '清除所有佐格要塞（☠）。体力为 1 — 结结实实撞一次就完。',
   'goal.heavy': '这一波混着大型要塞（◇◇）— 体力为 2，要撞两次。',
   'goal.boost': '从这一波起要塞带着推进器 — 察觉到来弹就会侧闪，次数不限。要在它察觉前命中。',
@@ -77,7 +79,7 @@ export const zhHans = {
   'cat.void': '奇点', 'cat.void.mech': '吞噬 — 碰到的都会消失。无法摧毁',
   'cat.earth': '地球', 'cat.earth.mech': '家 — 被撞三次就结束',
   'cat.zorg': '佐格母舰', 'cat.zorg.mech': '无法摧毁 — 时限一到它就来',
-  'cat.hive': '佐格母舰', 'cat.hive.mech': '运送增援 — 打碎它就停',
+  'cat.hive': '佐格巢舰', 'cat.hive.mech': '运送增援 — 打碎它就停',
   'cat.debris': '碎片', 'cat.debris.mech': '让导弹提前引爆',
   'cat.hostile': '佐格要塞',
 
@@ -86,9 +88,9 @@ export const zhHans = {
   'role.battery.heavy': '◇◇ 大型 — 体力 2。一次撞不碎。',
   'role.battery.boost': '⇢ 推进器 — 察觉来弹几秒后侧闪，次数不限。只有太晚咬上的轨道才照样命中（近距离发射、最后一刻拐进来的弹）。',
   'role.battery.aim': '佐格要塞 — 这一击就能结束',
-  'role.hive': '佐格母舰',
+  'role.hive': '佐格巢舰',
   'role.hive.brief': '◎ 它不开火。它**在被打碎之前会不断把要塞运进来** — 你清出的空位又会被填满，所以它活着这一关就不会结束。它停在轨道外侧，一发很难够到。',
-  'role.hive.aim': '佐格母舰 — 体力 5，要撞好几次',
+  'role.hive.aim': '佐格巢舰 — 体力 5，要撞好几次',
   'role.armor': '金属行星',
   'role.armor.brief': '🔩 很重。核冲量只吃进 {pct}% — 会动，但只有一半。',
   'role.armor.aim': '金属行星 — 太重，被推的量只有 {pct}%',

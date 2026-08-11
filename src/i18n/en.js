@@ -58,6 +58,8 @@ export const en = {
   'lcd.warn.eject': '↩ Out to the belt and back ({v}>{esc})',
 
   'goal.title': 'WIPE OUT THE ZORG',
+  // Joins two clauses — the stage picks whichever rules actually apply (game.loadStage).
+  'ui.join': '{a} {b}',
   'goal.rule': 'Wipe out every Zorg fortress (☠). 1 HP — one solid impact ends it.',
   'goal.heavy': 'This wave includes heavy fortresses (◇◇) — 2 HP, so they take two impacts.',
   'goal.boost': 'From this wave the fortresses carry a thruster — they sidestep whenever they see a shot coming, with no limit. Hit them before they notice.',
