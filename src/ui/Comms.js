@@ -170,6 +170,9 @@ export class Comms {
   }
 
   // 요새 바로 위에 붙인다. 화면 밖으로 새면 가장자리에서 잡아 둔다.
+  // 요새가 화면 아래쪽에 있으면 클램프가 하단 관측 바(.obsbar) 위에 얹혀
+  // 겹칠 수 있으므로, 떠 있는 관측 바의 실제 위치를 읽어 그 위로는 못
+  // 내려가게 막는다(Ground.place()와 같은 이유).
   place() {
     const b = this.body
     if (!b) return
@@ -177,8 +180,11 @@ export class Comms {
     // 요새 자신의 이름표(표적 · 체력 …)가 바로 위에 붙으므로 그것까지 넘겨 띄운다
     const lift = hitRadiusOf(b) / Math.max(1e-6, this.view.rig.worldPerPx) + 62
     const w = this.el.offsetWidth || 300, h = this.el.offsetHeight || 84
+    const bar = document.querySelector('.obsbar')
+    const barTop = (bar && !bar.hidden) ? bar.getBoundingClientRect().top : innerHeight
+    const maxY = Math.min(innerHeight - h - 10, barTop - h - 10)
     const x = Math.max(10, Math.min(innerWidth - w - 10, s.x - w / 2))
-    const y = Math.max(10, Math.min(innerHeight - h - 10, s.y - lift - h))
+    const y = Math.max(10, Math.min(maxY, s.y - lift - h))
     this.el.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`
   }
 

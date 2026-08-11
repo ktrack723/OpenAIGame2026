@@ -58,6 +58,8 @@ export const zhHant = {
   'lcd.warn.eject': '↩ 衝到帶邊再彈回來（{v}>{esc}）',
 
   'goal.title': '殲滅佐格',
+  // 連接兩句話的佔位符 — 每一關只挑選實際生效的規則拼接（game.loadStage）。
+  'ui.join': '{a} {b}',
   'goal.rule': '清除所有佐格要塞（☠）。體力為 1 — 結結實實撞一次就完。',
   'goal.heavy': '這一波混著大型要塞（◇◇）— 體力為 2，要撞兩次。',
   'goal.boost': '從這一波起要塞帶著推進器 — 察覺到來彈就會側閃，次數不限。要在牠察覺前命中。',
@@ -77,7 +79,7 @@ export const zhHant = {
   'cat.void': '奇點', 'cat.void.mech': '吞噬 — 碰到的都會消失。無法摧毀',
   'cat.earth': '地球', 'cat.earth.mech': '家 — 被撞三次就結束',
   'cat.zorg': '佐格母艦', 'cat.zorg.mech': '無法摧毀 — 時限一到它就來',
-  'cat.hive': '佐格母艦', 'cat.hive.mech': '運送增援 — 打碎它就停',
+  'cat.hive': '佐格巢艦', 'cat.hive.mech': '運送增援 — 打碎它就停',
   'cat.debris': '碎片', 'cat.debris.mech': '讓飛彈提前引爆',
   'cat.hostile': '佐格要塞',
 
@@ -86,9 +88,9 @@ export const zhHant = {
   'role.battery.heavy': '◇◇ 大型 — 體力 2。一次撞不碎。',
   'role.battery.boost': '⇢ 推進器 — 察覺來彈幾秒後側閃，次數不限。只有太晚咬上的軌道才照樣命中（近距離發射、最後一刻拐進來的彈）。',
   'role.battery.aim': '佐格要塞 — 這一擊就能結束',
-  'role.hive': '佐格母艦',
+  'role.hive': '佐格巢艦',
   'role.hive.brief': '◎ 它不開火。它**在被打碎之前會不斷把要塞運進來** — 你清出的空位又會被填滿，所以它活著這一關就不會結束。它停在軌道外側，一發很難夠到。',
-  'role.hive.aim': '佐格母艦 — 體力 5，要撞好幾次',
+  'role.hive.aim': '佐格巢艦 — 體力 5，要撞好幾次',
   'role.armor': '金屬行星',
   'role.armor.brief': '🔩 很重。核衝量只吃進 {pct}% — 會動，但只有一半。',
   'role.armor.aim': '金屬行星 — 太重，被推的量只有 {pct}%',

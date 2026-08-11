@@ -211,13 +211,20 @@ export class Ground {
   }
 
   // 지구 **아래**에 붙인다. 조르그 창이 요새 위에 붙으므로 둘이 안 겹친다.
+  // 다만 관측 바(.obsbar)는 화면 하단에 고정으로 떠 있고, 이 창이 뜨는 조건
+  // (observe 모드)과 겹치는 경우가 잦다 — 지구가 화면 아래쪽에 있으면 클램프가
+  // 그 바로 위 대신 바 위에 얹혀 버린다. 떠 있는 관측 바의 실제 위치를 읽어
+  // 그 위로는 못 내려가게 막는다.
   place() {
     const g = this.game, rig = this.view.rig
     const s = rig.worldToScreen(g.earth.pos.x, g.earth.pos.y)
     const drop = hitRadiusOf(g.earth) / Math.max(1e-6, rig.worldPerPx) + 46
     const w = this.el.offsetWidth || 300, h = this.el.offsetHeight || 84
+    const bar = document.querySelector('.obsbar')
+    const barTop = (bar && !bar.hidden) ? bar.getBoundingClientRect().top : innerHeight
+    const maxY = Math.min(innerHeight - h - 10, barTop - h - 10)
     const x = Math.max(10, Math.min(innerWidth - w - 10, s.x - w / 2))
-    const y = Math.max(10, Math.min(innerHeight - h - 10, s.y + drop))
+    const y = Math.max(10, Math.min(maxY, s.y + drop))
     this.el.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`
   }
 
