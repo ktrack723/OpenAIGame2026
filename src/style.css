@@ -11,6 +11,10 @@
 html,body,#app{margin:0;width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--ink);
   font-family:Inter,system-ui,Apple SD Gothic Neo,Malgun Gothic,sans-serif;touch-action:none}
 canvas{display:block;position:fixed;inset:0;touch-action:none}
+/* 조준 손잡이(발사대) 위의 커서. 손가락에는 커서가 없으므로 이건 데스크톱
+   전용 신호고, 화면 쪽 신호(고리가 커진다)는 양쪽 모두에 뜬다. */
+canvas.grab{cursor:grab}
+canvas.grabbing{cursor:grabbing}
 
 /* ── 메인 패널 ── */
 .hud{position:fixed;left:max(12px,env(safe-area-inset-left));top:max(12px,env(safe-area-inset-top));

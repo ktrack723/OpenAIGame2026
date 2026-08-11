@@ -17,6 +17,9 @@ export class CameraRig {
     this.pointers = new Map()
     this.pinch = null
     this.dragged = false
+    // 이 손가락을 먼저 가져갈 사람 — 조준 드래그(AimPointer)가 여기에 앉는다.
+    // 등록 순서로 정하지 않고 리그가 직접 물어보는 이유는 아래 pointerdown 참조.
+    this.grab = null
     this.inset = { l: 0, r: 0, t: 0, b: 0 }       // 프레이밍용(상한을 건 값)
     this.insetFull = { l: 0, r: 0, t: 0, b: 0 }   // 실제로 가려진 영역(px)
     this.hud = null
@@ -216,6 +219,13 @@ export class CameraRig {
 
     el.addEventListener('pointerdown', (e) => {
       if (this.locked) return
+      // 조준이 이 손가락을 먼저 가져갈 수 있다(발사대를 짚었을 때). 가져갔으면
+      // 카메라는 그 손가락을 **아예 못 본 것으로** 친다 — pointers에 넣지 않으니
+      // 패닝도, 두 손가락 핀치 계산도 이 손가락을 세지 않는다.
+      // 순서를 이벤트 등록 순서에 맡기지 않는 이유가 여기 있다: 나중에 등록한
+      // 쪽이 나중에 불리므로, 조준이 자기 차례를 받았을 때는 이미 카메라가
+      // 패닝을 시작한 뒤가 된다(끌기 시작한 첫 몇 px이 판을 흔든다).
+      if (this.grab?.(e)) return
       el.setPointerCapture?.(e.pointerId)
       this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
       this.dragged = false

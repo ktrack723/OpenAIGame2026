@@ -275,7 +275,10 @@ export class SceneView {
     this.belt = new Belt(this.scene)          // 성계 쿠션 — 여기서 튕긴다
     this.icons = new Icons(this.scene)        // 카테고리 배지 + 적대(해골) 표식
 
-    // 발사대 마커 — 미사일이 지구가 아니라 여기서 나간다는 걸 못 박는다
+    // 발사대 마커 — 미사일이 지구가 아니라 여기서 나간다는 걸 못 박는다.
+    // **잡는 물건이기도 하다**(AimPointer): 짚고 끌면 조준선이 손끝을 따라온다.
+    // 손이 닿아 있는 동안 이 고리가 커지는 게 그 사실을 말하는 유일한 신호다 —
+    // 손가락으로 하는 화면에는 커서도, 툴팁도, 키보드 힌트도 없다.
     this.pad = new THREE.Mesh(new THREE.RingGeometry(0.62, 1, 24), new THREE.MeshBasicMaterial({
       color: 0x22d3ee, transparent: true, opacity: 0.9, depthTest: false, depthWrite: false, side: THREE.DoubleSide,
     }))
@@ -422,8 +425,10 @@ export class SceneView {
     this.pad.visible = this.game.canAim && !this.game.bare
     if (this.pad.visible) {
       const p = this.game.launchPos()
+      const grab = this.game.aimGrab   // null | 'hover' | 'drag'
       this.pad.position.set(p.x, p.y, 4)
-      this.pad.scale.setScalar(Math.max(6, 11 * this.rig.worldPerPx))
+      this.pad.scale.setScalar(Math.max(6, 11 * this.rig.worldPerPx)
+        * (grab === 'drag' ? 1.5 : grab === 'hover' ? 1.22 : 1))
     }
     const uScale = (innerHeight * this.renderer.getPixelRatio()) / (2 * Math.tan(VIS.FOV * Math.PI / 360))
     this.parts.update(dt, uScale)
@@ -1003,10 +1008,28 @@ export class SceneView {
     // 조준선 + 큐 예측 (§14.3 개정)
     if (g.canAim && !g.bare) {
       const p = g.launchPos()
-      this.ribbon([g.earth.pos, p], 2, 0x3b82f6, { fade: false, opacity: 0.35, z: -3, tailWidth: 1, depth: true })
+      // 조준선(지구 → 발사대). 손이 손잡이에 닿아 있는 동안에는 굵고 밝게 —
+      // 지금 무엇을 쥐고 있는지가 이 선 하나로 읽혀야 한다.
+      const grab = g.aimGrab
+      this.ribbon([g.earth.pos, p], grab ? 3.2 : 2, 0x3b82f6,
+        { fade: false, opacity: grab ? 0.75 : 0.35, z: -3, tailWidth: 1, depth: true })
+      // 발사 고리 — 손잡이가 도는 원이자 **잡히는 자리 그 자체**다(AimPointer는
+      // 이 원 둘레를 판정면으로 쓴다). 그리는 원과 잡히는 원이 같아야 거짓말이
+      // 아니다. 손이 닿아 있는 동안에만 뜬다 — 평소에도 떠 있으면 궤도선과
+      // 섞여서 지구가 저 원을 도는 걸로 읽힌다.
+      if (grab) {
+        const e = g.earth.pos, R = CFG.LAUNCH_OFFSET, ring = []
+        for (let i = 0; i <= 72; i++) {
+          const a = i / 72 * Math.PI * 2
+          ring.push({ x: e.x + Math.cos(a) * R, y: e.y + Math.sin(a) * R })
+        }
+        this.ribbon(ring, 1.4, 0x3b82f6, { fade: false, opacity: 0.28, z: -3, tailWidth: 1, depth: true })
+      }
       const pred = g.predictPath()
       if (pred.pts.length > 1) {
-        this.ribbon(pred.pts, 2.6, PRED_TONE[pred.outcome] ?? 0x67e8f9, { fade: false, opacity: 0.9, z: 0, tailWidth: 1 })
+        // 예측선도 잡는 물건이다(AimPointer) — 지구가 패널 뒤로 들어가는 화면에서는
+        // 이 선이 유일하게 트인 손잡이다. 손이 닿으면 여기도 같이 굵어진다.
+        this.ribbon(pred.pts, grab ? 3.4 : 2.6, PRED_TONE[pred.outcome] ?? 0x67e8f9, { fade: false, opacity: 0.9, z: 0, tailWidth: 1 })
         // 리드선 — "지금 저기 있는 저 공"과 "맞는 순간 여기 와 있을 자리"를 잇는다
         if (pred.hit) {
           const now = g.bodies.find(b => b.id === pred.hit.id)
