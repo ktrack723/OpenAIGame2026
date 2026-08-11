@@ -1,7 +1,7 @@
 import { Rng } from '../core/random.js'
-import { CFG, aMaxOf, beltRadius, hitRadiusOf, nukeDv, radiusOf } from './config.js'
+import { CFG, aCeilFor, aFloorFor, aMaxOf, beltRadius, hitRadiusFor, hitRadiusOf, radiusOf } from './config.js'
 import { makeBody } from './body.js'
-import { TYPE_MU_MUL } from './roles.js'
+import { TYPE_MU_MUL, effDv } from './roles.js'
 import { buildBodyTrack, segHitsCircle, stepMissile, trackFrame } from './physics.js'
 import { buildSolarSystem, elementsToState, pickBiome, stablePresim } from './stage.js'
 
@@ -48,36 +48,56 @@ export function createSystem(seed) {
 // rNew — 새로 놓을 공의 **실제** 반지름. 질량에서 뽑지 않고 받아 쓴다:
 // 대형 요새는 체력만큼 덩치도 키워 놓았으므로(FORT_HEAVY_R) radiusOf(mu)로
 // 다시 계산하면 실제보다 작은 공으로 자리를 잡아, 이웃 궤도에 너무 붙는다.
+
+// 워프인 궤도의 이심률 폭. 아래의 벽(근점·원점) 계산이 이 상한을 그대로 쓰므로
+// 상수로 뺐다 — 예전에는 뽑는 자리에 0.01+0.06이 박혀 있고 벽 쪽에는 1.08이라는
+// 마법수가 따로 있어서, 한쪽만 고치면 조용히 어긋났다.
+const WARP_E_MIN = 0.01, WARP_E_MAX = 0.07
 function freeOrbit(rng, bodies, aMax, rNew, nearBand = 0, band = null) {
   const live = bodies.filter(b => b.alive && b.type !== 'debris')
-  const radii = live.map(b => Math.hypot(b.pos.x, b.pos.y))
-  // 이웃 후보 = **실제로 밀 수 있는 공**. 두 가지를 뺀다:
+  const hitNew = hitRadiusFor(rNew)
+  // 이웃 하나하나에 대해 "궤도 반경이 이만큼은 벌어져야 한다"를 미리 재 둔다.
+  // 예전 규칙은 `26 + rNew × 2.5` — **새로 놓는 공의 크기만** 봤다. 그래서
+  // 목성(판정 원 144 GU) 바로 옆 52 GU에 요새를 놓는 수가 통과했고, 그 요새는
+  // 플레이어가 손대기도 전에 목성이 쓸고 지나갔다.
+  // 그렇다고 판정 원 합을 그대로 요구하면 지구 궤도 대역이 통째로 막힌다
+  // (계측: 대역 738 GU 중 빈 자리가 31 GU) — 안쪽 판은 원래 그만큼 빽빽하다.
+  // 그래서 **큰 이웃일 때만** 조인다: 판정 원 합의 0.6배와 예전 값 중 큰 쪽.
+  // 목성·토성·모함처럼 판정 원이 100 GU를 넘는 것들만 실제로 걸린다.
+  const slots = live.map(b => {
+    const r = Math.hypot(b.pos.x, b.pos.y)
+    return { r, sep: Math.max(26 + rNew * 2.5, (hitNew + hitRadiusOf(b)) * 0.6) }
+  })
+  // 이웃 후보 = **실제로 밀 수 있는 공**. 세 가지를 뺀다:
   //   · 지구 — 치면 게임 오버라 큐볼이 아니다
-  //   · 너무 무거운 공 — 목성(μ950)·토성(μ746)은 최대 작약으로도 Δv가 7~8이라
+  //   · 너무 무거운 공 — 목성·토성은 최대 작약으로도 Δv가 15~19라
   //     "옆에 있다"가 곧 "칠 수 있다"가 되지 못한다(계측: 토성만 옆에 둔 판은
   //     240수 중 1수만 요새에 닿았고, 가벼운 공이 옆에 있는 판은 6수였다).
+  //   · **안 밀리는 공** — 특이점(Δv 0)과 금속(Δv 절반)은 μ만 봐서는 안 걸러진다.
+  //     그래서 nukeDv가 아니라 effDv로 묻는다(roles.js). 예전에는 특이점 옆에
+  //     요새를 세워 놓고 "밀 수 있는 공 옆"이라고 기록했다.
   const cueRadii = live
-    .filter(b => !b.isEarth && nukeDv(CFG.YIELD_MAX, b.mu) >= CFG.FORT_CUE_MIN_DV)
+    .filter(b => !b.isEarth && effDv(b, CFG.YIELD_MAX) >= CFG.FORT_CUE_MIN_DV)
     .map(b => Math.hypot(b.pos.x, b.pos.y))
-  // ── 카이퍼 벨트 안쪽으로 못 박는다 ──────────────────────────
+  // ── 판의 두 벽 안쪽으로 못 박는다 ──────────────────────────
   // 벨트는 장식이 아니라 **판의 벽**이다(physics.beltBounce). 그 바깥은 판 밖이고,
   // 거기 워프해 들어온 적은 첫 프레임부터 벽에 튕기며 굴러 들어온다.
   // 요새 대역은 **지구의 지금 반경**에서 파생되는데(fortBand), 지구는 핵 폭풍에
   // 밀려 바깥으로 나갈 수 있다 — 그러면 대역 상한이 벨트를 넘어선다.
   // (계측: 지구를 1500 GU 밀어낸 판에서 증원 180기 중 2기가 벨트 밖에 떨어졌다.)
-  // 이심률이 0.07까지 붙으므로 **원점(遠點)** 기준으로 자른다.
-  const aCap = (beltRadius(aMax) - CFG.BELT_THICK) / 1.08
-  const aHi = Math.min(band ? band[1] : aMax * 0.95, aCap)
+  // 안쪽 벽도 같은 이유로 필요하다: 근점이 코로나 안이면 워프하자마자 태양행이다.
+  // 둘 다 config의 같은 식을 쓴다 — 태양계를 까는 쪽(stage.js)과 답이 갈리면 안 된다.
+  const aCap = aCeilFor(aMax, WARP_E_MAX)
+  const aFloor = aFloorFor(WARP_E_MAX)
+  const aHi = Math.max(aFloor, Math.min(band ? band[1] : aMax * 0.95, aCap))
   // band = [lo, hi] 가 주어지면 그 반경대 안에서만 자리를 찾는다
-  const aLo = Math.min(band ? band[0] : CFG.A_MIN * 1.15, aHi * 0.92)
+  const aLo = Math.max(aFloor, Math.min(band ? band[0] : CFG.A_MIN * 1.15, aHi * 0.92))
+  const rWall = beltRadius(aMax) - CFG.BELT_THICK
   for (let tries = 0; tries < 240; tries++) {
-    // 안쪽 절반은 태양에 너무 가깝고 바깥은 벨트라 [1.15 A_MIN, 0.95 aMax]
     const a = aLo + rng.next() * Math.max(1, aHi - aLo)
     // 궤도 반경이 기존 공들과 최소 이만큼은 벌어져야 서로 안 스친다.
-    // 공이 스무 개까지 늘어난 지금 예전의 고정 90 GU로는 빈 궤도가 아예 없다 —
-    // 새로 오는 공의 크기에 비례한 값으로 바꿔 촘촘한 성계에도 끼워 넣는다.
     let ok = true
-    for (const r of radii) if (Math.abs(a - r) < 26 + rNew * 2.5) { ok = false; break }
+    for (const s of slots) if (Math.abs(a - s.r) < s.sep) { ok = false; break }
     if (!ok) continue
     // 옆자리 요구 — 밀어서 닿을 수 있는 공이 하나라도 있어야 한다
     if (nearBand > 0) {
@@ -85,18 +105,20 @@ function freeOrbit(rng, bodies, aMax, rNew, nearBand = 0, band = null) {
       for (const r of cueRadii) near = Math.min(near, Math.abs(a - r))
       if (near > nearBand) continue
     }
-    const e = 0.01 + rng.next() * 0.06
+    const e = WARP_E_MIN + rng.next() * (WARP_E_MAX - WARP_E_MIN)
     const w = rng.range(0, Math.PI * 2)
     for (let k = 0; k < 24; k++) {
       const nu = rng.range(0, Math.PI * 2)
       const st = elementsToState(a, e, w, nu)
       // 원점 기준으로 잘랐어도 여기서 한 번 더 본다 — 벽 밖은 판 밖이다
-      if (Math.hypot(st.pos.x, st.pos.y) > beltRadius(aMax) - CFG.BELT_THICK) continue
+      if (Math.hypot(st.pos.x, st.pos.y) > rWall) continue
       let clear = true
       for (const b of live) {
         const d = Math.hypot(st.pos.x - b.pos.x, st.pos.y - b.pos.y)
-        // 지구 근처에 떨어뜨리면 첫 수도 두기 전에 지구가 날아간다
-        const need = (b.isEarth ? 5 : 2.6) * (hitRadiusOf(b) + rNew * CFG.HIT_R)
+        // 지구 근처에 떨어뜨리면 첫 수도 두기 전에 지구가 날아간다.
+        // ※ hitRadiusFor를 쓴다 — 예전에는 rNew × HIT_R로 직접 곱해 MIN_HIT_R
+        //   바닥값을 빠뜨렸고, 작은 요새일수록 이웃에 바짝 붙어 워프했다.
+        const need = (b.isEarth ? 5 : 2.6) * (hitRadiusOf(b) + hitNew)
         if (d < need) { clear = false; break }
       }
       if (clear) return { a, e, w, nu, ...st }
@@ -129,8 +151,20 @@ const PROBE_BODY_EVERY = 4
 // 못 밀므로 천체 궤적도 전부 같다. 프로브마다 판을 복제해 다시 적분하는 대신
 // 트랙 한 번을 굴려 두고 48번 재생한다(physics.buildBodyTrack — 비트 단위 동일).
 // export는 검증 하네스가 전/후 동치를 확인하는 데 쓴다.
+//
+// ── 지평은 표적까지의 거리를 따라간다 ──
+// 40초 고정은 요새가 전부 지구 궤도 언저리에 있을 때(거리 300~900 GU) 잡은
+// 값이다. 바깥 대역(FORT_OUTER_BAND)에 서는 요새는 1500 GU 밖이라, 프로브가
+// 40초 안에는 **닿을 수 있는 궤적도 다 못 날았다** — 그러면 이 검사는 "못 맞힌다"가
+// 아니라 "안 봤다"를 돌려주고, 바깥 요새는 세 번 다 퇴짜를 맞은 뒤 검사를
+// 건너뛴 마지막 시도로만 들어온다(= 사실상 검사가 없는 것과 같다).
+// 프로브 속도가 34~50 GU/s이므로 직선 거리의 1.8배쯤을 날 시간을 준다.
+// 상한은 미사일 수명 — 그보다 오래 나는 탄은 어차피 없다.
+const probeHorizon = (earth, target) =>
+  Math.min(CFG.MISSILE_TTL, Math.max(40,
+    1.8 * Math.hypot(target.pos.x - earth.pos.x, target.pos.y - earth.pos.y) / 50))
 export function reachable(bodies, earth, target, aMax) {
-  const dt = 1 / 25, steps = Math.round(40 / dt)
+  const dt = 1 / 25, steps = Math.round(probeHorizon(earth, target) / dt)
   const tIdx = bodies.indexOf(target)
   if (tIdx < 0) return false
   const rMax = beltRadius(aMax), rMax2 = rMax * rMax
@@ -165,7 +199,7 @@ export function reachable(bodies, earth, target, aMax) {
 }
 
 // ── 워프인 한 기 ────────────────────────────────────────────────
-// 요새를 놓을 반경대 — **지구 궤도 언저리**로 못 박는다.
+// 요새를 놓을 반경대 — 기본은 **지구 궤도 언저리**다.
 //
 // 왜: 미사일 사거리는 유한하고(속도 26~56 × TTL 52초), 그 사이에 행성이
 // 열댓 개나 껴 있어서 먼 표적은 사실상 못 맞힌다. 플레이테스트에서 요새에
@@ -176,6 +210,14 @@ const fortBand = (earth) => {
   const rE = Math.hypot(earth.pos.x, earth.pos.y)
   return [Math.max(CFG.A_MIN * 1.2, rE * CFG.FORT_BAND_LO), rE * CFG.FORT_BAND_HI]
 }
+// …다만 **전부** 거기 두면 조르그는 언제나 태양 근처에서만 나타난다. 판은
+// 벨트까지 깔려 있는데 싸움은 늘 안쪽 3분의 1에서만 벌어졌고, 목성 바깥의
+// 열 개 남짓한 공은 한 판 내내 배경이었다. 그래서 일부는 바깥에 세운다
+// (CFG.FORT_OUTER_* — 근거는 거기 주석에).
+const fortOuterBand = (earth) => {
+  const rE = Math.hypot(earth.pos.x, earth.pos.y)
+  return [rE * CFG.FORT_OUTER_BAND[0], rE * CFG.FORT_OUTER_BAND[1]]
+}
 
 function warpBody(rng, bodies, aMax, spec) {
   const type = spec.type ?? pickBiome(rng, 0.5)
@@ -183,11 +225,22 @@ function warpBody(rng, bodies, aMax, spec) {
   // 덩치는 질량에서 오되, 대형 요새는 거기에 한 겹 더 얹는다(rMul).
   // **체력이 곧 크기**여야 "저건 두 방짜리"가 한눈에 읽힌다.
   const radius = radiusOf(mu) * (spec.rMul ?? 1)
-  // 요새는 ① 지구 궤도 대역 안에서 ② 밀 수 있는 공 옆자리에 놓는다.
-  // 못 찾으면 제약을 하나씩 풀어 재시도 — 요새를 아예 안 보내는 것보다는 낫다.
+  const find = (zone, near) => zone ? freeOrbit(rng, bodies, aMax, radius, near ? zone.near : 0, zone.band) : null
+  // 요새는 ① 제 대역 안에서 ② 밀 수 있는 공 옆자리에 놓는다.
+  // 못 찾으면 제약을 푸는데, **푸는 순서가 곧 규칙**이다 — 대역보다 옆자리가 먼저다.
+  // 밀 수 있는 공이 하나도 없는 자리에 선 요새는 안쪽이든 바깥이든 플레이어가
+  // 손댈 수 없는 표적이고(플레이테스트: 1스테이지 810수 중 요새에 피해를 주는
+  // 수가 0개였던 원인이 정확히 이것이다), 그건 "멀어서 어렵다"가 아니라
+  // "이 판에는 답이 없다"이다. 반면 안쪽에 설 자리가 없어 바깥에 서는 것은
+  // 여전히 성립하는 판이다.
+  //   ① 제 대역 + 옆자리  ② 반대 대역 + 옆자리  ③ 제 대역만  ④ 안팎을 합친 대역
+  // ④까지가 "지구가 손댈 수 있는 거리"다. 예전에는 여기서 대역을 통째로 놓아
+  // 성계 전체를 뒤졌고, 그래서 후반 판의 요새가 지구 궤도의 4.2배 밖에 앉는
+  // 일이 있었다(계측: 6스테이지에서 180기 중 18기).
+  // ※ 옆자리 폭은 대역이 정한다(zone.near): 바깥은 궤도가 성겨서 안쪽
+  //   기준(150)을 그대로 쓰면 통과하는 자리가 아예 없다.
   const orb = (spec.role === 'battery'
-    ? freeOrbit(rng, bodies, aMax, radius, CFG.FORT_NEAR_BAND, spec.band)
-      ?? freeOrbit(rng, bodies, aMax, radius, 0, spec.band)
+    ? find(spec.zone, true) ?? find(spec.alt, true) ?? find(spec.zone, false) ?? find(spec.span, false)
     : null)
     ?? freeOrbit(rng, bodies, aMax, radius)
   if (!orb) return null
@@ -229,13 +282,23 @@ const muFor = (rng, ante) => 120 + rng.next() * (220 + 60 * ante)
 const fortMuFor = (rng, ante) => CFG.FORT_MU_MIN + rng.next() * (CFG.FORT_MU_SPAN + 14 * ante)
 const zorgName = (rng, tag) => `Zorg ${ZORG_NAMES[rng.int(0, ZORG_NAMES.length - 1)]}-${tag}`
 
-function fortSpec(rng, earth, ante, stageIdx, tag, heavy) {
+// outer = 바깥 대역에 세우는가. 부르는 쪽이 정한다 — 판이 열릴 때(reinforce)는
+// **마릿수로** 섞어 안팎이 반드시 함께 오게 하고, 모함이 보충으로 보낼 때는
+// 같은 비율로 추첨한다. 규칙 자체(대역·옆자리 폭)는 여기 한 곳에만 둔다.
+const canSpawnOuter = (stageIdx) => stageIdx >= CFG.FORT_OUTER_STAGE
+function fortSpec(rng, earth, ante, stageIdx, tag, heavy, outer = false) {
+  const inner = { band: fortBand(earth), near: CFG.FORT_NEAR_BAND }
+  const out = { band: fortOuterBand(earth), near: CFG.FORT_OUTER_NEAR_BAND }
   return {
     name: zorgName(rng, tag),
     // 요새는 반격탄을 쏘므로 그 자체가 위협이다 — 이게 반드시 없애야 할 표적.
     // 금속으로 지어진 요새는 잘 안 밀린다(태그가 둘 붙는다) — 종류가 곧 공략법이다.
     type: FORT_TYPES[rng.int(0, FORT_TYPES.length - 1)],
-    role: 'battery', band: fortBand(earth),
+    role: 'battery',
+    // 자리 찾기가 쓰는 세 구역 — 원하는 곳 / 반대쪽 / 둘을 합친 폭 (warpBody 참고)
+    zone: outer ? out : inner,
+    alt: outer ? inner : out,
+    span: { band: [inner.band[0], out.band[1]], near: out.near },
     mu: fortMuFor(rng, ante) * (heavy ? CFG.FORT_HEAVY_MU : 1),
     hp: heavy ? CFG.FORT_HEAVY_HP : CFG.ZORG_HP,
     rMul: heavy ? CFG.FORT_HEAVY_R : 1,
@@ -256,6 +319,39 @@ function neutralSpec(rng, ante, stageIdx, tag, forceVoid = false) {
 // 만들어 놓고 붙일 것 — 금속 요새는 장갑 태그를 겹쳐 얹는다.
 const dressFort = (b) => { if (b && b.type === 'iron') b.mods = ['armor']; return b }
 
+// ── 요새 한 기를 실제로 세운다 ──────────────────────────────────
+// **판이 열릴 때(reinforce)와 모함이 보충할 때(summonFort)가 이 함수 하나를
+// 같이 쓴다.** 갈라 두면 "판이 열릴 때 온 요새"와 "중간에 온 요새"가 다른
+// 물건이 되는데, 화면에서 둘은 구분되지 않으므로 그건 그냥 규칙이 두 개인 것이다.
+//
+// 바깥에 세울 요새는 **안쪽이라는 물러설 자리**가 있다. 그래서 바깥 시도는
+// 도달 검사를 끝까지 지키고(맞힐 수 없는 자리면 그냥 버린다), 안쪽 시도만
+// 마지막에 검사를 건너뛴다 — 요새를 아예 안 보내는 것보다는 낫기 때문이다.
+// 그래서 "바깥 요새"는 언제나 **닿을 수 있는** 바깥 요새다(계측: 720발 전수
+// 조사에서 한 발도 안 꽂히는 요새가 안팎 모두 0기).
+//
+// verifyInner — 안쪽 자리까지 도달 검사를 돌릴 것인가. **부르는 쪽의 시간
+// 예산이 다르기 때문에** 나뉜다: 판 전환(reinforce)은 어차피 막이 내려가 있어
+// 수백 ms를 써도 되지만, 모함의 보충(summonFort)은 판이 굴러가는 중에 프레임
+// 안에서 돈다 — 거기서 검사를 다 돌리면 중앙 50ms·최대 173ms짜리 멈칫이
+// 생긴다(계측). 안쪽 자리는 원래 가까워서 검사를 통과하는 자리이므로
+// (720발 전수조사에서 0기), 여기서 아끼는 것이 잃는 것보다 크다.
+function placeFort(rng, pool, earth, aMax, ante, stageIdx, tag, heavy, wantOuter, verifyInner) {
+  for (const outer of wantOuter ? [true, false] : [false]) {
+    const spec = fortSpec(rng, earth, ante, stageIdx, tag, heavy, outer)
+    // 이 시도들에만 검사를 건다(나머지는 그냥 통과). 판 전환은 예산이 넉넉해
+    // 바깥 세 번·안쪽 두 번을 다 보고, 프레임 안에서 도는 보충은 바깥 한 번만
+    // 본다 — 한 번에 떨어지면 안쪽으로 물리면 되므로 그 한 번이면 충분하다.
+    const checks = verifyInner ? (outer ? 3 : 2) : (outer ? 1 : 0)
+    for (let t = 0; t < 3; t++) {
+      const b = warpBody(rng, pool, aMax, spec)
+      if (!b) continue
+      if (t >= checks || reachable(pool.concat([b]), earth, b, aMax)) return dressFort(b)
+    }
+  }
+  return null
+}
+
 // ── 조르그 모함 ─────────────────────────────────────────────────
 // 궤도 **바깥**에 앉는다. 요새 대역(지구 궤도 0.55~1.6배)보다 멀어서
 // 한 발로 닿기 어렵고, 그래서 "지금 저것부터 칠 것인가"가 판단이 된다.
@@ -274,7 +370,7 @@ function makeHive(rng, bodies, aMax, earth, stageIdx) {
   const orb = freeOrbit(rng, bodies, aMax, CFG.HIVE_R, CFG.HIVE_NEAR_BAND, band)
     ?? freeOrbit(rng, bodies, aMax, CFG.HIVE_R, 0, band)
     ?? freeOrbit(rng, bodies, aMax, CFG.HIVE_R, 0, [band[0] * 0.8, band[1] * 1.15])
-    ?? freeOrbit(rng, bodies, aMax, 8, 0, [band[0] * 0.8, band[1] * 1.15])
+    ?? freeOrbit(rng, bodies, aMax, CFG.HIVE_R * 0.3, 0, [band[0] * 0.8, band[1] * 1.15])
   if (!orb) return null
   const b = makeBody({
     id: nextId(), name: `Zorg ${ZORG_NAMES[rng.int(0, ZORG_NAMES.length - 1)]} Prime`,
@@ -289,8 +385,10 @@ function makeHive(rng, bodies, aMax, earth, stageIdx) {
 // 모함이 한 기 보낸다 — 판이 열릴 때와 같은 규칙으로 만들고, 자리도 같은
 // 제약(밀 수 있는 공 옆자리·지구에서 닿는 자리)으로 찾는다.
 export function summonFort(rng, bodies, earth, ante, stageIdx, tag) {
-  const aMax = aMaxOf(ante)
-  return dressFort(warpBody(rng, bodies, aMax, fortSpec(rng, earth, ante, stageIdx, tag, false)))
+  // 안팎 비율은 판이 열릴 때와 같다 — 다만 한 기씩 오므로 마릿수가 아니라 추첨이다.
+  const outer = canSpawnOuter(stageIdx) && rng.next() < CFG.FORT_OUTER_FRAC
+  // verifyInner=false — 이 경로는 판이 굴러가는 중에 프레임 안에서 돈다(위 주석)
+  return placeFort(rng, bodies, earth, aMaxOf(ante), ante, stageIdx, tag, false, outer, false)
 }
 export function summonCue(rng, bodies, earth, ante, stageIdx, tag) {
   const b = warpBody(rng, bodies, aMaxOf(ante), neutralSpec(rng, ante, stageIdx, tag))
@@ -325,18 +423,20 @@ export function reinforce(rng, bodies, earth, ante, stageIdx) {
   // 무겁다"가 목표 카운터가 아니라 **공 하나를 더 굴려야 한다**로 나타난다.
   //   판 1: 0기 · 판 2~3: 1기 · 판 4~5: 2기 · 판 6~7: 3기 …
   const heavies = Math.min(fort, Math.floor((stageIdx + 1) / 2))
+  // ── 안팎 ──
+  // 뒤쪽 몇 기는 **바깥 대역**에 선다(CFG.FORT_OUTER_*). 마릿수로 나누는 것은
+  // 추첨과 달리 "이번 판에 바깥 요새가 하나도 안 왔다"가 없기 때문이고,
+  // fort - 1로 자르는 것은 **가까운 표적이 언제나 하나는 남게** 하기 위해서다 —
+  // 판이 열리자마자 손댈 데가 한 군데도 없으면 그건 난이도가 아니라 벽이다.
+  const outers = canSpawnOuter(stageIdx)
+    ? Math.min(fort - 1, Math.round(fort * CFG.FORT_OUTER_FRAC))
+    : 0
 
   for (let i = 0; i < fort; i++) {
     const tag = `${stageIdx + 1}${i ? String.fromCharCode(97 + i) : ''}`
-    const spec = fortSpec(rng, earth, ante, stageIdx, tag, i < heavies)
-    let b = null
-    const pool2 = bodies.concat(added)
-    for (let t = 0; t < 3 && !b; t++) {
-      b = warpBody(rng, pool2, aMax, spec)
-      // 마지막 시도는 검사를 건너뛴다 — 못 찾고 요새를 아예 안 보내는 것보다 낫다
-      if (b && t < 2 && !reachable(pool2.concat([b]), earth, b, aMax)) b = null
-    }
-    if (b) added.push(dressFort(b))
+    const b = placeFort(rng, bodies.concat(added), earth, aMax, ante, stageIdx, tag,
+      i < heavies, i >= fort - outers, true)
+    if (b) added.push(b)
   }
   for (let i = 0; i < neutral; i++) {
     const spec = neutralSpec(rng, ante, stageIdx, `${stageIdx + 1}x${i}`, stageIdx === 2 && i === 0)

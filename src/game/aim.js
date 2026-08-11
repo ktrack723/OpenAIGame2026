@@ -177,9 +177,13 @@ export function scanContact(game, dir = 1) {
 // 거친 접촉 판정 — **천체**에 닿는지만 본다(폭심·임펄스는 계산하지 않는다).
 // 반환값은 **맞는 천체의 id** (또는 'earth' / 'debris' / null). id를 돌려줘야
 // scanContact가 "같은 공인지 다른 공인지"를 알 수 있다.
-// 지평은 TTL의 60%로 자른다: 계측상 접촉의 92%가 그 안에 일어나고,
-// 나머지는 어차피 굴러가다 만나는 샷이라 "칠 수 있는 각도" 목록에 안 넣는 게 낫다.
-const COARSE_HORIZON = 0.6
+// 지평은 TTL의 80%다. 예전에는 60%로 잘랐다 — "접촉의 92%가 그 안에 일어난다"는
+// 계측 근거였는데, 그건 표적이 전부 지구 궤도 언저리에 있을 때의 이야기다.
+// 요새가 바깥 대역(FORT_OUTER_BAND)에도 서는 지금은 1500 GU 밖 표적까지
+// 30~40초가 걸리므로, 60%(31초)로 자르면 **바깥 요새는 이 버튼에 아예 안 걸린다** —
+// 예측선(TTL 전부)은 맞는다고 그리는데 "다음 공" 버튼은 없는 척하는 셈이라
+// 플레이어가 그 표적을 찾을 방법이 사라진다. 42초면 최대 파워로 2300 GU다.
+const COARSE_HORIZON = 0.8
 const COARSE_DT = 1 / 32
 const COARSE_STEPS = Math.round(CFG.MISSILE_TTL * COARSE_HORIZON / COARSE_DT)
 // track: buildBodyTrack(game.bodies, COARSE_DT, COARSE_BODY_EVERY, COARSE_STEPS).
