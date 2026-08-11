@@ -150,6 +150,18 @@ export function makeHud(game, view) {
   document.body.appendChild(toast)
   el._toast = toast
 
+  // ── 정치자금 표시 ──
+  // **칩 줄에 넣지 않는다.** 칩 여섯 칸은 매 프레임 innerHTML 한 덩어리로 통째
+  // 교체되는데(ZOOM·TIME이 계속 바뀐다) 그러면 붙여 둔 애니메이션이 매번 처음부터
+  // 다시 시작한다. 게다가 칩 갱신 블록은 **관측 모드에서 아예 안 돈다** —
+  // 그런데 스윙바이는 대부분 관측 중에 일어난다. 그래서 독립 노드로 띄우고
+  // 관측 조기 return보다 위에서 갱신한다.
+  const polbar = document.createElement('div')
+  polbar.className = 'polbar'
+  polbar.innerHTML = `<i>${t('chip.pol')}</i><b id="polV">0</b>`
+  document.body.appendChild(polbar)
+  el._polbar = polbar
+
   // ── 관측 모드의 유일한 UI ──────────────────────────────────
   // 관측 중에는 패널이 통째로 사라진다. 남는 건 이 버튼 하나뿐이고,
   // 꼭 필요한 정보(남은 시한 · 레이저 경보)는 버튼 안에 접어 넣는다 —
@@ -160,13 +172,19 @@ export function makeHud(game, view) {
 <button class="aimbtn" id="toAim"><span class="aimtitle">${t('ui.aim')}</span>
 <span class="aimsub" id="obsSub">${t('ui.aim.sub')}</span></button>
 <button class="spdbtn" id="obsSpd" title="${t('ui.speed.tip')}"><span class="spdv" id="obsSpdV">2×</span>
-<span class="spdlbl">${t('ui.speed')}</span></button>`
+<span class="spdlbl">${t('ui.speed')}</span></button>
+<button class="spdbtn thrbtn" id="obsThr" hidden><span class="spdv" id="obsThrV">0</span>
+<span class="spdlbl">${t('ui.thrust')}</span></button>`
   document.body.appendChild(obsBar)
   obsBar.querySelector('#toAim').onclick = () => game.setMode('aim')
   obsBar.querySelector('#obsSpd').onclick = (e) => {
     e.stopPropagation()
     game.setToast(msg('toast.obsSpeed', { n: game.cycleObsSpeed() }))
   }
+  // 추진기 — 관측 중에만, 재고가 있을 때만 보인다. 확인 문구는 안 띄운다:
+  // 관측 모드에서는 새 토스트가 안 뜨고(아래 toast 블록), 무엇보다 답은
+  // 화면에 이미 있다 — 조준선이 붉은색에서 청록으로 바뀐다.
+  obsBar.querySelector('#obsThr').onclick = (e) => { e.stopPropagation(); game.earthThrust() }
   el._obsBar = obsBar
 
   const qs = (id) => el.querySelector(id)
@@ -186,13 +204,13 @@ export function makeHud(game, view) {
     power: {
       steps: [1, 5, 10],
       get: () => game.power,
-      set: (v) => { game.power = clamp(Math.round(v), CFG.LAUNCH_MIN, CFG.LAUNCH_MAX) },
+      set: (v) => { game.power = clamp(Math.round(v), CFG.LAUNCH_MIN, game.powerMax) },
       fmt: (v) => v.toFixed(0),
     },
     yield: {
       steps: [1, 3, 6],
       get: () => game.yieldMt,
-      set: (v) => { game.yieldMt = clamp(Math.round(v), CFG.YIELD_MIN, CFG.YIELD_MAX) },
+      set: (v) => { game.yieldMt = clamp(Math.round(v), CFG.YIELD_MIN, game.yieldMax) },
       fmt: (v) => v.toFixed(0),
     },
   }
@@ -281,6 +299,10 @@ export function makeHud(game, view) {
     if (e.code === 'Tab') { e.preventDefault(); game.toggleMode(); el._sync(); return }
     if (e.key === 'Shift') startWait()
     if (e.key === 's' || e.key === 'S') { game.setToast(msg('toast.obsSpeed', { n: game.cycleObsSpeed() })); return }
+    // T — 지구 추진기. 관측 모드에서만 듣는다(canThrust가 그것까지 본다).
+    // 아래 "관측 중엔 아무 키나 누르면 조준으로 돌아온다"보다 **먼저** 걸러야
+    // 한다 — 안 그러면 T가 추진 대신 모드 전환이 된다.
+    if (e.key === 't' || e.key === 'T') { game.earthThrust(); return }
     if (game.mode !== 'aim') {
       // 관측 모드에서는 조작이 전부 잠긴다 — 아무 키나 누르면 조준으로 돌아온다
       if (e.code === 'Space' || e.code === 'Escape') { e.preventDefault(); game.setMode('aim') }
@@ -333,6 +355,8 @@ export function makeHud(game, view) {
     }
     obsBar.querySelector('.aimtitle').textContent = t('ui.aim')
     obsBar.querySelector('.spdlbl').textContent = t('ui.speed')
+    obsBar.querySelector('#obsThr .spdlbl').textContent = t('ui.thrust')
+    polbar.querySelector('i').textContent = t('chip.pol')
     obsBar.querySelector('#obsSpd').title = t('ui.speed.tip')
     over.querySelector('#overNew .ftext').textContent = t('over.new')
     el._roleKey = null   // 태그 칩을 다시 그리게 한다
@@ -485,6 +509,21 @@ export function updateHud(el, game) {
     if (!toast.hidden) toast.textContent = tx(game.toast)
   } else toast.hidden = true
 
+  // ── 정치자금 ──
+  // 아래 관측 조기 리턴보다 **위**에 있어야 한다: 스윙바이는 대부분 관측 중에
+  // 일어나고, 그때 돈이 들어오는 걸 못 보면 "왜 늘었지"가 된다.
+  const pol = el._polbar
+  pol.hidden = game.bare || veil
+  if (pol._n !== game.pol) { pol._n = game.pol; pol.querySelector('#polV').textContent = `${game.pol}` }
+  // 펄스 세기는 인라인 변수로 준다 — 노드를 다시 만들지 않으므로 클래스만으로는
+  // 연속 획득(한 발에 스윙바이 두 번)이 한 번으로 뭉개진다.
+  const glow = game.polFlash > 0 ? Math.min(1, game.polFlash / 0.9) : 0
+  if (pol._glow !== glow) {
+    pol._glow = glow
+    pol.style.setProperty('--glow', glow.toFixed(2))
+    pol.classList.toggle('gain', glow > 0)
+  }
+
   if (observing) {
     // 버튼 하나에 접어 넣는 최소 정보: 배속 · 남은 시한 · 레이저 경보
     const left = game.timeLeft
@@ -505,6 +544,16 @@ export function updateHud(el, game) {
     btn.classList.toggle('alarm', alarm)
     const spd = game.obsSpeedLabel
     if (bar._spd !== spd) { bar._spd = spd; bar.querySelector('#obsSpdV').textContent = spd }
+    // 추진기 — 살 수 있게 되기 전(3스테이지 전)이거나 재고가 0이면 **버튼 자체가
+    // 없다.** 못 누르는 버튼이 앉아 있으면 그건 지금 쓸 수 있다는 거짓말이다.
+    // (obsBar의 버튼들은 veil 잠금 루프가 안 닿으므로 여기서 직접 잠근다.)
+    const thr = bar.querySelector('#obsThr')
+    const showThr = game.thrusters > 0 && game.stageIdx >= CFG.THRUST_STAGE
+    if (thr._show !== showThr) { thr._show = showThr; thr.hidden = !showThr }
+    if (showThr) {
+      if (thr._n !== game.thrusters) { thr._n = game.thrusters; thr.querySelector('#obsThrV').textContent = `${game.thrusters}` }
+      thr.disabled = !game.canThrust
+    }
     return   // 패널이 숨겨져 있으므로 나머지 갱신은 통째로 건너뛴다
   }
 
@@ -531,9 +580,12 @@ export function updateHud(el, game) {
     over.classList.toggle('doom', doom)
     over.querySelector('#overArt').innerHTML = defeatArt(game.failReason)
     over.querySelector('#overTag').textContent = defeatTag(game.failReason)
-    const why = failWhy(game.failReason, game), score = game.runScore + game.score
+    const why = failWhy(game.failReason, game)
+    // 최종 점수는 없어졌다. 남기는 것은 **어디까지 갔고 얼마나 벌었나** —
+    // 다음 런에서 더 갈 수 있는지를 재는 유일한 눈금이다.
+    const reached = t('over.reached', { stage: game.stageIdx + 1, ante: game.ante, pol: game.polEarned })
     over.querySelector('#overWhy').textContent =
-      why ? t('over.why', { why, score }) : t('over.score', { score })
+      why ? t('over.why', { why, reached }) : reached
     el.querySelector('#wait').disabled = true
   }
 
@@ -622,16 +674,11 @@ export function updateHud(el, game) {
   const scale = game.effTimeScale()
   const rig = el._rig
   const chips = [
-    [t('chip.score'), `${game.runScore + game.score}`, 'hi'],
-    [t('chip.shots'), `${game.shots}`, ''],
     [t('chip.earth'), e.alive ? hpBar(e) : t('chip.lost'), e.alive && e.hp <= 1 ? 'crit' : ''],
     [t('chip.time'), scale === 0 ? t('chip.stopped') : t('chip.running', { scale }), scale === 0 ? '' : 'hi'],
-    [t('chip.bonus'), `+${game.timeBonus}`, ''],
     [t('chip.zoom'), rig ? `${rig.zoom.toFixed(1)}×${rig.auto ? ' A' : ''}` : '—', ''],
   ].map(([k, v, c]) => `<span class="chip ${c}"><i>${k}</i>${v}</span>`).join('')
   if (el._chips !== chips) { el._chips = chips; el.querySelector('#chips').innerHTML = chips }
-  // 시간 보너스는 클리어할 때 메시지 꼬리에 붙는다 — 문장을 게임에서 만들지
-  // 않으므로(키만 남긴다) 그 꼬리도 여기서 잇는다.
-  const line = tx(game.message) + (game.bonusNote ? t('msg.timeBonus', { n: game.bonusNote }) : '')
+  const line = tx(game.message)
   if (el._msg !== line) { el._msg = line; el.querySelector('#msg').textContent = line }
 }
