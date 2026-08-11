@@ -267,11 +267,19 @@ export const zhHans = {
   'vic.tag': '突破第 {stage} 关 · 底注 {ante}',
   'vic.title': '佐格要塞 全灭',
   'vic.body': '管制室爆出欢呼。这一次地球又挺过来了。',
-  'vic.go': '在下次入侵前享受和平',
-  'vic.goSub': '佐格还会再来 ▶',
+  'vic.go': '前往科学研究室',
+  'vic.goSub': '花掉政治资金 ▶',
   'vic.row.forts': '击破的目标', 'vic.row.forts.v': '{n}座',
   'vic.row.time': '剩余时限', 'vic.row.alive': '幸存天体', 'vic.row.alive.v': '{n}颗 — 原样进入下一关',
   'vic.row.earth': '地球体力', 'vic.row.earth.v': '{hp}/{hpMax} — 会带到下一关',
+
+  // ── 科学研究室（政治资金的运用） ──
+  'lab.tag': '科学研究室',
+  'lab.status': '整备运行中',
+  'lab.title': '政治资金的运用',
+  'lab.body': '研究员拆解缴获的佐格残骸，用政治资金整备舰队。',
+  'lab.go': '在下次入侵前享受和平',
+  'lab.goSub': '佐格还会再来 ▶',
 
   'over.reached': '打到第{stage}关（安特{ante}）· 累计政治资金 {pol}',
   'chip.pol': '政治资金',

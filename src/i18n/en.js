@@ -267,11 +267,19 @@ export const en = {
   'vic.tag': 'STAGE {stage} CLEARED · ANTE {ante}',
   'vic.title': 'ALL ZORG FORTRESSES DESTROYED',
   'vic.body': 'The control room erupts. Earth made it through once more.',
-  'vic.go': 'Enjoy the peace until the next invasion',
-  'vic.goSub': 'The Zorg return ▶',
+  'vic.go': 'Head to the science lab',
+  'vic.goSub': 'Spend the capital ▶',
   'vic.row.forts': 'Targets destroyed', 'vic.row.forts.v': '{n}',
   'vic.row.time': 'Time left', 'vic.row.alive': 'Surviving bodies', 'vic.row.alive.v': '{n} — they carry over',
   'vic.row.earth': 'Earth health', 'vic.row.earth.v': '{hp}/{hpMax} — it carries into the next wave',
+
+  // ── Science lab (spend political capital) ──
+  'lab.tag': 'SCIENCE LAB',
+  'lab.status': 'REFIT IN PROGRESS',
+  'lab.title': 'ALLOCATE POLITICAL CAPITAL',
+  'lab.body': 'Researchers strip captured Zorg wreckage and retool the fleet with what the capital buys.',
+  'lab.go': 'Enjoy the peace until the next invasion',
+  'lab.goSub': 'The Zorg return ▶',
 
   'over.reached': 'Reached stage {stage} (ante {ante}) · {pol} political capital earned',
   'chip.pol': 'CAPITAL',
