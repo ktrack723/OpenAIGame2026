@@ -250,7 +250,10 @@ export class Ground {
     const ok = g.mode === 'observe' && !g.bare && !g.doom && !g.runOver && !g.lost
     if (!ok) { this.queued = null; if (this.left > 0) this.close(); return }
 
-    if (down) this.raise('fortDown', SAY.fortDown)
+    // 예고편에서는 이 보고를 안 한다. 요새가 부서지는 순간의 소리는 저쪽의
+    // 단말마(zorg.death, Comms) 하나로 정해 둔 장면이다(Attract.launch 주석
+    // 참고) — 관제가 "요새 소멸 확인"을 얹으면 그 마지막 소리가 둘로 갈린다.
+    if (down && !g.trailer) this.raise('fortDown', SAY.fortDown)
     const q = this.queued
     // ── 한 줄은 최소한 읽을 수 있어야 한다 ──
     // 예전에는 더 센 사건이 오면 **즉시** 앞의 말을 지웠다. 판이 빨리 감기고
