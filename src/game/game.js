@@ -437,6 +437,7 @@ export class Game {
     // 장면을 오버레이 뒤에서 놓친다.
     if (!this.warpHold && this.openT < this.openHold) this.openT += dtFrame
     this.stepWarpIns(dtFrame)
+    this.stepDodgeCool(dtFrame)
     // 이미 박힌 광선의 꼬리는 판이 멈춰 있어도 끝까지 들어간다 — 광선이 지구를
     // 부순 그 순간에도(그때 판이 서 버린다) 빛은 마저 빨려 들어가야 한다.
     const n = this.batteryCount
@@ -494,6 +495,19 @@ export class Game {
     }
   }
 
+  // ─── 추진기 재사용 대기 ──────────────────────────────────────
+  // **실시간(dtFrame)으로 깎는다.** 인게임 시계로 재면 8× 관측에서 2.5초가
+  // 0.3초가 되어 정작 막으려던 연사를 못 막는다(§FORT_DODGE_COOLDOWN).
+  // 그래서 이 줄은 step()이 아니라 tick()에 산다 — 배속이 안 닿는 자리다.
+  //
+  // 조준 모드로 판을 세워 두고 생각하는 동안에도 흐른다. 벽시계 간격이라는 게
+  // 그런 뜻이고, 판이 멈춘 동안엔 요새도 아무것도 안 하므로 손해 볼 쪽이 없다.
+  stepDodgeCool(dtFrame) {
+    for (const b of this.bodies) {
+      if (b.boostCool > 0) b.boostCool = Math.max(0, b.boostCool - dtFrame)
+    }
+  }
+
   // ─── 요새의 회피 분사 ───────────────────────────────────────
   // 3스테이지부터 조르그 요새는 추진기를 하나씩 달고 온다. 제 몸에 꽂힐 궤도로
   // 탄이 들어오는 걸 확인하면 쓴다 — **횟수 제한은 없다.** 연료가 남았느냐가
@@ -519,6 +533,13 @@ export class Game {
   // 아니고, 늦게 알아챈 궤도는 못 피한다 — 스윙바이로 막판에 꺾여 들어오는 탄,
   // 가까이서 쏜 탄, 반응 중에 진로가 새로 물린 탄이 그렇다.
   // 위협이 사라지면 경계도 풀린다(다시 처음부터 센다) — 그 자체가 수가 된다.
+  //
+  // ── 재사용 대기 ──
+  // 반응 시간만으로는 한 군데가 안 막힌다. 반응은 인게임 초라 관측 배속(최대
+  // 8×)만큼 짧아지는데, 분사하고도 궤도가 다시 꽂히면 요새는 그 짧아진 간격으로
+  // 계속 태운다(계측: 8×에서 최소 0.96초 간격). 그래서 분사와 분사 사이에
+  // **실시간** 바닥값을 하나 둔다(FORT_DODGE_COOLDOWN, 위 stepDodgeCool).
+  // 횟수는 여전히 무한이다. 막는 것은 총량이 아니라 간격이다.
   stepDodge(dt) {
     this.dodgeT -= dt
     if (this.dodgeT > 0) return
@@ -541,7 +562,11 @@ export class Game {
         b.alertMax = b.alert
       }
       b.alert -= tick
-      if (b.alert <= 0) this.dodgeBoost(b, hit.vx, hit.vy)
+      // 대기가 남아 있으면 준비가 끝났어도 안 태운다. 경계는 계속 물고 있으므로
+      // (alert는 그대로 깎인다) 대기가 풀리는 순간 바로 분사한다 — **미루는
+      // 것이지 처음부터 다시 세는 게 아니다.** 다시 세게 만들면 배속을 올릴수록
+      // 요새가 약해지는데, 이건 요새를 깎는 규칙이 아니라 연사만 막는 규칙이다.
+      if (b.alert <= 0 && !(b.boostCool > 0)) this.dodgeBoost(b, hit.vx, hit.vy)
     }
     // 진로에서 벗어난 요새는 경계를 푼다 — 다시 물리면 처음부터 센다
     for (const b of this.bodies) {
@@ -641,8 +666,10 @@ export class Game {
     // 닿고, 거기가 바닥이다. 한 번의 분사에 다섯 번 푸는 것은 싸다.
     while (dv > base && !this.dodgeSafe(b, nx, ny, dv)) dv = Math.max(base, dv * 0.8)
     b.vel.x += nx * dv; b.vel.y += ny * dv
-    // 추진기는 안 닳는다(횟수 제한 없음). 다만 경계는 처음부터 다시 센다 —
+    // 추진기는 안 닳는다(횟수 제한 없음). 다만 **연달아는 못 태운다** — 다음
+    // 분사까지 실시간으로 이만큼이 든다. 그리고 경계는 처음부터 다시 센다 —
     // 비켜선 직후의 그 몇 초가 다음 탄이 파고들 수 있는 자리다.
+    b.boostCool = CFG.FORT_DODGE_COOLDOWN
     b.alert = null; b.alertMax = null
     b.trailFlash = 2.0
     this.addFx({ kind: 'boost', x: b.pos.x, y: b.pos.y, r: hitRadiusOf(b), a: Math.atan2(-ny, -nx) })
