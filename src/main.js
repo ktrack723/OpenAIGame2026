@@ -2,6 +2,7 @@ import { Game } from './game/game.js'
 import { SceneView } from './render/Scene.js'
 import { makeHud, updateHud } from './ui/hud.js'
 import { Inspector } from './ui/Inspector.js'
+import { AimPointer } from './ui/AimPointer.js'
 import { Intro } from './ui/Intro.js'
 import { Attract } from './ui/Attract.js'
 import { LangPick } from './ui/LangPick.js'
@@ -24,10 +25,14 @@ const hud = makeHud(game, view)
 // 그리는 반경은 Scene이 소유하므로(카메라 의존) 그 함수를 그대로 빌려준다.
 const inspector = new Inspector(game, view.rig, view.renderer.domElement)
 inspector.bind((b) => view.renderRadius(b))
+// 손으로 하는 조준 — 발사대(또는 예측선)를 짚고 끌면 조준이 손끝을 따라온다.
+// 각이 바뀌면 패널의 각도 숫자도 그 자리에서 같이 바뀌어야 한다(_sync).
+const aimPointer = new AimPointer(game, view.rig, view.renderer.domElement, () => hud._sync())
 // 승리 화면 — "다음 스테이지" 버튼 대신 축하 장면을 띄우고,
 // 버튼을 누르면 그때 다음 침공(=다음 스테이지)이 시작된다.
 const victory = new Victory(game, () => game.nextStage())
 window.__game = game; window.__view = view; window.__victory = victory; window.__audio = AUDIO
+window.__aim = aimPointer
 document.querySelector('.boot')?.remove()
 
 // 두 목소리. 조르그는 요새 **위**에서 타이머로 잡담을 던지고, 지상 관제는
@@ -99,7 +104,7 @@ let last = performance.now()
 function loop(now) {
   const dt = Math.min(0.1, (now - last) / 1000); last = now
   attract?.frame(dt)                  // 예고편이 카메라를 잡고 있는 동안만
-  game.tick(dt); view.render(); updateHud(hud, game); inspector.update()
+  game.tick(dt); view.render(); updateHud(hud, game); inspector.update(); aimPointer.update()
   comms.update(dt)                    // 예고편 중에도 돈다 — 박자는 예고편이 잡는다
   ground.update(dt)
   AUDIO.frame(dt, game)               // 전황 → 음악 레이어 / 상태가 바뀐 순간의 소리
