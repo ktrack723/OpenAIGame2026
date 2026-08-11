@@ -2,7 +2,7 @@ import { Rng } from '../core/random.js'
 import { CFG, aMaxOf, beltRadius, hitRadiusOf, nukeDv, radiusOf } from './config.js'
 import { makeBody } from './body.js'
 import { TYPE_MU_MUL } from './roles.js'
-import { cloneBodies, segHitsCircle, stepBodies, stepMissile } from './physics.js'
+import { buildBodyTrack, segHitsCircle, stepMissile, trackFrame } from './physics.js'
 import { buildSolarSystem, elementsToState, pickBiome, stablePresim } from './stage.js'
 
 // ─── 지속 성계 ──────────────────────────────────────────────────
@@ -125,22 +125,30 @@ const PROBE_BODY_EVERY = 4
 // aMax는 **이번 판의 것**을 받는다. 예전에는 안테 8 기준(가장 넓은 판)의 벨트를
 // 썼는데, 미사일이 벨트에 닿으면 그 자리에서 터지는 지금은 그게 거짓말이 된다 —
 // 지금 판의 벽 밖으로 나가는 궤적을 "닿는 각도"로 세어 버린다.
-function reachable(bodies, earth, target, aMax) {
+// 48개 프로브(2파워 × 24각도)는 전부 **같은 판** 위를 난다 — 미사일은 천체를
+// 못 밀므로 천체 궤적도 전부 같다. 프로브마다 판을 복제해 다시 적분하는 대신
+// 트랙 한 번을 굴려 두고 48번 재생한다(physics.buildBodyTrack — 비트 단위 동일).
+// export는 검증 하네스가 전/후 동치를 확인하는 데 쓴다.
+export function reachable(bodies, earth, target, aMax) {
   const dt = 1 / 25, steps = Math.round(40 / dt)
   const tIdx = bodies.indexOf(target)
   if (tIdx < 0) return false
-  const rMax = beltRadius(aMax)
+  const rMax = beltRadius(aMax), rMax2 = rMax * rMax
+  const rIn = CFG.R_STAR + 8, rIn2 = rIn * rIn
+  const track = buildBodyTrack(bodies, dt, PROBE_BODY_EVERY, steps)
+  const sim = track.view
   for (const pw of PROBE_POWERS) {
     for (let ai = 0; ai < PROBE_ANGLES; ai++) {
       const ang = ai / PROBE_ANGLES * Math.PI * 2
-      const sim = cloneBodies(bodies)
+      trackFrame(track, 0)
       const p = { x: earth.pos.x + Math.cos(ang) * CFG.LAUNCH_OFFSET, y: earth.pos.y + Math.sin(ang) * CFG.LAUNCH_OFFSET }
       const m = {
         pos: { ...p }, vel: { x: Math.cos(ang) * pw, y: Math.sin(ang) * pw },
-        age: 0, pathN: 0, path: [], minSunDist: Infinity, prev: { ...p },
+        age: 0, pathN: 0, path: null, minSunDist: Infinity, prev: { ...p },
       }
+      let f = 0
       for (let i = 0; i < steps; i++) {
-        if (i % PROBE_BODY_EVERY === (PROBE_BODY_EVERY >> 1)) stepBodies(sim, dt * PROBE_BODY_EVERY)
+        if (i % PROBE_BODY_EVERY === (PROBE_BODY_EVERY >> 1)) trackFrame(track, ++f)
         stepMissile(m, sim, dt)
         let hit = -1
         for (let k = 0; k < sim.length; k++) {
@@ -148,8 +156,8 @@ function reachable(bodies, earth, target, aMax) {
           if (segHitsCircle(m.prev.x, m.prev.y, m.pos.x, m.pos.y, sim[k].pos.x, sim[k].pos.y, hitRadiusOf(sim[k]))) { hit = k; break }
         }
         if (hit >= 0) { if (hit === tIdx) return true; break }
-        const r = Math.hypot(m.pos.x, m.pos.y)
-        if (r < CFG.R_STAR + 8 || r > rMax) break
+        const r2 = m.pos.x * m.pos.x + m.pos.y * m.pos.y
+        if (r2 < rIn2 || r2 > rMax2) break
       }
     }
   }
