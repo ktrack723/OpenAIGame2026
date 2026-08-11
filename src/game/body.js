@@ -41,6 +41,9 @@ export function makeBody(spec = {}) {
     // 추진기를 달고 있는가. 조르그 요새에만 1로 실린다(3스테이지부터).
     // 횟수 제한은 없다 — 쓴다고 줄지 않는다. 0이 기본이라 나머지 천체는 안 피한다.
     boost: spec.boost ?? 0,
+    // 다음 분사까지 남은 대기(실시간 초). 줄어드는 건 이쪽이다 — 연료가 아니라
+    // 간격만 든다는 뜻이고, 0이면 언제든 다시 태울 수 있다.
+    boostCool: spec.boostCool ?? 0,
     hp, hpMax: spec.hpMax ?? hp,
     hitFlash: spec.hitFlash ?? 0,
     trailFlash: spec.trailFlash ?? 0,

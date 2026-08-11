@@ -309,7 +309,8 @@ function fortSpec(rng, earth, ante, stageIdx, tag, heavy, outer = false) {
     hp: heavy ? CFG.FORT_HEAVY_HP : CFG.ZORG_HP,
     // 등급별 **절대** 반경 배율 — 곱하지 않는다(CFG.FORT_R 주석 참고)
     rMul: heavy ? CFG.FORT_HEAVY_R : CFG.FORT_R,
-    // 회피 분사는 3스테이지부터. 한 판에 한 번, 요새마다 하나씩.
+    // 회피 분사는 3스테이지부터. 요새마다 하나씩, 쓰는 횟수에는 제한이 없다
+    // (연달아만 못 태운다 — CFG.FORT_DODGE_COOLDOWN).
     boost: stageIdx >= CFG.FORT_DODGE_STAGE ? 1 : 0,
   }
 }

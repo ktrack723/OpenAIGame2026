@@ -20,6 +20,28 @@
 // 건 순환이다(LangPick 주석과 같은 이유). 그래서 여기 있는 글자는
 // 로고와 "CLICK TO START" 뿐이고, 나머지는 기호로 말한다.
 
+// ── 누른 그 손이 다음 화면까지 누르지 않게 ──
+// 이 화면은 pointerdown에서 걷힌다(소리를 열 수 있는 자리가 거기뿐이다).
+// 그런데 브라우저가 보내는 이야기는 거기서 끝나지 않는다 — 손을 뗄 때
+// pointerup·mouseup이 오고 그 뒤에 click이 따라온다. 그리고 그것들은
+// **누를 때 있던 원소**가 아니라 **뗄 때 그 자리에 있는 원소**로 간다.
+// 그 자리엔 이미 언어 화면이 열려 있다. 모바일은 한술 더 떠서, touchend
+// 뒤에 브라우저가 클릭을 하나 지어내 같은 좌표로 쏜다(유령 클릭).
+// 그래서 한 번 눌렀을 뿐인데 언어까지 골라진 채로 예고편이 시작돼 버렸다.
+// 키보드도 같은 일이다 — 엔터를 꾹 누르고 있으면 자동 반복 keydown이
+// 그대로 언어 화면의 손에 들어간다.
+//
+// 그래서 시작시킨 그 제스처가 **끝날 때까지** 뒷꼬리를 캡처 단계에서
+// 통째로 삼킨다. 조건은 둘 다여야 한다: 손을 뗐을 것, 그리고 화면이
+// 걷혔을 것. 둘 중 하나만 보면 각각 유령 클릭과 꾹 누르기를 놓친다.
+const TAIL = ['pointerdown', 'pointerup', 'pointercancel', 'mousedown', 'mouseup',
+  'click', 'dblclick', 'touchstart', 'touchend', 'touchcancel', 'contextmenu',
+  'keydown', 'keyup']
+// 손을 뗐다는 신호. 이게 와야 봉인이 풀릴 수 있다.
+const RELEASE = new Set(['pointerup', 'pointercancel', 'mouseup', 'touchend', 'touchcancel', 'keyup'])
+const SETTLE = 420    // 화면이 걷히는 380ms보다 조금 길게 — 조급한 두 번째 클릭도 여기서 걸린다
+const CAP = 5000      // 떼는 걸 끝내 못 보더라도(창 밖에서 떼는 등) 여기서는 반드시 푼다
+
 const MARK = `
 <svg viewBox="0 0 120 120" class="sgmark" aria-hidden="true">
   <circle cx="60" cy="60" r="46" fill="none" stroke="#4fd6f7" stroke-width="2.5" opacity=".35"/>
@@ -76,10 +98,33 @@ export class StartGate {
     this.done = true
     this.el.removeEventListener('pointerdown', this.onDown)
     removeEventListener('keydown', this.onKey)
+    // ⓪ 먼저 뒷꼬리를 막는다. 아래 onStart가 언어 화면을 **이 자리에서**
+    //    열기 때문에, 그전에 막아 두지 않으면 그 사이로 새어 든다.
+    this.seal()
     // ① 소리부터. 이 호출이 제스처 안에 있어야 한다는 것이 이 화면의 존재 이유다.
     try { this.onStart?.() } catch { /* 소리가 안 열려도 게임은 시작해야 한다 */ }
     // ② 그다음에 화면을 걷는다.
     this.el.classList.add('out')
     setTimeout(() => this.el.remove(), 380)
+  }
+
+  // 시작시킨 제스처의 뒷꼬리 삼키기(위 주석). 화면 자체로는 못 막는다 —
+  // 걷히는 중인 이 판은 pointer-events가 꺼져 있고, 380ms 뒤엔 아예 없다.
+  // 그사이 손을 떼면 그 이벤트는 언어 버튼이 받는다. 그래서 창에서 잡는다.
+  seal() {
+    let held = true       // 시작시킨 손(또는 키)이 아직 눌려 있다
+    let settled = false   // 화면이 걷힐 만큼 시간이 지났다
+    const eat = (ev) => {
+      ev.stopImmediatePropagation()
+      // touchend까지 막아야 그 뒤에 딸려 오는 유령 클릭이 아예 생기지 않는다.
+      // 키는 여기서 빼 둔다 — 이 짧은 사이에 새로고침이나 개발자 도구가
+      // 안 먹으면 그게 더 이상하다. 전달만 끊으면 언어 화면은 못 듣는다.
+      if (ev.cancelable && !ev.type.startsWith('key')) ev.preventDefault()
+      if (RELEASE.has(ev.type)) { held = false; if (settled) off() }
+    }
+    const off = () => { for (const type of TAIL) removeEventListener(type, eat, true) }
+    for (const type of TAIL) addEventListener(type, eat, true)
+    setTimeout(() => { settled = true; if (!held) off() }, SETTLE)
+    setTimeout(off, CAP)
   }
 }
