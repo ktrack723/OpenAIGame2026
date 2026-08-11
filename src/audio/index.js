@@ -17,6 +17,11 @@ import { Music } from './music.js'
 
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v)
 
+// 음악은 꺼 둔다. Music(Tone.js 관현악)은 그대로 남겨 둔다 — 나중에 오디오
+// 파일 기반 BGM으로 바꿔 낄 때, build/start/stop/setIntensity/setTheme/
+// duck/unduck 인터페이스만 맞추면 이 스위치 하나로 다시 켤 수 있다.
+const MUSIC_ENABLED = false
+
 // 사건이 몰리는 종류는 억제 창을 넓게 잡는다. 규약은 "같은 소리 30ms"이고
 // 그 아래로는 절대 안 내려가지만, 벨트 반사처럼 판마다 수십 번 울리는 것은
 // 30ms(초당 33번)로도 여전히 잡음이다.
@@ -91,11 +96,13 @@ export class AudioSystem {
     // 나머지는 시간이 걸린다: 리버브 임펄스를 굽고, 효과음 뱅크를 굽고,
     // 그다음 연주를 시작한다. 화면은 그동안 이미 넘어가 있다.
     ;(async () => {
-      try {
-        await this.music.build()
-        this.music.setIntensity(0.2, 0.01)
-        this.music.start()
-      } catch { /* 음악이 안 서도 효과음은 나야 한다 */ }
+      if (MUSIC_ENABLED) {
+        try {
+          await this.music.build()
+          this.music.setIntensity(0.2, 0.01)
+          this.music.start()
+        } catch { /* 음악이 안 서도 효과음은 나야 한다 */ }
+      }
       try { await this.sfx.prerender() } catch { /* 개별 재생 시 그때 굽는다 */ }
     })()
     return true
