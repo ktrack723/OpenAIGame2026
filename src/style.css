@@ -643,3 +643,44 @@ button:disabled{opacity:.32;cursor:not-allowed;box-shadow:none}
 #mute.off{color:var(--rd);border-color:#5c1620;background:#1a070b}
 #mute.off .spkwave{display:none}
 #mute.off .spkx{display:block}
+/* ── 정치자금 ──────────────────────────────────────────────────
+   패널 밖(document.body)에 산다. 칩 줄에 넣으면 관측 모드에서 통째로 사라지고,
+   칩은 매 프레임 innerHTML로 다시 그려져 애니메이션이 계속 처음으로 돌아간다.
+   여기서는 노드가 한 번 만들어지고 끝이라 --glow만 흔들면 된다. */
+.polbar{position:fixed;top:max(10px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);
+  z-index:5;display:inline-flex;align-items:baseline;gap:7px;padding:5px 12px;
+  border:1px solid var(--line2);background:#08131db8;backdrop-filter:blur(3px);
+  font-family:var(--mono);font-size:13px;font-weight:800;color:#fde68a;
+  font-variant-numeric:tabular-nums;white-space:nowrap;pointer-events:none;
+  transition:opacity .3s ease}
+.polbar[hidden]{display:none}
+.polbar i{font-style:normal;color:var(--dim);font-size:9.5px;font-weight:700;letter-spacing:.1em}
+/* 벌어들인 순간 — 테두리와 글자가 같이 달아오른다. 세기는 JS가 --glow로 준다
+   (연속으로 벌 때 클래스 토글만으로는 같은 프레임에 다시 시작이 안 걸린다). */
+.polbar.gain{border-color:rgba(251,191,36,calc(.25 + .75 * var(--glow,0)));
+  box-shadow:0 0 calc(22px * var(--glow,0)) rgba(251,191,36,calc(.55 * var(--glow,0)));
+  transform:translateX(-50%) scale(calc(1 + .06 * var(--glow,0)))}
+
+/* ── 상점 ── 승리 화면 안쪽. 통계 줄(.vicrow)과 같은 문법을 쓰되 누를 수 있다. */
+.shop{margin-top:10px;border-top:1px solid #0d1c28;padding-top:8px}
+.shophead{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+  font-family:var(--mono);font-size:10px;font-weight:800;letter-spacing:.16em;color:var(--dim);
+  margin-bottom:6px}
+.shophead b{color:#fde68a;font-size:12.5px;letter-spacing:.04em;font-variant-numeric:tabular-nums}
+.shoprows{display:grid;gap:4px}
+.shopitem{display:flex;justify-content:space-between;align-items:center;gap:12px;width:100%;
+  padding:7px 10px;border:1px solid var(--line2);border-radius:0;cursor:pointer;text-align:left;
+  background:#08131d;color:#dceaf3;font-family:inherit}
+.shopitem:hover:not(:disabled){border-color:#2f7f9c;background:#0b1f2c}
+.shopitem:disabled{opacity:.38;cursor:default}
+.shopname{display:flex;flex-direction:column;gap:2px;font-size:12px;font-weight:700}
+.shopname i{font-style:normal;color:var(--dim);font-size:10.5px;font-weight:400;line-height:1.4}
+.shopmeta{display:flex;flex-direction:column;align-items:flex-end;gap:2px;font-family:var(--mono)}
+.shopmeta b{color:#9df5c6;font-size:12px;font-variant-numeric:tabular-nums}
+.shopmeta em{font-style:normal;color:#fde68a;font-size:10px;font-weight:800}
+.shopitem:disabled .shopmeta em{color:var(--dim)}
+
+/* 관측 바의 추진기 버튼 — 배속 버튼과 같은 몸에 색만 지구 편으로. */
+.thrbtn{border-color:#2f6f9c;color:#bfdbfe}
+.thrbtn[hidden]{display:none}
+.thrbtn:disabled{opacity:.4}

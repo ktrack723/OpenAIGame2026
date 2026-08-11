@@ -267,6 +267,9 @@ export class SceneView {
     this.parts = new Particles(this.scene)
     this.markers = new Markers(this.scene)
     this.boom = new Explosions(this.parts, this.rig, (v, c) => this.flash(v, c))
+    // 정치자금 숫자 스프라이트는 씬에 직접 붙는다(파티클 풀과 달리 텍스트라
+    // Particles가 못 다룬다). 씬 참조만 넘겨 두면 Explosions가 알아서 만든다.
+    this.boom.scene = this.scene
     this.orbits = new Orbits(this.scene)
     this.laserView = new LaserView(this.scene, this.rig, this.parts)
     this.belt = new Belt(this.scene)          // 성계 쿠션 — 여기서 튕긴다
@@ -404,6 +407,9 @@ export class SceneView {
     if (this.lastBodies !== this.game.bodies) this.resetStage()
     this.rig.update(dt)
     this.boom.drain(this.game)
+    // 떠오르는 "+1"은 실시간으로 움직인다 — 판이 멈춰 있어도(조준 모드) 끝까지
+    // 올라가야 하고, 8배속에서도 같은 속도로 사라져야 읽힌다.
+    this.boom.stepPol(dt, this.rig.worldPerPx)
     this.syncBodies(dt)
     this.belt.update(this.game.beltR, dt, this.rig.worldPerPx)
     this.icons.update(this.game, this.rig, dt, (b) => this.renderRadius(b))

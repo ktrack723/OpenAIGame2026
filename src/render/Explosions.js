@@ -35,6 +35,8 @@ export class Explosions {
         this.parts.burst(e.x, e.y, { n: 26, color: 0x67e8f9, speed: 110, size: 8, ttl: 0.7 })
       } else if (e.kind === 'hive') this.hive(e)
       else if (e.kind === 'boost') this.boost(e)
+      else if (e.kind === 'earthBurn') this.earthBurn(e)
+      else if (e.kind === 'pol') this.pol(e)
       else if (e.kind === 'bump') this.bump(e)
       else if (e.kind === 'belt') this.belt(e)
       else if (e.kind === 'sun') {
@@ -69,8 +71,7 @@ export class Explosions {
   // 비켜났다"는 표시라, 어느 쪽으로 궤도가 틀어졌는지가 불꽃만 보고도 읽힌다.
   // 크기와 길이를 함께 올렸다 — 0.4초짜리 불꽃은 빨리 감기로 보면 그냥
   // 지나가 버렸다. 이제 화구가 배기 방향으로 길게 뻗고, 그 자리에 연기가
-  // 2초 넘게 남는다. 태양 탈출 점화도 같은 불꽃을 쓴다(FORT_SUN_FX 간격으로
-  // 되풀이해서 뿜으므로, 계속 태우는 동안 꼬리가 끊기지 않는다).
+  // 2초 넘게 남는다.
   boost(e) {
     const P = this.parts, R = Math.max(64, (e.r ?? 24) * 2.6)
     // ① 점화 — 흰 섬광 한 겹
@@ -90,6 +91,100 @@ export class Explosions {
     this.rig.hit(18)
     this.flash(0.26, '#ffe0f0')
     this.rig.focus(e.x, e.y, R * 2.2, 1.8)
+  }
+
+  // ─── 지구의 추진 분사 ────────────────────────────────────────
+  // 요새의 회피 분사(boost)와 **같은 물건이라는 게 그림으로 읽혀야** 하므로
+  // 같은 문법(점화 섬광 + 배기 화염 + 잔염)을 쓰되, 색은 지구 편으로 돌린다.
+  //
+  // 다른 점 하나: `rig.focus`를 안 부른다. 저건 "저기 봐라"라고 카메라를 끌어
+  // 당기는 연출인데, 이건 플레이어가 **직접 누른** 버튼이다 — 이미 보고 있다.
+  // 관측 중에 카메라가 홱 움직이면 레이저 회랑을 읽던 눈이 끊긴다.
+  earthBurn(e) {
+    const P = this.parts, R = Math.max(56, (e.r ?? 24) * 2.2)
+    P.puff(e.x, e.y, { r0: R * 0.08, r1: R * 0.5, ttl: 0.16, color: 0xffffff, alpha: 1 })
+    P.puff(e.x, e.y, { r0: R * 0.12, r1: R * 1.0, ttl: 0.7, color: 0x8ad4ff, alpha: 0.85, delay: 0.04 })
+    P.burst(e.x, e.y, { n: 220, color: 0x60a5fa, speed: 560, size: 15, ttl: 1.7, spread: 0.5, dir: e.a })
+    P.burst(e.x, e.y, { n: 130, color: 0xd7f0ff, speed: 900, size: 10, ttl: 1.1, spread: 0.3, dir: e.a })
+    P.burst(e.x, e.y, { n: 80, color: 0xffffff, speed: 1250, size: 7, ttl: 0.6, spread: 0.18, dir: e.a })
+    P.burst(e.x, e.y, { n: 90, color: 0x1e4f8a, speed: 130, size: 22, ttl: 3.0, spread: 0.9, dir: e.a, drag: 0.4 })
+    P.spikes(e.x, e.y, { n: 14, color: 0xd7f0ff, speed: 1300, size: 8, ttl: 0.6 })
+    P.shock(e.x, e.y, R, 0xffffff, 0.45, { thin: true, from: 0.08, to: 2.4, alpha: 0.9 })
+    P.shock(e.x, e.y, R, 0x60a5fa, 1.0, { from: 0.14, to: 3.0, delay: 0.1, alpha: 0.65 })
+    this.rig.hit(10)
+    this.flash(0.16, '#dbeafe')
+  }
+
+  // ─── 정치자금 획득 ───────────────────────────────────────────
+  // 숫자가 벌어진 **그 자리에서** 떠오른다. 화면 구석의 숫자만 바뀌면 무엇이
+  // 돈이 됐는지를 못 잇는다 — 스윙바이한 행성 옆에서 +1이 떠올라야 "저게
+  // 돈이구나"가 성립한다.
+  //
+  // 스프라이트는 캔버스 텍스처다. 파티클(Particles)에는 글자를 그리는 수단이
+  // 없고, 여기서 억지로 만들면 파티클이 텍스트 엔진이 된다. 대신 Icons·Markers가
+  // 쓰는 그 방식(캔버스 → CanvasTexture)을 그대로, 아주 작게 가져온다.
+  pol(e) {
+    const sp = this.polSprite(e.n)
+    if (!sp) return
+    sp.position.set(e.x, e.y, 9)
+    sp.material.opacity = 1
+    sp.userData.t = 0
+    sp.visible = true
+    this.parts.shock(e.x, e.y, Math.max(30, (e.r ?? 20) * 1.2), 0xfbbf24, 0.5,
+      { thin: true, from: 0.3, to: 1.9, alpha: 0.55 })
+  }
+
+  // 숫자별로 텍스처를 한 장씩만 굽고(+1 · +2 뿐이다), 스프라이트는 8장을 돌려 쓴다.
+  polSprite(n) {
+    this.polTex ??= new Map()
+    this.polPool ??= []
+    let tex = this.polTex.get(n)
+    if (!tex) {
+      const S = 128, c = document.createElement('canvas')
+      c.width = S; c.height = S / 2
+      const g = c.getContext('2d')
+      g.font = `800 ${S * 0.36}px system-ui, sans-serif`
+      g.textAlign = 'center'; g.textBaseline = 'middle'
+      g.lineWidth = 7; g.strokeStyle = 'rgba(6,14,24,.92)'
+      g.strokeText(`+${n}`, S / 2, S / 4)
+      g.fillStyle = '#fde68a'
+      g.fillText(`+${n}`, S / 2, S / 4)
+      tex = new THREE.CanvasTexture(c)
+      tex.colorSpace = THREE.SRGBColorSpace
+      tex.minFilter = THREE.LinearFilter
+      this.polTex.set(n, tex)
+    }
+    let sp = this.polPool.find((s) => !s.visible)
+    if (!sp) {
+      if (this.polPool.length >= 8) sp = this.polPool[0]
+      else {
+        sp = new THREE.Sprite(new THREE.SpriteMaterial({
+          transparent: true, depthTest: false, depthWrite: false,
+        }))
+        sp.renderOrder = 24
+        sp.visible = false
+        this.polPool.push(sp)
+        this.scene?.add(sp)
+      }
+    }
+    sp.material.map = tex
+    sp.material.needsUpdate = true
+    return sp
+  }
+
+  // 떠오르며 사라진다. 실시간으로 움직인다 — 자금은 관측 중(배속 8×)에도
+  // 들어오는데 게임 시간으로 재면 그때 8분의 1로 짧아진다.
+  stepPol(dt, ppw) {
+    if (!this.polPool) return
+    for (const sp of this.polPool) {
+      if (!sp.visible) continue
+      const u = (sp.userData.t += dt) / 1.1
+      if (u >= 1) { sp.visible = false; continue }
+      sp.position.y += 34 * ppw * dt
+      sp.material.opacity = u < 0.15 ? u / 0.15 : 1 - (u - 0.15) / 0.85
+      const k = Math.max(26, 46 * ppw) * (0.75 + 0.35 * Math.min(1, u * 4))
+      sp.scale.set(k * 2, k, 1)
+    }
   }
 
   // ─── 당구 충돌 — 부서지지 않고 튕겼다 ────────────────────────

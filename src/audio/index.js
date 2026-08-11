@@ -214,6 +214,21 @@ export class AudioSystem {
         at('boost', 0.7)
         break
 
+      // 지구의 추진기 — 요새의 회피 분사와 **같은 물건이라 같은 소리**를 쓴다.
+      // 다만 조금 높게 재생한다: 이쪽은 내가 누른 버튼이고, 저쪽은 저들이 피한
+      // 것이다. 소리로도 그 둘이 구분되어야 한다.
+      case 'earthBurn':
+        at('boost', 0.8, { rate: 1.18, priority: 1 })
+        break
+
+      // 정치자금 — 사건음(스윙바이·격파) 위에 얹히는 짧은 블립 하나.
+      // 크기를 키우지 않는다. 이건 사건이 아니라 **그 사건의 값**이고,
+      // 원래 소리를 덮으면 무엇이 돈이 됐는지가 오히려 안 들린다.
+      // +2는 반음 위로 — 액수가 소리로도 읽힌다.
+      case 'pol':
+        at('uiTick', 0.55, { rate: 1 + 0.12 * ((e.n ?? 1) - 1), gap: 0.04 })
+        break
+
       case 'laserCharge':
         at('laserCharge', 1, { priority: 1 })
         break

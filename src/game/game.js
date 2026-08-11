@@ -17,14 +17,9 @@ import * as Aim from './aim.js'
 // 관측 모드 배속 단계 — 화면의 배속 버튼이 이 사이를 돈다
 const OBS_SPEEDS = [1, 2, 4, 8]
 
-// 파괴 사유별 점수 (목표 / 중립). 추방은 없앴다 — 벨트가 되돌려 보낸다.
-const KILL_SCORE = {
-  collision: [120, 40],
-  laser: [0, 0],        // 조르그가 제 광선으로 부순 것 — 내 공이 아니다
-  absorb: [110, 35],
-  sun: [100, 30],
-  blast: [80, 25],
-}
+// 정치자금이 안 붙는 파괴 사유. **조르그가 제 광선으로 부순 것은 내 공이 아니다** —
+// 예전 점수표에서도 laser만 0점이었고, 화폐가 바뀌어도 그 규칙은 그대로다.
+const NO_CREDIT = new Set(['laser'])
 export class Game {
   constructor(seed) {
     this.bodies = []
@@ -40,8 +35,23 @@ export class Game {
   // (오프닝 예고편이 실제 게임을 굴려 보여 준 뒤 판을 되돌리는 데 쓴다.)
   resetRun(seed = this.seed) {
     this.seed = seed >>> 0
-    this.stageIdx = 0; this.runScore = 0; this.runOver = false
+    this.stageIdx = 0; this.runOver = false
     this.rng = new Rng(this.seed ^ 0x9e3779b9)
+    // ─── 런 지갑 ───
+    // **여기서만 초기화한다.** loadStage()는 이 줄들을 절대 안 건드리므로 판이
+    // 바뀌어도 잔액·구매·재고가 그대로 넘어가고, 새 런에서만 0으로 돌아간다.
+    // (지구 체력이 판을 넘어가는 것과 같은 규칙이다 — 아래 주석 참고.)
+    // 예고편도 끝나면서 resetRun을 부르므로, 트레일러가 번 돈은 자동으로 지워진다.
+    this.pol = 0            // 잔액
+    this.polEarned = 0      // 총 획득 — 패배 화면이 "이번 런에 얼마나 벌었나"를 말한다
+    this.polFlash = 0       // 획득 표시 펄스(실시간 초)
+    this.buys = { speed: 0, yield: 0 }
+    this.thrusters = 0
+    // 상한은 **CFG가 아니라 런 상태**다. CFG.YIELD_MAX는 판 생성이 "밀 수 있는
+    // 큐볼인가"를 재는 데 쓰므로(system.js), 그걸 올리면 난이도 곡선이 빌드에
+    // 따라 흔들린다. 클램프는 HUD 스테퍼 두 곳뿐이라 여기서 주는 편이 싸다.
+    this.powerMax = CFG.LAUNCH_MAX
+    this.yieldMax = CFG.YIELD_MAX
     // ─── 지속 성계 ───
     // 성계는 런 전체에서 하나뿐이다. 판이 끝나도 새로 만들지 않고,
     // 살아남은 행성이 위치·속도·**체력** 그대로 다음 판으로 넘어간다.
@@ -73,7 +83,16 @@ export class Game {
     return CFG.TIME_BASE + CFG.TIME_PER_ANTE * Math.min(this.ante - 1, 5) + (this.hiveHere ? CFG.HIVE_TIME : 0)
   }
   get timeLeft() { return Math.max(0, this.stageTime - this.time) }
-  get timeBonus() { return Math.round(this.timeLeft * CFG.TIME_BONUS) }
+
+  // ─── 정치자금 ───────────────────────────────────────────────
+  // 버는 곳은 두 군데뿐이다(스윙바이·요새 격파). 그 둘이 여기로 모인다.
+  // x·y는 **그 일이 벌어진 자리** — 화면에 "+1"이 거기서 떠오른다.
+  addPol(n, x, y) {
+    if (n <= 0) return
+    this.pol += n; this.polEarned += n
+    this.polFlash = 0.9
+    this.addFx({ kind: 'pol', x, y, n })
+  }
 
   loadStage() {
     this.aMax = aMaxOf(this.ante)
@@ -120,7 +139,7 @@ export class Game {
 
     this.pairCool.clear()
     this.doom = null; this.mothership = null
-    this.missiles = []; this.shots = 0; this.score = 0
+    this.missiles = []; this.shots = 0
     this.won = false; this.lost = false; this.failReason = null
     const t = this.target
     this.aim = Math.atan2(t.pos.y - this.earth.pos.y, t.pos.x - this.earth.pos.x)
@@ -130,7 +149,7 @@ export class Game {
     this.dodgeT = 0   // 요새 회피 판정 주기 타이머
     this.obsSpeed = 1   // OBS_SPEEDS 인덱스 — 기본 2×
     this.toast = null; this.toastT = 0
-    this.winBanked = false; this.timeWarn = 0; this.bonusNote = 0
+    this.timeWarn = 0
     this.stage = { roles: this.presentRoles() }
     // ── 규칙은 **필요할 때** 알려 준다 ──
     // 예전에는 판마다 같은 문단을 통째로 읽혔다: 체력 1 요새, 2판부터 오는
@@ -165,7 +184,8 @@ export class Game {
 
   nextStage() {
     if (!this.won || this.runOver) return
-    this.runScore += this.score; this.stageIdx++; this.loadStage()
+    // 정산할 것이 없다 — 정치자금은 벌 때 바로 지갑에 들어가고 판을 넘어 그대로 간다.
+    this.stageIdx++; this.loadStage()
   }
 
   // 목표 행성 — 살아 있는 요새 우선. 카메라/레티클이 물고 있을 대상이다.
@@ -394,6 +414,10 @@ export class Game {
 
   tick(dtFrame) {
     if (this.toastT > 0) this.toastT -= dtFrame
+    // 정치자금 표시의 펄스. **실시간으로 깎는다** — 자금은 관측 중에 들어오는데
+    // 그때 인게임 시계는 배속이 걸려 있어서, 게임 시간으로 재면 8배속에서 번쩍임이
+    // 8분의 1로 짧아진다(같은 이유로 토스트도 실시간이다).
+    if (this.polFlash > 0) this.polFlash = Math.max(0, this.polFlash - dtFrame)
     // 개막 시계. warpHold(튜토리얼이 화면을 덮고 있는 동안)면 멈춘다 —
     // 규칙을 읽는 사이에 스폰이 끝나 버리면 첫 판에서 제일 먼저 봐야 할
     // 장면을 오버레이 뒤에서 놓친다.
@@ -411,15 +435,18 @@ export class Game {
   step(dt) {
     stepBodies(this.bodies, dt)
     this.stepDodge(dt)
-    this.stepSunBurn(dt)
     this.stepHive(dt)
     for (const m of this.missiles) {
       if (!m.alive) continue
       stepMissile(m, this.bodies, dt)
       updateEncounters(m, this.bodies, {
+        // updateEncounters는 **인카운터 하나당 정확히 한 번**, 그것도 중력권을
+        // 빠져나가는 프레임에 굴절 25°를 넘겼을 때만 부른다. 그래서 여기서 세면
+        // 중복이 없다. 같은 행성을 나중에 다시 돌면 그건 새 인카운터이고, 또 준다.
         swing: (b, deg) => {
           this.message = msg('msg.swing', { name: nameOf(b), deg: deg.toFixed(0), chain: m.chain })
           this.addFx({ kind: 'swing', x: b.pos.x, y: b.pos.y, r: b.radius })
+          this.addPol(CFG.POL_SWING, b.pos.x, b.pos.y)
         },
         capture: (b) => { this.detonate(m, b, { x: m.pos.x, y: m.pos.y }); this.setToast(msg('toast.capture')) },
       })
@@ -560,9 +587,9 @@ export class Game {
   }
 
   // ─── 태양 둘레의 두 이체 궤도 ────────────────────────────────
-  // 근일점(peri) 하나를 묻는 곳이 둘이다: 회피 분사가 자살인지 보는 곳과,
-  // 요새가 "나 지금 태양으로 떨어지고 있다"를 아는 곳. 같은 질문이므로 식도 하나다.
-  // bound = 태양에 묶여 있는가(탈출 궤도면 근일점은 의미가 없다).
+  // 근일점(peri)을 묻는 곳이 둘이다: 요새의 회피 분사가 자살인지 보는 곳과,
+  // 지구의 추진기가 지구를 태양으로 밀어 넣지 않는지 보는 곳. 같은 질문이므로
+  // 식도 하나다. bound = 태양에 묶여 있는가(탈출 궤도면 근일점은 의미가 없다).
   sunOrbit(x, y, vx, vy) {
     const r = Math.hypot(x, y) || CFG.EPS
     const inv = 2 / r - (vx * vx + vy * vy) / CFG.MU_STAR   // 1/a — 0 이하면 탈출 궤도다
@@ -609,73 +636,62 @@ export class Game {
     this.setToast(msg('toast.boost', { name: nameOf(b) }))
   }
 
-  // ─── 요새의 태양 탈출 분사 ───────────────────────────────────
-  // 회피 분사는 **한 번의 임펄스**다. 이건 다르다 — 제 궤도가 태양으로 떨어지는
-  // 궤도라는 걸 알아챈 요새가 **로켓을 계속 태워서** 거기서 빠져나온다.
+  // ─── 지구의 소모형 추진기 ─────────────────────────────────────
+  // **요새가 미사일을 피하는 그 물건을 지구가 받은 것이다.** 규칙도 같다:
+  // 한 방의 임펄스, 위협의 진입 방향에 직각, 두 직각 중 태양 반대쪽.
   //
-  // 왜 필요한가 — 추진기 횟수 제한을 걷으면서 요새가 판에 오래 남게 됐다. 그런데
-  // 이 판에서 궤도를 망가뜨리는 건 플레이어의 핵과 충돌이고, 망가진 궤도의 절반은
-  // 태양행이다. 조준하고 있던 표적이 저 혼자 태양에 빨려 들어가 사라지면 그건
-  // 플레이어가 둔 수가 아니다. 조르그도 그 정도는 한다 — 살려고 태운다.
+  // 왜 관측 모드에서만인가 — 조준 모드는 시계가 멈춰 있다. 멈춘 판에서 지구를
+  // 밀면 그건 회피가 아니라 그냥 배치 변경이고, 무엇보다 **레이저가 언제
+  // 꽂히는지를 보면서 누르는 것**이 이 물건의 전부다. 시간이 흐르는 화면에서만
+  // 의미가 있다.
   //
-  // 미는 방향은 **태양 반대쪽이 아니라 궤도 진행 방향(가로)**이다. 태양 반대로
-  // 곧장 밀면 각운동량은 그대로인 채 에너지만 올라가서 근일점이 오히려 내려간다
-  // (실제로 계측했다). 가로로 밀어야 각운동량이 커지고 근일점이 올라간다.
-  //
-  // 딜레이는 미사일 회피와 같은 규칙이다: 알아채고 나서 제 몫의 반응 시간이
-  // 지나야 점화한다. 그래서 **너무 늦게 밀어 넣으면 못 빠져나온다** — 태양으로
-  // 처박는 한 수는 여전히 성립하고, 대신 어중간하게 밀면 요새가 살아 나온다.
-  stepSunBurn(dt) {
-    for (const b of this.bodies) {
-      if (!b.alive || !b.boost || b.role !== 'battery') continue
-      const o = this.sunOrbit(b.pos.x, b.pos.y, b.vel.x, b.vel.y)
-      // ── 빠져나왔다 ── 근일점이 안전선을 넘었으면 끈다. 끄는 선(SAFE)을 켜는
-      // 선(PERI)보다 높게 잡아야 경계에서 껐다 켰다 하지 않는다.
-      if (!o.bound || o.peri >= CFG.FORT_SUN_SAFE) {
-        if (b.burn > 0) this.setToast(msg('toast.sunBurn.out', { name: nameOf(b) }))
-        b.burn = 0; b.sunDive = false; b.sunAlert = null
-        continue
-      }
-      if (b.burn > 0) { this.sunBurn(b, dt); continue }   // 태우는 중
-      if (b.sunDive) continue                            // 이번 강하의 점화는 이미 끝났다
-      if (o.peri >= CFG.FORT_SUN_PERI) continue          // 아직 위험선 밖이다
-      // ── 알아챘다 ── 요새마다 반응이 조금씩 다르다(회피 분사와 같은 이유).
-      if (b.sunAlert == null) {
-        b.sunAlert = CFG.FORT_SUN_REACT + (this.rng.next() * 2 - 1) * CFG.FORT_SUN_REACT_JITTER
-      }
-      b.sunAlert -= dt
-      if (b.sunAlert > 0) continue
-      b.sunAlert = null
-      b.sunDive = true
-      b.burn = CFG.FORT_SUN_BURN
-      this.addFx({ kind: 'boost', x: b.pos.x, y: b.pos.y, r: hitRadiusOf(b), a: Math.atan2(b.pos.y, b.pos.x) })
-      this.message = msg('msg.sunBurn', { name: nameOf(b) })
-      this.setToast(msg('toast.sunBurn', { name: nameOf(b) }))
-    }
+  // 되는지 안 되는지는 화면이 즉시 답한다: 조준선이 붉은색(맞는다)에서
+  // 청록(빗나간다)으로 바뀐다(laser.js의 L.safe). 토스트로 알릴 필요가 없다 —
+  // 애초에 관측 모드에서는 새 토스트가 안 뜬다.
+  get canThrust() {
+    return this.thrusters > 0 && this.stageIdx >= CFG.THRUST_STAGE
+      && this.mode === 'observe' && !this.doom && !this.won && !this.lost
+      && this.earth.alive && !this.warpCurtain
   }
 
-  // 점화 중 — 매 스텝 가속을 얹는다. 끄는 판단은 호출부가 한다(근일점).
-  // burn은 연료가 아니라 **한 번의 강하에 허용된 점화 시간**이다. 계측에서
-  // 실제로 빠져나오는 데 7~35초가 걸리므로 이 상한(FORT_SUN_BURN)에 닿는 일은
-  // 거의 없다 — 어떤 이유로든 못 빠져나오는 궤도에서 영원히 태우지 않게 하는
-  // 안전장치이고, 여기 닿으면 그 강하는 그대로 끝이다(sunDive가 남는다).
-  sunBurn(b, dt) {
-    const r = Math.hypot(b.pos.x, b.pos.y) || CFG.EPS
-    let tx = -b.pos.y / r, ty = b.pos.x / r          // 반지름에 직각 = 궤도 가로 방향
-    if (tx * b.vel.x + ty * b.vel.y < 0) { tx = -tx; ty = -ty }   // 지금 도는 쪽으로
-    const dv = CFG.FORT_SUN_ACC * dt
-    b.vel.x += tx * dv; b.vel.y += ty * dv
-    b.burn -= dt
-    b.trailFlash = Math.max(b.trailFlash, 0.5)       // 꼬리가 내내 달아올라 있다
-    // 불꽃은 간헐적으로만 — 매 스텝 뿜으면 초당 120개다
-    b.burnFx -= dt
-    if (b.burnFx <= 0) {
-      b.burnFx = CFG.FORT_SUN_FX
-      this.addFx({ kind: 'boost', x: b.pos.x, y: b.pos.y, r: hitRadiusOf(b), a: Math.atan2(-ty, -tx) })
+  // 지금 지구를 가장 임박하게 겨누는 광선. 없으면 null.
+  // 충전 중이면 '충전 남은 시간 + 비행 시간', 날고 있으면 '남은 비행 시간'이
+  // 곧 급한 정도다. 이미 빗나가는 것으로 판정된 광선(safe)은 위협이 아니다.
+  mostUrgentBeam() {
+    let best = null, bestT = Infinity
+    for (const L of this.lasers) {
+      if (L.safe) continue
+      let t = Infinity
+      if (L.state === LASER_CHARGE) t = chargeLeft(L) + L.aimDist / CFG.LASER_SPEED
+      else if (L.state === LASER_TRAVEL) t = impactLeft(L)
+      if (t < bestT) { bestT = t; best = L }
     }
-    if (b.burn > 0) return
-    b.burn = 0
-    this.setToast(msg('toast.sunBurn.dry', { name: nameOf(b) }))
+    return best
+  }
+
+  earthThrust() {
+    if (!this.canThrust) return false
+    const e = this.earth
+    // 밀 방향의 기준선: 위협이 있으면 그 광선이 오는 방향, 없으면 지구의 진로.
+    // (위협이 없을 때도 쓸 수 있게 둔다 — 미리 비켜서는 것도 수다.)
+    const L = this.mostUrgentBeam()
+    const bx = L ? (L.state === LASER_TRAVEL ? L.ux : L.ax - L.ox) : e.vel.x
+    const by = L ? (L.state === LASER_TRAVEL ? L.uy : L.ay - L.oy) : e.vel.y
+    const s = Math.hypot(bx, by) || 1
+    let nx = -by / s, ny = bx / s                    // 기준선에 직각 (둘 중 하나)
+    if (nx * e.pos.x + ny * e.pos.y < 0) { nx = -nx; ny = -ny }   // 태양 반대쪽
+    // 세기는 고정이다. 요새는 질량에 비례해 밀지만(무거운 요새일수록 큰 추진기),
+    // 지구는 하나뿐이라 비례시킬 것이 없다 — 회랑을 벗어나는 데 필요한 만큼만.
+    let dv = CFG.EARTH_BURN_DV
+    // 요새와 같은 안전장치: 이 한 방으로 지구가 태양에 처박히면 안 된다.
+    // (dodgeSafe가 근일점을 재는 그 함수 그대로다.)
+    while (dv > 0.2 && !this.dodgeSafe(e, nx, ny, dv)) dv *= 0.8
+    e.vel.x += nx * dv; e.vel.y += ny * dv
+    e.trailFlash = 2.0
+    this.thrusters--
+    this.addFx({ kind: 'earthBurn', x: e.pos.x, y: e.pos.y, r: hitRadiusOf(e), a: Math.atan2(-ny, -nx) })
+    this.message = msg('msg.earthBurn', { n: this.thrusters })
+    return true
   }
 
   // ─── 조르그 레이저 ─────────────────────────────────────────
@@ -715,8 +731,7 @@ export class Game {
       const wave = blastWave(this.bodies, ev.x, ev.y, m.yld, null)
       this.addFx({ kind: 'nuke', x: ev.x, y: ev.y, yld: m.yld, r: 22, wave: wave.radius })
       this.addFx({ kind: 'laserMiss', x: ev.x, y: ev.y })
-      this.score += CFG.INTERCEPT_SCORE
-      this.message = msg('msg.laser.intercept', { yield: m.yld, score: CFG.INTERCEPT_SCORE })
+      this.message = msg('msg.laser.intercept', { yield: m.yld })
       this.setToast(msg('toast.laser.intercept'))
       if (wave.pushed.some(p => p.body.isEarth)) this.setToast(msg('toast.laser.blastEarth'))
       return
@@ -773,7 +788,7 @@ export class Game {
     while (this.timeWarn < marks.length && left <= marks[this.timeWarn]) {
       const s = marks[this.timeWarn]
       this.timeWarn++
-      this.setToast(msg('toast.timeLeft', { sec: s, bonus: this.timeBonus }))
+      this.setToast(msg('toast.timeLeft', { sec: s }))
     }
   }
 
@@ -845,13 +860,13 @@ export class Game {
       px: push.dx, py: push.dy, wave: wave.radius, armor: hasRole(b, 'armor'),
     })
 
-    // §9.1 스타일 배율 — 체인/니어미스/태양 가속은 여전히 점수에 얹힌다
-    const M = 1 + 0.75 * m.chain + 0.25 * m.nearMiss + (m.minSunDist < CFG.SUN_BONUS_R ? 0.5 : 0)
-    const gained = Math.round(8 * M)
-    this.score += gained
+    // 직격 자체에는 값을 안 매긴다. **미는 것은 수단이지 성과가 아니다** —
+    // 예전에는 여기서 체인·니어미스·태양 가속을 배율로 얹어 8×M점을 줬는데,
+    // 그러면 아무 데나 쏴도 숫자가 오르는 통에 "잘 친 샷"의 정의가 흐려졌다.
+    // 지금 값이 붙는 곳은 스윙바이(그 자리에서 1)와 요새 격파(2) 둘뿐이다.
     this.message = msg('msg.nuke.hit', {
       name: nameOf(b), dv: push.dv.toFixed(1), dir: bearing(push.dx, push.dy).toFixed(0),
-      tail: hasRole(b, 'armor') ? msg('msg.nuke.armor') : gained ? msg('msg.nuke.gain', { n: gained }) : '',
+      tail: hasRole(b, 'armor') ? msg('msg.nuke.armor') : '',
     })
     // 폭풍이 지구를 정통으로 훑었다면 경고 — 지구가 밀려 태양에 빠지는 사고가 실제로 난다
     if (wave.pushed.some(p => p.body.isEarth)) this.setToast(msg('toast.blastEarth'))
@@ -983,19 +998,17 @@ export class Game {
   }
 
   // 목표 판정에는 파괴 사유가 상관없다 — 요새가 없어졌으면 그걸로 끝이다.
-  // 사유는 점수(KILL_SCORE)와 로그 문구에만 쓴다.
+  // 사유는 정치자금 판정(NO_CREDIT)과 로그 문구에만 쓴다.
   recordKill(b, cause) {
     if (b.type === 'debris') return
     // 모성이 온 뒤의 파괴는 **전과가 아니다.** 저쪽이 제 광선으로 판을 쓸어
     // 내는 중이고, 그 와중에 조르그 요새가 같이 녹아도 그건 내가 부순 게 아니다.
-    // 점수·목표 갱신·문구를 전부 건너뛴다 — 이 화면의 문장은 하나뿐이다.
+    // 자금·목표 갱신·문구를 전부 건너뛴다 — 이 화면의 문장은 하나뿐이다.
     if (this.doom) return
     const wasFort = this.isTarget(b)
-    const [tp, np] = KILL_SCORE[cause] ?? [0, 0]
-    // 모함은 이 판에서 제일 단단한 물건이다(체력 5) — 값도 그만큼 친다.
-    const gained = b.role === 'hive' ? tp * 2 : wasFort ? tp : np
-    this.score += gained
-    const label = { name: nameOf(b), cause: msg('msg.cause', { cause: msg(`cause.${cause}`), gained }) }
+    // 요새 하나가 2. 중립 행성은 0 — 판을 정리한 것이지 판돈을 회수한 게 아니다.
+    if (wasFort && !NO_CREDIT.has(cause)) this.addPol(CFG.POL_FORT, b.pos.x, b.pos.y)
+    const label = { name: nameOf(b), cause: msg(`cause.${cause}`) }
     if (wasFort) {
       // 요새 하나가 곧 포대 하나다 — 부수면 그 순번이 통째로 사라진다.
       // (명단 정리는 tickLaser의 syncLasers가 한다. 이미 나가 있는 광선은
@@ -1019,19 +1032,6 @@ export class Game {
     this.won = true
     this.message = msg('msg.win')
     this.setToast(msg('toast.win'))
-    this.bankWin()
-  }
-
-  // 클리어 시점의 남은 시간을 보너스로 정산한다. **이긴 그 순간에** 해야 한다 —
-  // 예전에는 checkEnd에서만 했는데, 이기는 순간 시계가 멈추므로(effTimeScale 0)
-  // step()이 한 번도 더 안 돌면 보너스가 영영 안 붙는다. 승리 화면은 "남은 시한
-  // (보너스 +208)"이라고 적어 놓고 점수에는 그 208이 없는 상태가 된다.
-  // (checkEnd도 계속 부른다 — 어느 쪽이 먼저 와도 한 번만 붙게 winBanked로 막는다.)
-  bankWin() {
-    if (!this.won || this.winBanked) return
-    this.winBanked = true
-    const b = this.timeBonus
-    if (b > 0) { this.score += b; this.bonusNote = b }
   }
 
   // ─── 탄의 경계 ───────────────────────────────────────────────
@@ -1114,7 +1114,6 @@ export class Game {
     // 클리어가 나 버린다. 막이 걷혀야 내 차례이므로 뜸까지 통째로 센다.
     if (this.warpPending || this.warpCurtain) return
     this.goal.update(this.aliveThreats)
-    this.bankWin()   // 문구는 화면에서 붙인다(tx가 번역한 뒤 꼬리를 잇는다)
     if (this.won || this.lost) return
     if (!this.earth.alive) { this.fail('EARTH_LOST', msg('msg.fail.earthLost')); return }
     // 위협이 어떤 이유로든 전멸했으면(연쇄로 같이 터졌든) 그 순간 클리어다
