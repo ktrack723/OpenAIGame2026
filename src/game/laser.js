@@ -69,6 +69,11 @@ export function makeLaser(rng, from, nextAt = CFG.LASER_FIRST, earth = null) {
     miss: 0,           // 광선 중심선에서 지구까지의 예상 수직거리
     safe: false,       // miss가 지구 판정 반경을 넘었나 = 지금 이대로면 사는가
     refresh: 0,        // 조준점 재계산 타이머
+    // 지구가 지금 추진기를 태우면 이 광선을 피하는가(game.dodgeWorks). 예측이
+    // 비싸서 캐시해 두는 값이고, dodgeT는 그 답을 푼 인게임 시각이다.
+    // **여기에 미리 달아 둔다** — 나중에 붙이면 광선 객체의 hidden class가
+    // 갈라진다(body.js의 makeBody가 같은 이유로 필드를 한자리에 모아 둔다).
+    dodgeT: null, dodgeOk: false,
     // 조준점을 밖에서 고정한다(오프닝 예고편이 쓴다). 참이면 ax/ay를 그대로
     // 믿고 지구 예측을 건너뛴다 — 빗나감(miss/safe) 계산은 그대로 돈다.
     lockAim: false,
