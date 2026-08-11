@@ -288,20 +288,27 @@ const zorgName = (rng, tag) => `Zorg ${ZORG_NAMES[rng.int(0, ZORG_NAMES.length -
 const canSpawnOuter = (stageIdx) => stageIdx >= CFG.FORT_OUTER_STAGE
 function fortSpec(rng, earth, ante, stageIdx, tag, heavy, outer = false) {
   const inner = { band: fortBand(earth), near: CFG.FORT_NEAR_BAND }
-  const out = { band: fortOuterBand(earth), near: CFG.FORT_OUTER_NEAR_BAND }
+  // 바깥 대역은 **허용된 판에서만** 쓴다 — 물러설 자리로도 안 연다.
+  // 1스테이지가 전부 가까이 오는 판인 것은 규칙을 배우는 자리이기 때문인데,
+  // 자리를 못 찾았을 때의 도피처로 바깥을 열어 두면 그 규칙이 조용히 샌다.
+  const out = canSpawnOuter(stageIdx)
+    ? { band: fortOuterBand(earth), near: CFG.FORT_OUTER_NEAR_BAND }
+    : null
   return {
     name: zorgName(rng, tag),
     // 요새는 반격탄을 쏘므로 그 자체가 위협이다 — 이게 반드시 없애야 할 표적.
     // 금속으로 지어진 요새는 잘 안 밀린다(태그가 둘 붙는다) — 종류가 곧 공략법이다.
     type: FORT_TYPES[rng.int(0, FORT_TYPES.length - 1)],
     role: 'battery',
-    // 자리 찾기가 쓰는 세 구역 — 원하는 곳 / 반대쪽 / 둘을 합친 폭 (warpBody 참고)
+    // 자리 찾기가 쓰는 세 구역 — 원하는 곳 / 반대쪽 / 둘을 합친 폭 (warpBody 참고).
+    // 바깥이 안 열린 판에서는 뒤의 둘이 null이고, find()가 그걸 건너뛴다.
     zone: outer ? out : inner,
     alt: outer ? inner : out,
-    span: { band: [inner.band[0], out.band[1]], near: out.near },
+    span: out ? { band: [inner.band[0], out.band[1]], near: out.near } : null,
     mu: fortMuFor(rng, ante) * (heavy ? CFG.FORT_HEAVY_MU : 1),
     hp: heavy ? CFG.FORT_HEAVY_HP : CFG.ZORG_HP,
-    rMul: heavy ? CFG.FORT_HEAVY_R : 1,
+    // 등급별 **절대** 반경 배율 — 곱하지 않는다(CFG.FORT_R 주석 참고)
+    rMul: heavy ? CFG.FORT_HEAVY_R : CFG.FORT_R,
     // 회피 분사는 3스테이지부터. 요새마다 하나씩, 쓰는 횟수에는 제한이 없다
     // (연달아만 못 태운다 — CFG.FORT_DODGE_COOLDOWN).
     boost: stageIdx >= CFG.FORT_DODGE_STAGE ? 1 : 0,
