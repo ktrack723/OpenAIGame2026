@@ -1,6 +1,4 @@
 import { t, onLangChange } from '../i18n/index.js'
-import { CFG } from '../game/config.js'
-import { buy, rows } from '../game/shop.js'
 // ─── 승리 화면 ──────────────────────────────────────────────────
 // "다음 스테이지 ▶" 버튼 하나로 넘어가던 걸 축하 장면으로 바꿨다.
 // 이 게임의 판돈은 지구이고, 판을 이겼다는 건 인류가 한 번 더 살아남았다는
@@ -9,9 +7,10 @@ import { buy, rows } from '../game/shop.js'
 // 그림은 전부 인라인 SVG(자산 0개). 관제실에서 환호하는 과학자 셋과
 // 살아남은 지구, 그리고 창밖으로 물러가는 조르그 잔해.
 //
-// 버튼은 "다음 스테이지"가 아니라 **"다음 침공까지 평화를 즐긴다"**이다 —
-// 누르면 시간이 흘러 다음 침공이 오는 것이지, 새 판이 로딩되는 게 아니다.
-// 실제로도 성계는 그대로 유지되고(페이드 없음) 새 조르그 행성만 워프로 들어온다.
+// 여기는 **전멸 축하만** 한다. 정치자금을 쓰는 일(상점)은 별개의 화면
+// (Lab.js · 과학연구실 테마)로 떼어냈다 — 하나는 "이겼다"는 감상이고 다른
+// 하나는 "다음 판을 어떻게 준비할까"라는 판단이라, 같은 패널에 욱여넣으면
+// 둘 다 흐려진다. 버튼을 누르면 onContinue가 그 연구실을 연다.
 
 const C = { cy: '#4fd6f7', am: '#f5b544', gr: '#5ef2a4', ink: '#cfe3ef', dim: '#6b8496' }
 
@@ -92,10 +91,6 @@ export class Victory {
     <h2 id="vicTitle"></h2>
     <p id="vicBody"></p>
     <div class="vicstats" id="vicStats"></div>
-    <div class="shop" id="vicShop">
-      <div class="shophead"><span id="shopTitle"></span><b id="shopBal"></b></div>
-      <div class="shoprows" id="shopRows"></div>
-    </div>
   </div>
   <button class="vicbtn" id="vicGo">
     <span class="vicbtnt" id="vicGoT"></span>
@@ -105,13 +100,6 @@ export class Victory {
     document.body.appendChild(el)
     this.el = el
     el.querySelector('#vicGo').onclick = () => this.close()
-    // 상점 클릭은 위임으로 받는다 — 진열대가 open()마다 다시 그려지므로
-    // 각 버튼에 핸들러를 매다는 것보다 이쪽이 안전하다(언어 전환도 다시 그린다).
-    el.querySelector('#shopRows').onclick = (e) => {
-      const btn = e.target.closest('button[data-buy]')
-      if (!btn || btn.disabled) return
-      if (buy(this.game, btn.dataset.buy)) this.renderShop()
-    }
     this.onKey = (e) => {
       if (el.hidden) return
       if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); this.close() }
@@ -146,27 +134,8 @@ export class Victory {
       [t('vic.row.alive'), t('vic.row.alive.v', { n: survivors })],
       [t('vic.row.earth'), t('vic.row.earth.v', { hp: g.earth.hp, hpMax: g.earth.hpMax })],
     ].map(([k, v]) => `<div class="vicrow"><span>${k}</span><b>${v}</b></div>`).join('')
-    this.renderShop()
     this.el.hidden = false
     this.el.classList.remove('out')
-  }
-
-  // 진열대. **게임 상태에서 매번 새로 그린다** — 하나 사면 잔액도 재고도
-  // 바뀌므로 부분 갱신할 것이 없고, 언어를 바꾸면 open()이 통째로 다시 부른다.
-  renderShop() {
-    const g = this.game
-    this.el.querySelector('#shopTitle').textContent = t('shop.title')
-    this.el.querySelector('#shopBal').textContent = t('shop.balance', { n: g.pol })
-    this.el.querySelector('#shopRows').innerHTML = rows(g).map((r) => {
-      // 못 사는 이유를 버튼이 직접 말한다. 회색으로만 두면 고장난 버튼이 된다.
-      const label = r.why === 'full' ? t('shop.full')
-        : r.why === 'poor' ? t('shop.cost', { n: CFG.SHOP_COST })
-        : t('shop.cost', { n: CFG.SHOP_COST })
-      return `<button class="shopitem" data-buy="${r.id}"${r.enabled ? '' : ' disabled'}>
-<span class="shopname">${t(`shop.${r.id}`)}<i>${t(`shop.${r.id}.brief`)}</i></span>
-<span class="shopmeta"><b>${r.have}/${r.max}</b><em>${label}</em></span>
-</button>`
-    }).join('')
   }
 
   close() {

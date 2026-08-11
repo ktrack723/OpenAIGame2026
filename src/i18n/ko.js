@@ -285,11 +285,19 @@ export const ko = {
   'vic.tag': '스테이지 {stage} 돌파 · 안테 {ante}',
   'vic.title': '조르그 요새 전멸',
   'vic.body': '관제실이 환호로 뒤집혔다. 이번에도 지구는 무사하다.',
-  'vic.go': '다음 침공까지 평화를 즐긴다',
-  'vic.goSub': '조르그가 다시 온다 ▶',
+  'vic.go': '정치자금을 쓰러 간다',
+  'vic.goSub': '과학연구실로 ▶',
   'vic.row.forts': '격파한 표적', 'vic.row.forts.v': '{n}기',
   'vic.row.time': '남은 시한', 'vic.row.alive': '살아남은 천체', 'vic.row.alive.v': '{n}기 — 그대로 다음 판으로 간다',
   'vic.row.earth': '지구 체력', 'vic.row.earth.v': '{hp}/{hpMax} — 판을 넘어 이어진다',
+
+  // ── 과학연구실(정치자금 활용) ──────────────────────────────────
+  'lab.tag': '과학연구실',
+  'lab.status': '정비 가동 중',
+  'lab.title': '정치자금 활용',
+  'lab.body': '노획한 조르그 잔해와 정치자금으로 함대를 정비한다.',
+  'lab.go': '다음 침공까지 평화를 즐긴다',
+  'lab.goSub': '조르그가 다시 온다 ▶',
 
   'over.reached': '{stage}스테이지(안테 {ante})까지 · 정치자금 {pol} 확보',
   'chip.pol': '정치자금',

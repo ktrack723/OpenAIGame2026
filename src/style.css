@@ -269,6 +269,48 @@ button:disabled{opacity:.32;cursor:not-allowed;box-shadow:none}
 .vdrift{animation:vaway 6s linear infinite}
 @keyframes vaway{0%{transform:translateX(0);opacity:.65}100%{transform:translateX(-46px);opacity:0}}
 
+/* ── 과학연구실 화면 (정치자금 활용) ──
+   승리 화면 바로 다음에 뜬다. 같은 뼈대(박스·그림·글·버튼)를 쓰되 색을
+   시안 계열로 바꿔서 "이겼다"는 승리 화면과 한눈에 갈린다 — 여긴 자축이
+   아니라 다음 판을 준비하는 실무 화면이다. */
+.lab{position:fixed;inset:0;z-index:8;display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(120% 90% at 50% 45%,rgba(6,26,32,.86) 0%,rgba(2,5,10,.94) 70%);
+  animation:vicin .45s ease-out}
+.lab[hidden]{display:none}
+.lab.out{opacity:0;transition:opacity .38s ease;pointer-events:none}
+.labbox{width:min(560px,calc(100vw - 32px));padding:0 0 16px;background:var(--panel);
+  border:1px solid #1d5a7a;backdrop-filter:blur(12px);
+  box-shadow:0 26px 90px #000d,inset 0 0 70px #0a1f2a55;
+  clip-path:polygon(0 16px,16px 0,100% 0,100% calc(100% - 16px),calc(100% - 16px) 100%,0 100%);
+  animation:vicpop .5s cubic-bezier(.2,1.5,.4,1)}
+.labart{border-bottom:1px solid #123344;background:#050d18}
+.labart svg{display:block;width:100%;height:auto}
+.labtext{padding:12px 18px 4px}
+.labtag{color:var(--cy);font-size:10px;font-weight:800;letter-spacing:.22em;margin-bottom:4px}
+.labtext h2{margin:0 0 6px;color:#eaf7ff;font-size:21px;font-weight:900;letter-spacing:.06em}
+.labtext p{margin:0 0 10px;color:#a9c8d8;font-size:12.5px;line-height:1.6}
+.labtext .shop{margin-top:6px}
+.labbtn{display:flex;flex-direction:column;align-items:center;gap:3px;width:calc(100% - 36px);
+  margin:12px 18px 0;padding:14px 12px;border:1px solid #1d5a7a;border-radius:0;cursor:pointer;
+  background:linear-gradient(180deg,#0c2233,#06141d);color:#a9e7f5;font-family:inherit;
+  clip-path:polygon(0 0,calc(100% - 14px) 0,100% 14px,100% 100%,14px 100%,0 calc(100% - 14px));
+  transition:background .12s,box-shadow .12s}
+.labbtn:hover,.labbtn:focus-visible{background:linear-gradient(180deg,#155178,#0a2e40);color:#fff;
+  box-shadow:0 0 26px #4fd6f755}
+.labbtnt{font-size:15px;font-weight:900;letter-spacing:.1em}
+.labbtns{font-size:10px;letter-spacing:.14em;color:#4f96a8;font-family:var(--mono)}
+/* 홀로그램 도표 — 안쪽 고리가 천천히 돌고, 스캔선이 그 위를 훑는다 */
+.labring{animation:labspin 5s linear infinite;transform-origin:center}
+.labscan{animation:labsweep 3.2s linear infinite;transform-origin:0 0}
+@keyframes labspin{to{transform:rotate(360deg)}}
+@keyframes labsweep{to{transform:rotate(360deg)}}
+/* 시료 플라스크의 거품 — 액면에서 목까지 떠오르며 옅어진다 */
+.labbubble{animation:labrise 1.7s ease-in infinite}
+@keyframes labrise{0%{transform:translateY(0);opacity:0}20%{opacity:.9}100%{transform:translateY(-18px);opacity:0}}
+/* 진단 갠트리 — 작업대 위를 좌우로 오간다 */
+.labgantry{animation:labslide 3.6s ease-in-out infinite}
+@keyframes labslide{0%,100%{transform:translateX(-90px)}50%{transform:translateX(90px)}}
+
 /* ── 오프닝 컷신 (동화책 × 리듬 게임) ──
    박에 맞춰 컷이 딱 끊어져 넘어가야 하므로 전환은 전부 짧고 과장되게.
    ease-out 오버슈트 한 번이면 "탁" 하고 꽂히는 느낌이 난다. */
@@ -665,7 +707,7 @@ button:disabled{opacity:.32;cursor:not-allowed;box-shadow:none}
   box-shadow:0 0 calc(22px * var(--glow,0)) rgba(251,191,36,calc(.55 * var(--glow,0)));
   transform:translateX(-50%) scale(calc(1 + .06 * var(--glow,0)))}
 
-/* ── 상점 ── 승리 화면 안쪽. 통계 줄(.vicrow)과 같은 문법을 쓰되 누를 수 있다. */
+/* ── 상점 ── 과학연구실 화면(.lab) 안쪽. 통계 줄(.vicrow)과 같은 문법을 쓰되 누를 수 있다. */
 .shop{margin-top:10px;border-top:1px solid #0d1c28;padding-top:8px}
 .shophead{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
   font-family:var(--mono);font-size:10px;font-weight:800;letter-spacing:.16em;color:var(--dim);
