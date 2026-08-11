@@ -275,7 +275,6 @@ export const en = {
 
   // ── Science lab (spend political capital) ──
   'lab.tag': 'SCIENCE LAB',
-  'lab.status': 'REFIT IN PROGRESS',
   'lab.title': 'ALLOCATE POLITICAL CAPITAL',
   'lab.body': 'Researchers strip captured Zorg wreckage and retool the fleet with what the capital buys.',
   'lab.go': 'Enjoy the peace until the next invasion',
