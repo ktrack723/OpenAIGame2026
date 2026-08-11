@@ -1,6 +1,6 @@
 import { AudioEngine } from './engine.js'
 import { Sfx } from './sfx.js'
-import { Music } from './music.js'
+import { Bgm } from './bgm.js'
 
 // ─── 소리 담당 ──────────────────────────────────────────────────
 // 게임 로직은 소리를 모른다. 화면에 무슨 일이 벌어졌는지만 fx 큐에 흘리고
@@ -17,10 +17,11 @@ import { Music } from './music.js'
 
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v)
 
-// 음악은 꺼 둔다. Music(Tone.js 관현악)은 그대로 남겨 둔다 — 나중에 오디오
-// 파일 기반 BGM으로 바꿔 낄 때, build/start/stop/setIntensity/setTheme/
-// duck/unduck 인터페이스만 맞추면 이 스위치 하나로 다시 켤 수 있다.
-const MUSIC_ENABLED = false
+// 음악은 파일 한 곡을 루프로 깐다(bgm.js). Music(Tone.js 관현악)은 그 파일을
+// 못 받아 왔을 때 대신 서는 자리로 남아 있고, 둘은 build/start/stop/
+// setIntensity/setTheme/duck/unduck 인터페이스가 같아서 여기서는 구분하지
+// 않는다. 이 스위치를 내리면 다시 효과음만 나는 게임이 된다.
+const MUSIC_ENABLED = true
 
 // 사건이 몰리는 종류는 억제 창을 넓게 잡는다. 규약은 "같은 소리 30ms"이고
 // 그 아래로는 절대 안 내려가지만, 벨트 반사처럼 판마다 수십 번 울리는 것은
@@ -34,7 +35,7 @@ export class AudioSystem {
   constructor() {
     this.engine = new AudioEngine()
     this.sfx = new Sfx(this.engine)
-    this.music = new Music(this.engine)
+    this.music = new Bgm(this.engine)
     this.game = null
     this.view = null
     this.booted = false
@@ -93,17 +94,22 @@ export class AudioSystem {
     if (this.booted) return true
     if (!this.engine.unlock()) return false
     this.booted = true
-    // 나머지는 시간이 걸린다: 리버브 임펄스를 굽고, 효과음 뱅크를 굽고,
-    // 그다음 연주를 시작한다. 화면은 그동안 이미 넘어가 있다.
+    // 음악을 **먼저 부르되 기다리지 않는다.** 음악 파일의 첫 재생 허락은
+    // 이 제스처 안에서 받아야 하는데(bgm.js), 효과음 굽기는 중간에 프레임을
+    // 양보하므로 그 뒤에 부르면 이미 제스처 밖이다. build()의 앞부분은
+    // 동기라서 여기서 부르는 것만으로 자격이 잡힌다.
+    const music = MUSIC_ENABLED ? this.music.build().catch(() => false) : null
+    // 나머지는 시간이 걸린다: 파일을 받고, 효과음 뱅크를 굽고, 그다음
+    // 연주를 시작한다. 화면은 그동안 이미 넘어가 있다.
+    // 굽는 동안 파일은 네트워크가 받아 오므로 둘은 서로를 안 기다린다.
     ;(async () => {
-      if (MUSIC_ENABLED) {
-        try {
-          await this.music.build()
-          this.music.setIntensity(0.2, 0.01)
-          this.music.start()
-        } catch { /* 음악이 안 서도 효과음은 나야 한다 */ }
-      }
       try { await this.sfx.prerender() } catch { /* 개별 재생 시 그때 굽는다 */ }
+      if (!music) return
+      try {
+        await music
+        this.music.setIntensity(0.2, 0.01)
+        this.music.start()
+      } catch { /* 음악이 안 서도 효과음은 나야 한다 */ }
     })()
     return true
   }
