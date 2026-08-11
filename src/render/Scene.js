@@ -253,6 +253,12 @@ export class SceneView {
     this.scene.add(new THREE.HemisphereLight(0x3b4a7a, 0x05070f, 0.35))
 
     this.sphereGeo = new THREE.SphereGeometry(1, 40, 28)
+    // 파편 전용 지오메트리 — 매끈한 구체(sphereGeo)는 5~10px 크기에서는 그냥
+    // 흐릿한 점으로 뭉개져 배경의 별·벨트 알갱이·폭발 잔광과 구분이 안 갔다.
+    // 각진 저폴리(사면체)는 같은 크기에서도 모서리 음영이 또렷해 "쪼개진 조각"으로
+    // 읽힌다. 크기 자체는 그대로 판정 반경이다(renderRadius 원칙은 안 건드린다) —
+    // 모양만 바꿔서 눈에 띄게 한다.
+    this.debrisGeo = new THREE.TetrahedronGeometry(1, 0)
     this.discGeo = new THREE.CircleGeometry(1, 64)
     this.ringGeos = new Map()   // 안쪽 반경 비율(%) → 링 지오메트리 (공유)
     this.glowTex = glowTexture()
@@ -533,13 +539,26 @@ export class SceneView {
     const spec = MATS[b.type] ?? MATS.rock
     const pi = paletteIndex(b.id, b.type)
     const em = this.emissiveFor(b, pi, spec)
-    const mesh = new THREE.Mesh(this.sphereGeo, new THREE.MeshStandardMaterial({
-      map: this.texFor(b.type, pi), color: 0xffffff,
-      roughness: spec.rough, metalness: spec.metal,
-      emissiveMap: em.map,
-      emissive: new THREE.Color(em.tone), emissiveIntensity: em.base,
-    }))
-    mesh.rotation.x = Math.PI / 2 - 0.35   // 극축을 살짝 눕혀 탑다운에서도 자전이 보이게
+    const isDebris = b.type === 'debris'
+    // 파편은 구체 텍스처 대신 각진 사면체 + 단색을 쓴다 — 몇 픽셀짜리 크기에서는
+    // 표면 무늬가 안 보이므로, 무늬 대신 각(edge) 음영으로 "조각"을 읽힌다.
+    const mesh = new THREE.Mesh(isDebris ? this.debrisGeo : this.sphereGeo, new THREE.MeshStandardMaterial(
+      isDebris
+        ? { color: colorOf(b.type, pi), roughness: spec.rough, metalness: spec.metal, flatShading: true }
+        : {
+          map: this.texFor(b.type, pi), color: 0xffffff,
+          roughness: spec.rough, metalness: spec.metal,
+          emissiveMap: em.map,
+          emissive: new THREE.Color(em.tone), emissiveIntensity: em.base,
+        }
+    ))
+    if (isDebris) {
+      // 조각마다 제각각 기운 자세로 시작한다 — 다 같은 각도면 사면체 여럿이
+      // 찍어낸 듯 똑같이 보인다. 굴러가는 동안은 기존 spin이 이어서 돌린다.
+      mesh.rotation.set(Math.random() * 6.29, Math.random() * 6.29, Math.random() * 6.29)
+    } else {
+      mesh.rotation.x = Math.PI / 2 - 0.35   // 극축을 살짝 눕혀 탑다운에서도 자전이 보이게
+    }
     const ring = new THREE.Mesh(this.ringGeoFor(0.9), new THREE.MeshBasicMaterial({
       transparent: true, depthWrite: false, depthTest: false, side: THREE.DoubleSide,
     }))
@@ -770,7 +789,9 @@ export class SceneView {
       if (!b.alive) continue
 
       // 워프인 — 게임 시간이 멈춰 있어도 보여야 하므로 실시간 dt로 감쇠시킨다
-      let scale = r
+      // 파편은 표식(ring)이 꺼져 있어 판정 반경(r) 그대로 그리면 화면에서
+      // 사실상 사라진다 — 대신 markerRadius(mr, MIN_DEBRIS_PX 바닥값)로 그린다.
+      let scale = b.type === 'debris' ? mr : r
       if (b.warp > 0) {
         b.warp = Math.max(0, b.warp - dt / CFG.WARP_TIME)
         const u = 1 - b.warp                       // 0 → 1
@@ -791,9 +812,13 @@ export class SceneView {
       fx.mesh.rotation.y += fx.spin * dt
 
       // 핵을 맞을 때마다 그을음이 남는다(부서지진 않는다) + 히트 플래시 (§14.5)
-      const c = fx.mesh.material.color
-      if (b.hitFlash > 0) c.setRGB(2.4, 2.4, 2.4)
-      else { const k = 1 - Math.min(3, b.scorch || 0) * 0.15; c.setRGB(k, k, k) }
+      // 파편은 damage()가 애초에 걸러내 hitFlash·scorch가 절대 안 붙는다 — 여기서
+      // 건드리면 늘 k=1이라 파편 고유 색(colorOf)이 매 프레임 흰색으로 덮인다.
+      if (b.type !== 'debris') {
+        const c = fx.mesh.material.color
+        if (b.hitFlash > 0) c.setRGB(2.4, 2.4, 2.4)
+        else { const k = 1 - Math.min(3, b.scorch || 0) * 0.15; c.setRGB(k, k, k) }
+      }
 
       fx.ring.position.set(b.pos.x, b.pos.y, 0)
       this.fitRing(fx.ring, mr * 1.22)
