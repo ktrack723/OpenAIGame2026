@@ -296,7 +296,7 @@ export const en = {
   'shop.yield': 'Yield cap +3',
   'shop.yield.brief': 'Push harder — heavy balls start to move',
   'shop.thruster': 'Earth thruster',
-  'shop.thruster.brief': 'Once, while observing: step out of the beam (T)',
+  'shop.thruster.brief': 'While observing and targeted: burn out of the beam (T)',
   'over.title': 'OPERATION FAILED', 'over.doom': 'They have come…',
   'over.new': 'START A NEW RUN',
   'over.why': '{why}  ·  {reached}',

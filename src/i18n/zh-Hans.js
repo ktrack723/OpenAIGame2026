@@ -296,7 +296,7 @@ export const zhHans = {
   'shop.yield': '炸药上限+3',
   'shop.yield.brief': '推得更狠 — 重球也开始动',
   'shop.thruster': '地球推进器',
-  'shop.thruster.brief': '观测中用一次，从光线走廊侧闪（T）',
+  'shop.thruster.brief': '被瞄准时于观测中点燃，从光线走廊侧闪（T）',
   'over.title': '行动失败', 'over.doom': '他们来了……',
   'over.new': '开始新一轮',
   'over.why': '{why}  ·  {reached}',
