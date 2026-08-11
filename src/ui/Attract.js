@@ -1,6 +1,6 @@
 import { t } from '../i18n/index.js'
 import { AUDIO } from '../audio/index.js'
-import { CFG, contactDist, hitRadiusOf } from '../game/config.js'
+import { CFG, R_SCALE, contactDist, hitRadiusOf } from '../game/config.js'
 import { LASER_CHARGE, LASER_IDLE, LASER_TRAVEL } from '../game/laser.js'
 import { makeGoal } from '../game/objectives.js'
 import { blastWave, cloneBodies, stepBodies, stepMissile } from '../game/physics.js'
@@ -198,6 +198,20 @@ function stageSpots(g, actors, u) {
 const PROBE_DT = 1 / 60, PROBE_EVERY = 4    // 탐색용 — 거칠어도 근점거리는 1 GU 안쪽
 const FINE_DT = CFG.DT, FINE_EVERY = 1      // 확정용 — 실제 게임과 완전히 같은 적분
 
+// 예고편이 훑는 발사 속도. 값(36~24)은 **공이 지금의 1/R_SCALE 이던 시절에**
+// 잡은 것이다: 이 장면은 판정 원 바로 바깥(hitJ × 1.16)을 스치게 쏘는 것이라,
+// 공을 키우면 근점거리와 발사점이 통째로 밖으로 밀려 같은 사다리로는 장면이
+// 안 나온다(계측 20시드: 성공 19 → 16, 탐색 시간은 두 배).
+//
+// 보정은 √R_SCALE **곱하기**다. 굴절각 tan(θ/2) = κμ/(r_p·v²) 만 보면 반대로
+// 나눠야 맞을 것 같은데, 실제로 굴려 보면 그쪽이 훨씬 나쁘다(7/20). 느린 탄은
+// 커진 스윙바이 구간 안에서 감겨 포획되거나(CAPTURE_WRAP) 멀어진 발사점까지
+// 오느라 비행시간 예산에 걸려, 굴절각을 얻기 전에 다른 조건에서 탈락한다.
+// 사다리를 넓게 펴는 것도 답이 아니었다 — 앞쪽에서 걸리는 값이 없으면 뒤쪽까지
+// 다 훑느라 시간 예산(until)에 먼저 걸린다.
+//   ÷√1.3 → 7/20  ·  그대로 → 16/20  ·  [44…24] → 14/20  ·  ×√1.3 → 18/20
+const V0_LADDER = [36, 33, 30, 27, 24].map(v => v * Math.sqrt(R_SCALE))
+
 // 미사일 한 발을 굴려 본다. 실제와 같은 적분기·중력이다.
 // stop(m, sim, t)이 참을 돌려주면 그 자리에서 멈춘다.
 function fly(bodies, pos, vel, seconds, stop, dt = PROBE_DT, every = PROBE_EVERY) {
@@ -276,7 +290,7 @@ function solveShot(g, u, n, P, cast, until = Infinity) {
   // 빠를수록 덜 휘므로 예전에는 느린 쪽을 먼저 골랐는데, 화면에서는 그게
   // "한참 기어가는 탄두"로 보였다. 이제 **빠른 쪽부터** 고른다 — 굴절각이
   // 줄어도 게임이 스윙바이로 인정하는 선(25°)만 넘기면 화면에는 그대로 휘어 돈다.
-  for (const v0 of [36, 33, 30, 27, 24]) {
+  for (const v0 of V0_LADDER) {
     // **어느 쪽으로 비껴 쏘는가**도 같이 훑는다. 무대가 공전을 시작하면서
     // 좌우가 더는 대칭이 아니게 됐다 — 행성이 도는 쪽으로 비껴 쏘면 상대속도가
     // 낮아 크게 휘고, 반대쪽은 덜 휜다. 한쪽만 보면 그 차이만큼 답을 놓친다.

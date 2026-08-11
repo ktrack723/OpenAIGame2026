@@ -1,4 +1,4 @@
-import { CFG, aMaxOf, beltRadius, contactDist } from './config.js'
+import { CFG, R_SCALE, aCeilFor, aFloorFor, aMaxOf, beltRadius, contactDist, hitRadiusFor } from './config.js'
 import { makeBody } from './body.js'
 import { TYPE_MU_MUL } from './roles.js'
 import { cloneBodies, stepBodies } from './physics.js'
@@ -70,42 +70,93 @@ const SOLAR_Q = 0.20      // 질량: μ = EARTH_MU × m^Q
 const SOLAR_S = 0.45      // 반경: R = EARTH_R × r^S
 const SOLAR_E = 0.5       // 이심률 감쇠 — 명왕성(0.249)·에리스(0.436)를 그대로 쓰면
 const SOLAR_E_MAX = 0.13  //   압축된 판에서 궤도 대여섯 개를 가로질러 버린다
+// 지구 궤도의 **기준**값 = 이 비율 × aMax. 배치가 여기서 밖으로만 움직이므로
+// 실제 지구는 이보다 조금 바깥에 앉는다(간격 확보분).
+//
+// 값은 그대로지만 **뜻이 달라졌다.** 예전에는 궤도를 다 벌린 뒤 전체를 k=0.55로
+// 눌렀기 때문에 0.35가 실제로는 0.31로 작동했고(지구 574 GU), 그 압축을
+// 걷어낸 지금은 같은 0.35가 지구를 690 GU에 앉힌다. 판이 20% 커진 셈인데,
+// 그래도 이 값을 유지한다 — 이유는 둘이다.
+//   ① **공 지름으로 재면 판은 오히려 좁아졌다.** 판을 GU로 재는 건 의미가 없고
+//      "공 몇 개만큼 떨어져 있나"가 곧 난이도다: 지구 궤도 ÷ 지구 판정 반경이
+//      15.4 → 14.2로 줄었다(목성 기준 5.2 → 4.8). 공을 1.3배로 키운 효과가
+//      판이 넓어진 것보다 크다.
+//   ② 요새를 세울 자리가 넓어진다. 0.28로 내려 예전 반경을 되찾아 보니 요새
+//      대역이 707 → 571 GU로 좁아져 빈 궤도를 못 찾는 요새가 늘었고(계측:
+//      대역 밖으로 새는 요새가 늘고 큐볼 옆자리 보증이 99% → 93%로 떨어졌다),
+//      그 대가가 판이 좁아져 얻는 것보다 컸다.
+const SOLAR_A_EARTH = 0.35
 
-// 궤도가 너무 붙은 이웃을 바깥으로 밀어 최소 간격을 확보한다.
-// 압축 때문에 해왕성 바깥 천체(명왕성·하우메아·마케마케)가 30 GU 안에
-// 몰리는데, 그대로 두면 시작하자마자 서로 부대끼며 먼지만 피운다.
-function spreadOrbits(rows, minGap) {
-  for (let i = 1; i < rows.length; i++) {
-    const need = rows[i - 1].a + minGap(rows[i - 1], rows[i])
-    if (rows[i].a < need) rows[i].a = need
+// ─── 궤도 배치 ──────────────────────────────────────────────────
+// 세 가지를 **동시에** 만족시켜야 한다:
+//   ① 순서와 비율 — AU 거듭제곱이 준 자리(a0)보다 안쪽으로는 안 내려간다
+//   ② 이웃끼리 안 스침 — 궤도 반경 차가 두 판정 원의 합보다 넉넉히 커야 한다
+//   ③ 판 안 — 원점(遠點)이 카이퍼 벨트 안쪽, 근점(近點)이 코로나 바깥
+//
+// 예전 코드는 ②를 전부 만족시킨 뒤 ③을 맞추려고 **전체를 k배로 눌렀다**.
+// 그러면 두 가지가 조용히 망가진다:
+//   · ②의 보증이 통째로 깨진다. 간격도 같이 k배가 되므로 "최소 간격을
+//     확보한다"는 이 함수의 계약이 끝나고 나면 남아 있지 않다(계측 k=0.55).
+//   · 가장 안쪽 궤도가 태양 쪽으로 끌려 내려간다. 공을 키우면 필요 간격이
+//     커져 k가 더 작아지므로 **키울수록 수성이 코로나로 내려간다** —
+//     반경 1.3배에서 수성이 338 → 270 GU, 근점이 태양 표면의 1.24배였다.
+//
+// 이제는 ①③을 벽으로 두고 ②의 요구치만 균등하게 양보시킨다: 간격 배율 f를
+// 이분 탐색해 **벽을 안 넘는 가장 큰 f**를 찾는다. 자리는 그대로 두고 간격만
+// 판이 감당할 만큼 좁히는 것이라 안쪽 궤도가 태양으로 끌려가지 않고,
+// 좁힌 결과가 곧 실제로 지켜지는 최소 간격이라 계약도 거짓말이 아니게 된다.
+// (f=0이면 a0 그대로이고 a0는 증가열이라 반드시 벽 안이다 — 해는 항상 있다.)
+function layoutOrbits(rows, gapOf, aFloor, aCeil) {
+  const last = rows.length - 1
+  // a0가 이미 벽을 넘는 성계라면(판이 좁아진 경우) 비율만 지키며 눌러 넣는다.
+  // 여기서 한 번 눌러 두면 아래 이분 탐색의 전제(f=0은 반드시 통과)가 성립한다.
+  if (rows[last].a0 > aCeil) {
+    const k = aCeil / rows[last].a0
+    for (const r of rows) r.a0 = Math.max(aFloor, r.a0 * k)
   }
+  const fit = (f) => {
+    let a = rows[0].a = Math.max(aFloor, rows[0].a0)
+    for (let i = 1; i <= last; i++) a = rows[i].a = Math.max(rows[i].a0, a + gapOf(rows[i - 1], rows[i]) * f)
+    return a
+  }
+  if (fit(1) <= aCeil) return 1
+  let lo = 0, hi = 1
+  for (let k = 0; k < 24; k++) {
+    const mid = (lo + hi) / 2
+    if (fit(mid) <= aCeil) lo = mid; else hi = mid
+  }
+  fit(lo)
+  return lo
 }
 
 export function buildSolarSystem(rng, A = 1) {
   const aMax = aMaxOf(A)
-  const aEarth = 0.35 * aMax
+  const aEarth = SOLAR_A_EARTH * aMax
   const rows = SOLAR.map((s, i) => ({
     ...s,
-    a: aEarth * Math.pow(s.au, SOLAR_P),
+    // a0 = 비율이 준 자리. 배치는 여기서 **밖으로만** 움직인다(layoutOrbits).
+    a0: aEarth * Math.pow(s.au, SOLAR_P),
+    a: 0,
     // 얼음은 가볍다 — 분류가 곧 질량이다(TYPE_MU_MUL). 반경은 실제 비율 그대로라
     // "덩치는 큰데 잘 밀리는 공"이 자연스럽게 생긴다.
     // MU_SCALE — 판 전체를 가볍게. 핵 한 방에 궤도가 눈에 띄게 바뀌어야
     // "쳤다"는 감각이 생긴다(당구처럼 쾅쾅). 반경은 별개라 그림은 그대로다.
     mu: Math.max(8, CFG.EARTH_MU * (s.isEarth ? 1 : Math.pow(s.m, SOLAR_Q))
       * (TYPE_MU_MUL[s.type] ?? 1) * CFG.MU_SCALE),
-    radius: s.isEarth ? CFG.EARTH_R : Math.max(2.2, CFG.EARTH_R * Math.pow(s.r, SOLAR_S)),
+    // 반지름 바닥값도 전역 배율을 탄다 — 안 그러면 제일 작은 공만 안 커진다
+    radius: s.isEarth ? CFG.EARTH_R : Math.max(2.2 * R_SCALE, CFG.EARTH_R * Math.pow(s.r, SOLAR_S)),
     ecc: Math.min(SOLAR_E_MAX, s.e * SOLAR_E),
     idx: i,
   }))
-  // 서로 닿을 만큼 붙은 궤도는 벌린다 (판정 원 지름의 2.5배 + 여유)
-  spreadOrbits(rows, (p, q) => Math.max(46, (p.radius + q.radius) * CFG.HIT_R * 2.5))
-  // 다 벌리고 나서 벨트 안쪽에 들어오게 통째로 눌러 준다
-  const limit = beltRadius(aMax) * 0.86
-  const outer = rows[rows.length - 1]
-  if (outer.a > limit) {
-    const k = limit / outer.a
-    for (const r of rows) r.a = Math.max(CFG.A_MIN, r.a * k)
-  }
+  // 서로 닿을 만큼 붙은 궤도는 벌린다 — 기준은 **두 공의 판정 원 합**(=접촉
+  // 거리)의 2.5배다. 예전에는 (반지름 합 × HIT_R)로 계산해 MIN_HIT_R 바닥값을
+  // 빼먹었는데, 소행성대(베스타·세레스·히기에이아)는 실제 판정 원이 23.4인데
+  // 11~15로 쳐서 요구 간격이 접촉 거리의 1.2배밖에 안 됐다 — 벌려 놓고도
+  // 바로 스치는 자리였다. 46 GU 바닥값은 그 실수를 가리던 반창고라 같이 뺀다.
+  const gapOf = (p, q) => (hitRadiusFor(p.radius) + hitRadiusFor(q.radius)) * 2.5
+  // 벽은 근점·원점으로 잰다 — 이심률이 SOLAR_E_MAX까지 붙으므로 장반경만
+  // 보면 원점이 벨트를 넘거나 근점이 코로나로 들어간다.
+  layoutOrbits(rows, gapOf, aFloorFor(SOLAR_E_MAX), aCeilFor(aMax, SOLAR_E_MAX))
   const bodies = rows.map((s) => {
     const w = rng.range(0, Math.PI * 2), nu = rng.range(0, Math.PI * 2)
     const st = elementsToState(s.a, s.ecc, w, nu)
