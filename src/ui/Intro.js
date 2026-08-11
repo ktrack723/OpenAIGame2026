@@ -1,4 +1,5 @@
 import { t } from '../i18n/index.js'
+import { AUDIO } from '../audio/index.js'
 // ─── 오프닝 — 동화책 × 리듬 게임 ────────────────────────────────
 // 이 게임은 규칙이 특이하다: 핵은 행성을 부수지 못하고(밀기만 한다),
 // 부수는 건 행성끼리의 충돌뿐이며, 성계 밖으로는 아무것도 나가지 못한다.
@@ -193,7 +194,10 @@ export class Intro {
 
     el.querySelector('#introSkip').onclick = (e) => { e.stopPropagation(); this.finish() }
     // 아무 데나 눌러야 다음 컷으로 간다. ESC는 통째로 건너뛰기.
+    // M만 예외다 — 음소거는 어느 화면에서든 먹어야 하는 키라, 여기서
+    // 컷 넘김으로 먹어 버리면 튜토리얼을 보는 동안에는 소리를 못 끈다.
     this.onKey = (e) => {
+      if (e.key === 'm' || e.key === 'M') return
       if (e.key === 'Escape') { e.preventDefault(); this.finish() }
       else { e.preventDefault(); this.next() }
     }
@@ -212,6 +216,9 @@ export class Intro {
     this.beat.classList.remove('hit')
     void this.beat.offsetWidth
     this.beat.classList.add('hit')
+    // 박에 소리를 얹는다. 아주 작다 — 이게 들리면 규칙 대신 이 소리를 읽는다.
+    // 한 마디의 첫 박만 조금 높다(어디가 마디 머리인지가 그걸로 읽힌다).
+    AUDIO.play('introBeat', { gain: k === 0 ? 0.9 : 0.55, rate: k === 0 ? 1.18 : 1 })
     this.beatTimer = setTimeout(() => this.pulse(), BEAT)
   }
 
@@ -219,6 +226,8 @@ export class Intro {
     if (this.done) return
     this.i++
     if (this.i >= this.panels.length) { this.finish(); return }
+    // 컷이 한 장 넘어간다. 컷마다 조금씩 높아져서 "몇 장째인가"가 소리로도 읽힌다.
+    AUDIO.play('introNext', { rate: 1 + this.i * 0.05 })
     const p = this.panels[this.i]
     this.art.innerHTML = p.art
     this.tag.textContent = t(`${p.key}.tag`)

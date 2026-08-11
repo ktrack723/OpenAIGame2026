@@ -1,5 +1,6 @@
 import { hitRadiusOf } from '../game/config.js'
 import { tList, nameOf } from '../i18n/index.js'
+import { AUDIO } from '../audio/index.js'
 
 // ─── 조르그 교신 ────────────────────────────────────────────────
 // 관측 모드에서 가끔, 살아 있는 조르그 요새 위에 저쪽 얼굴이 뜨고 한 마디
@@ -127,6 +128,19 @@ export class Comms {
   }
 
   show(b, line, dying, hold) {
+    // ── 교신음 ──
+    // 화면은 이미 "치지직"거리고 있다(.commsscan). 소리도 같은 말을 해야 한다:
+    // 반송파가 잡히고(잡음), 저쪽 신호가 뚫고 들어온다(두 음).
+    // 조르그의 두 음은 증4도다 — 사람이 쓰는 무전에는 없는 음정이라,
+    // 얼굴을 보기 전에 소리만으로 어느 쪽인지 갈린다(관제는 완전4도).
+    // 단말마는 그 반대다: 음정이 무너지고 잡음만 남는다.
+    if (dying) {
+      AUDIO.ui('commsDeath')
+      AUDIO.sfx.noise({ dur: 0.9, gain: 0.16, band: 1100, q: 0.8, sweep: 0.35, pan: -0.15 })
+    } else {
+      AUDIO.ui('commsStatic', 0.8)
+      AUDIO.ui('commsOpenZorg')
+    }
     this.body = b
     this.dying = dying
     this.face = pick(FACES, this.face)
@@ -142,6 +156,9 @@ export class Comms {
   }
 
   close() {
+    // 스퀄치 — 회선이 끊기는 소리. 떠 있던 창을 닫을 때만 낸다
+    // (close()는 아무것도 안 떠 있어도 불린다).
+    if (this.left > 0) AUDIO.ui('commsClose', 0.7)
     this.left = 0
     this.body = null
     this.dying = false

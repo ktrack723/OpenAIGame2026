@@ -224,7 +224,20 @@ export class Game {
   // 연출 이벤트 큐. onFx는 **읽기 전용 방청석**이다 — 지상 관제(Ground)가
   // 발사·명중·격파 같은 순간을 여기서 주워 듣는다. 렌더러가 매 프레임 fx를
   // 비워 버리므로 큐를 나중에 보는 걸로는 못 잡는다.
-  addFx(e) { this.onFx?.(e); if (this.fx.length < 96) this.fx.push(e) }
+  //
+  // 방청석이 둘이 되면서(관제 + 소리) 자리를 하나 더 뒀다. onFx는 예전부터
+  // 있던 **한 자리짜리 구멍**이라 그대로 두고(거기 앉은 쪽이 바뀌면 안 된다),
+  // 새로 듣겠다는 쪽은 onFxAdd로 줄을 선다. 둘 다 큐에 쌓기 **전에** 불린다 —
+  // 렌더러가 프레임마다 큐를 비우므로 나중에 보는 걸로는 못 잡는다.
+  onFxAdd(fn) {
+    (this._fxSubs ??= []).push(fn)
+    return () => { const i = this._fxSubs.indexOf(fn); if (i >= 0) this._fxSubs.splice(i, 1) }
+  }
+  addFx(e) {
+    this.onFx?.(e)
+    if (this._fxSubs) for (const fn of this._fxSubs) fn(e)
+    if (this.fx.length < 96) this.fx.push(e)
+  }
 
   // ─── 두 가지 모드 ───────────────────────────────────────────
   // **조준 모드** — 판이 멈춘다. 미사일이 날아가는 중이라도 멈춘다.

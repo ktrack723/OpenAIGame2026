@@ -1,5 +1,6 @@
 import { hitRadiusOf } from '../game/config.js'
 import { t, tList } from '../i18n/index.js'
+import { AUDIO } from '../audio/index.js'
 
 // ─── 지상 관제 ──────────────────────────────────────────────────
 // 조르그가 요새 위에서 잡담을 던진다면(Comms), 이쪽은 **지구 아래에서 사건에
@@ -158,6 +159,7 @@ export class Ground {
   // 평소 규칙(관측 모드에서만·우선순위)을 통째로 건너뛴다.
   say(line, hold = HOLD) {
     if (!line) return
+    this.radio()
     this.face = pick(FACES, this.face)
     this.faceEl.innerHTML = FACES[this.face]
     this.whoEl.textContent = t('gnd.who')
@@ -171,10 +173,20 @@ export class Ground {
     this.place()
   }
 
+  // ── 무전음 ──
+  // 관제는 사람이다. 그래서 조르그와 정반대의 소리를 낸다: 잡음은 얇고
+  // 짧고(회선이 깨끗하다), 두 음은 완전4도다(무전기가 실제로 쓰는 음정).
+  // 조르그의 증4도와 나란히 놓으면 얼굴을 안 봐도 어느 쪽인지 갈린다.
+  radio() {
+    AUDIO.sfx.noise({ dur: 0.10, gain: 0.09, band: 2100, q: 1.4, pan: 0.12 })
+    AUDIO.ui('commsOpenGnd')
+  }
+
   show(kind, prio) {
     const lines = tList(`gnd.${kind}`)
     if (!lines.length) return
     const i = this.last[kind] = pick(lines, this.last[kind] ?? -1)
+    this.radio()
     this.face = pick(FACES, this.face)
     this.faceEl.innerHTML = FACES[this.face]
     this.whoEl.textContent = t('gnd.who')
@@ -188,6 +200,7 @@ export class Ground {
   }
 
   close() {
+    if (this.left > 0) AUDIO.ui('commsClose', 0.45)   // 회선을 놓는 소리
     this.left = 0
     this.prio = 0
     this.forced = false

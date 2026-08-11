@@ -1,4 +1,5 @@
 import { LANGS, getLang, setLang } from '../i18n/index.js'
+import { AUDIO } from '../audio/index.js'
 
 // ─── 언어 선택 — 판이 열리기 전에 ───────────────────────────────
 // 예전에는 언어 버튼이 조준 패널 구석에만 있었다. 그런데 그 패널은
@@ -53,13 +54,18 @@ export class LangPick {
   start() { this.mark(this.i); return this }
 
   mark(i) {
+    const was = this.i
     this.i = (i + LANGS.length) % LANGS.length
+    // 커서가 실제로 옮겨 갔을 때만. start()가 처음 부르는 것까지 소리를 내면
+    // 시작 화면의 확인음과 겹친다.
+    if (was !== this.i) AUDIO.play('uiTick', { gain: 0.8, rate: 0.9 })
     this.btns.forEach((b, k) => b.classList.toggle('on', k === this.i))
   }
 
   choose(i) {
     if (this.done) return
     this.done = true
+    AUDIO.ui('uiHeavy')
     setLang(LANGS[(i + LANGS.length) % LANGS.length].code)
     removeEventListener('keydown', this.onKey)
     this.el.classList.add('out')

@@ -8,6 +8,8 @@ import { LangPick } from './ui/LangPick.js'
 import { Comms } from './ui/Comms.js'
 import { Ground } from './ui/Ground.js'
 import { Victory } from './ui/Victory.js'
+import { StartGate } from './ui/StartGate.js'
+import { AUDIO } from './audio/index.js'
 
 // 시드: ?seed= 지정 시 그 값, 아니면 데일리 시드 (고정 dt + 시드 PRNG → 결정론, §4.2)
 const params = new URLSearchParams(location.search)
@@ -25,7 +27,7 @@ inspector.bind((b) => view.renderRadius(b))
 // 승리 화면 — "다음 스테이지" 버튼 대신 축하 장면을 띄우고,
 // 버튼을 누르면 그때 다음 침공(=다음 스테이지)이 시작된다.
 const victory = new Victory(game, () => game.nextStage())
-window.__game = game; window.__view = view; window.__victory = victory
+window.__game = game; window.__view = view; window.__victory = victory; window.__audio = AUDIO
 document.querySelector('.boot')?.remove()
 
 // 두 목소리. 조르그는 요새 **위**에서 타이머로 잡담을 던지고, 지상 관제는
@@ -34,19 +36,28 @@ document.querySelector('.boot')?.remove()
 const comms = new Comms(game, view)
 const ground = new Ground(game, view)
 
-// 오프닝 — 세 단계다.
-// ⓪ 언어: 무엇으로 읽을지부터 묻는다. 예고편도 튜토리얼도 문장이 있는데,
+// ─── 소리 ───────────────────────────────────────────────────────
+// 사건은 game.addFx가 흘려보내는 큐에서 줍는다(지상 관제와 같은 자리).
+// 전황(속도·위험도)은 매 프레임 읽어 음악 레이어를 크로스페이드한다.
+// 실제로 컨텍스트가 열리는 건 아래 시작 화면을 누르는 그 순간이다.
+AUDIO.bind(game, view)
+
+// 오프닝 — 네 단계다.
+// ⓪ 시작: 소리를 열 수 있는 유일한 자리. 브라우저는 사람이 누르기 전에
+//    소리를 못 내게 막고, 그 허락은 제스처 핸들러 **안에서** 받아야 한다.
+// ① 언어: 무엇으로 읽을지부터 묻는다. 예고편도 튜토리얼도 문장이 있는데,
 //    그걸 다 보고 나서야 언어를 고를 수 있으면 그건 고른 게 아니다.
-// ① 예고편: **실제 게임을 굴려서** 한 번의 발사가 끝까지 굴러가는 걸 보여 준다.
+// ② 예고편: **실제 게임을 굴려서** 한 번의 발사가 끝까지 굴러가는 걸 보여 준다.
 //    그려 놓은 그림이 아니라 같은 렌더러·같은 HUD·같은 폭발이다.
 //    끝나면 판을 리셋하고 로고를 박는다.
-// ② 튜토리얼: 규칙을 한 컷씩, 누르는 사람 속도로.
-// ?nointro=1 로 셋 다 끌 수 있다(반복 플레이·자동 검증용).
+// ③ 튜토리얼: 규칙을 한 컷씩, 누르는 사람 속도로.
+// ?nointro=1 로 넷 다 끌 수 있다(반복 플레이·자동 검증용).
 // 조르그의 첫 워프인은 **튜토리얼을 닫은 뒤에** 시작된다(warpHold). 규칙을
 // 읽는 동안 뒤에서 도착이 끝나 버리면, 첫 판에서 제일 먼저 봐야 할 장면을
 // 오버레이가 통째로 가린다. 닫고 나서 워프가 끝나면 그때 조준 UI가 떠오른다.
 let attract = null
-if (!params.get('nointro')) {
+
+function opening() {
   // 언어를 고르는 동안에도 판은 붙들어 둔다 — 그 사이에 조르그가 도착해
   // 버리면 예고편이 세울 무대가 이미 헝클어져 있다.
   game.warpHold = true
@@ -62,6 +73,28 @@ if (!params.get('nointro')) {
   }).start()
 }
 
+if (!params.get('nointro')) {
+  // 판은 시작 화면이 떠 있는 동안에도 붙들어 둔다 — 누르기 전에 조르그가
+  // 도착해 버리면 예고편이 세울 무대가 이미 헝클어져 있다(언어 화면과 같은 이유).
+  game.warpHold = true
+  new StartGate(() => {
+    // ── 이 두 줄이 제스처 핸들러 안이다 ──
+    AUDIO.unlock()
+    AUDIO.ui('start')
+    opening()
+  }).start()
+} else {
+  // 자동 검증용 경로. 시작 화면이 없으므로 소리를 열 자리도 없다 —
+  // 아무 데나 처음 누르는(또는 누르는) 순간 한 번만 열어 준다.
+  const once = () => {
+    AUDIO.unlock()
+    removeEventListener('pointerdown', once)
+    removeEventListener('keydown', once)
+  }
+  addEventListener('pointerdown', once)
+  addEventListener('keydown', once)
+}
+
 let last = performance.now()
 function loop(now) {
   const dt = Math.min(0.1, (now - last) / 1000); last = now
@@ -69,6 +102,7 @@ function loop(now) {
   game.tick(dt); view.render(); updateHud(hud, game); inspector.update()
   comms.update(dt)                    // 예고편 중에도 돈다 — 박자는 예고편이 잡는다
   ground.update(dt)
+  AUDIO.frame(dt, game)               // 전황 → 음악 레이어 / 상태가 바뀐 순간의 소리
   // 판을 이긴 순간 축하 장면을 **시간차를 두고** 연다(한 번만).
   // 바로 띄우면 마지막 요새가 터지는 걸 패널이 덮는다 — 패배 화면과 같은 이유다.
   // 닫으면 다음 침공이 온다.

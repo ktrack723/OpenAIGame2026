@@ -606,3 +606,40 @@ button:disabled{opacity:.32;cursor:not-allowed;box-shadow:none}
 .slogospark{animation:sspark .9s ease-in-out infinite}
 @keyframes sspark{0%,100%{opacity:.45}50%{opacity:1}}
 @media (prefers-reduced-motion:reduce){ .attract *{animation:none!important} }
+
+/* ─── 시작 화면 ─────────────────────────────────────────────────
+   소리를 여는 자리. 오프닝 전체에서 제일 먼저 뜨고(언어 선택보다도 앞),
+   화면에 있는 것은 마크·이름·"CLICK TO START" 셋뿐이다 — 아직 언어를
+   안 골랐으므로 읽을 문장을 둘 수 없다(LangPick 주석과 같은 이유).
+   z-index는 언어 화면(12)보다 위여야 한다. */
+.startgate{position:fixed;inset:0;z-index:14;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;user-select:none;touch-action:manipulation;
+  background:radial-gradient(120% 90% at 50% 44%,#0a1424 0%,#02050c 74%);
+  animation:introin .4s ease-out}
+.startgate.out{opacity:0;transition:opacity .35s ease;pointer-events:none}
+.sgbox{display:flex;flex-direction:column;align-items:center;gap:10px;
+  animation:slogoin .55s cubic-bezier(.2,1.5,.4,1) both}
+.sgmark{width:min(140px,32vw);height:auto}
+.sgtitle{color:var(--cy);font-size:clamp(26px,7vw,46px);font-weight:900;letter-spacing:.3em;
+  text-indent:.3em;text-shadow:0 0 28px #4fd6f766,0 0 60px #4fd6f733}
+.sgcta{margin-top:6px;padding:9px 20px;border:1px solid #2f7f9c;background:#08202ecc;
+  color:#d9f6ff;font-family:var(--mono);font-size:12px;font-weight:800;letter-spacing:.28em;
+  text-indent:.28em;box-shadow:0 0 24px #4fd6f733,inset 0 0 22px #4fd6f71a;
+  animation:sgpulse 1.6s ease-in-out infinite}
+@keyframes sgpulse{0%,100%{opacity:.62}50%{opacity:1}}
+.sgnote{display:flex;align-items:center;gap:8px;color:#4a6274;font-size:10px;letter-spacing:.2em;
+  font-family:var(--mono)}
+.sgspk{width:17px;height:16px;display:block}
+.sgkeys{padding:1px 6px;border:1px solid #1b3a4d;color:#6b8496}
+.sgtrace{transform-origin:60px 60px;animation:sorbit 2.4s linear infinite}
+@media (prefers-reduced-motion:reduce){ .startgate *{animation:none!important} }
+
+/* 음소거 버튼 — 도구 줄의 맨 끝. 꺼져 있으면 눌러 놓은 티가 나야 한다.
+   아이콘은 겹 두 장(파동 / ×)을 겹쳐 두고 CSS가 하나만 보여 준다 —
+   버튼 안을 다시 그리지 않으므로 상태가 바뀌어도 줄이 안 흔들린다. */
+#mute{min-width:36px;padding:5px 8px;line-height:0}
+#mute .spk{width:18px;height:17px;display:block}
+#mute .spkx{display:none}
+#mute.off{color:var(--rd);border-color:#5c1620;background:#1a070b}
+#mute.off .spkwave{display:none}
+#mute.off .spkx{display:block}

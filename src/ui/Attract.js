@@ -1,4 +1,5 @@
 import { t } from '../i18n/index.js'
+import { AUDIO } from '../audio/index.js'
 import { CFG, contactDist, hitRadiusOf } from '../game/config.js'
 import { LASER_CHARGE, LASER_IDLE, LASER_TRAVEL } from '../game/laser.js'
 import { makeGoal } from '../game/objectives.js'
@@ -761,7 +762,9 @@ export class Attract {
 
     el.querySelector('#attractSkip').onclick = (e) => { e.stopPropagation(); this.finish() }
     el.onclick = () => this.finish()
-    this.onKey = (e) => { e.preventDefault(); this.finish() }
+    // M은 안 먹는다 — 예고편을 보다가 소리를 끄고 싶을 수 있고, 그때
+    // 아무 키나 예고편을 건너뛰게 두면 소리를 끄는 대신 예고편이 끝난다.
+    this.onKey = (e) => { if (e.key === 'm' || e.key === 'M') return; e.preventDefault(); this.finish() }
     addEventListener('keydown', this.onKey)
   }
 
@@ -1000,6 +1003,7 @@ export class Attract {
     this.game.advancing = false
     this.game.obsSpeed = 0
     this.comms?.close()          // 로고 위에 교신창을 얹지 않는다
+    AUDIO.ui('logo')             // 예고편의 마침표
     this.el.classList.add('logo')
     this.bar(1)
     this.after(LOGO_MS, () => this.finish())

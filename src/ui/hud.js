@@ -3,6 +3,21 @@ import { ROLES, roleAim, roleBrief, roleLabel } from '../game/roles.js'
 import { bearing, toDeg180 } from '../core/angle.js'
 import { defeatArt, defeatTag } from './defeatArt.js'
 import { LANGS, getLang, langLabel, onLangChange, setLang, t, tx, nameOf, msg } from '../i18n/index.js'
+import { AUDIO } from '../audio/index.js'
+
+// 스피커 — 이모지가 아니라 인라인 SVG다. 이 게임의 그림은 전부 SVG이기도
+// 하고(자산 0개), 무엇보다 🔊는 컬러 이모지 글꼴이 없는 환경에서 까만 덩어리로
+// 떨어져 무슨 버튼인지 안 읽힌다. 켜짐/꺼짐은 CSS가 어느 겹을 보여 줄지로
+// 가른다 — 버튼 안을 다시 그리지 않으므로 상태가 바뀌어도 레이아웃이 안 튄다.
+const SPEAKER = `<svg viewBox="0 0 26 24" class="spk" aria-hidden="true">
+  <path d="M3 9.5h4.2L12.6 5v14L7.2 14.5H3z" fill="currentColor"/>
+  <g class="spkwave" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
+    <path d="M16.4 9.2a4.7 4.7 0 0 1 0 5.6"/><path d="M19.6 6.6a8.6 8.6 0 0 1 0 10.8"/>
+  </g>
+  <g class="spkx" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round">
+    <path d="M17 9.6l6 4.8M23 9.6l-6 4.8"/>
+  </g>
+</svg>`
 
 const hex = (n) => '#' + n.toString(16).padStart(6, '0')
 const clamp0 = (n) => Math.max(0, n)
@@ -113,6 +128,7 @@ export function makeHud(game, view) {
     <button id="zfull" class="ghost" title="${t('ui.zfull.tip')}">${t('ui.zfull')}</button>
     <button id="new" class="ghost" title="${t('ui.new.tip')}">${t('ui.new')}</button>
     <button id="lang" class="ghost" title="${t('ui.lang.tip')}">🌐 ${langLabel()}</button>
+    <button id="mute" class="ghost" title="${t('ui.mute.tip')}" aria-pressed="false">${SPEAKER}</button>
   </div>
   <div class="msg" id="msg"></div>
   <div class="hint">${t('ui.hint')}</div>
@@ -186,12 +202,24 @@ export function makeHud(game, view) {
     for (const btn of qs(`#${k}`).querySelectorAll('.stepbtn')) {
       const d = +btn.dataset.d
       const amount = c.steps[Math.abs(d) - 1] * Math.sign(d)
-      holdRepeat(btn, () => { if (!game.canAim) return; c.set(c.get() + amount); el._sync() })
+      // 한 칸 = 한 틱. 누르고 있으면 반복되는 그 박자가 곧 "얼마나 움직였나"다
+      // (누른 횟수를 세는 것보다 소리로 세는 게 빠르다).
+      holdRepeat(btn, () => {
+        if (!game.canAim) return
+        c.set(c.get() + amount); el._sync(); AUDIO.ui('uiTick')
+      })
     }
   }
   el._sync()
 
-  qs('#fire').onclick = () => game.fire()
+  // 발사 — 나갔으면 게임이 발사음을 낸다(launch fx). 안 나갔으면 여기서
+  // 거절음을 낸다: 비행 중이거나 탈출속도 미달이라 토스트만 뜨는 경우다.
+  const doFire = () => {
+    const n = game.shots
+    game.fire()
+    if (game.shots === n) AUDIO.ui('uiDeny', 0.8)
+  }
+  qs('#fire').onclick = doFire
   qs('#findNext').onclick = () => { game.scanContact(1); el._sync() }
   qs('#findPrev').onclick = () => { game.scanContact(-1); el._sync() }
   qs('#toObs').onclick = () => game.setMode('observe')
@@ -208,6 +236,22 @@ export function makeHud(game, view) {
     el.classList.toggle('folded')
     qs('#fold').textContent = el.classList.contains('folded') ? '▸' : '▾'
   }
+  // ── 음소거 ──
+  // 키(M)는 오디오 쪽이 직접 듣는다 — 오버레이가 떠 있어도, 개막 중이라
+  // HUD가 키를 통째로 잠가도 먹어야 하기 때문이다. 여기서는 **버튼과 그
+  // 버튼이 보여 주는 상태**만 맡는다. 그래서 눌러서 껐든 M으로 껐든
+  // 라벨은 같은 자리에서 바뀐다(AUDIO.onMute).
+  const muteBtn = qs('#mute')
+  const paintMute = (m) => {
+    muteBtn.setAttribute('aria-pressed', m ? 'true' : 'false')
+    muteBtn.setAttribute('aria-label', t(m ? 'ui.mute.off' : 'ui.mute.on'))
+    muteBtn.classList.toggle('off', m)
+    muteBtn.title = `${t('ui.mute.tip')} — ${t(m ? 'ui.mute.off' : 'ui.mute.on')}`
+  }
+  muteBtn.onclick = () => AUDIO.toggleMute()
+  AUDIO.onMute = paintMute
+  paintMute(AUDIO.muted)
+  el._paintMute = paintMute
 
   const rig = view.rig
   qs('#zin').onclick = () => rig.zoomBy(VIS.ZOOM_STEP)
@@ -242,7 +286,7 @@ export function makeHud(game, view) {
       if (e.code === 'Space' || e.code === 'Escape') { e.preventDefault(); game.setMode('aim') }
       return
     }
-    if (e.code === 'Space') { e.preventDefault(); game.fire() }
+    if (e.code === 'Space') { e.preventDefault(); doFire() }
     if (!game.canAim) return
     const step = (k, n) => { CTL[k].set(CTL[k].get() + n); el._sync() }
     const fine = e.shiftKey
@@ -278,6 +322,7 @@ export function makeHud(game, view) {
     qs('#fold').title = t('ui.fold')
     qs('#lang').textContent = `🌐 ${langLabel()}`
     qs('#lang').title = t('ui.lang.tip')
+    el._paintMute?.(AUDIO.muted)
     qs('.hint').textContent = t('ui.hint')
     qs('h1').textContent = t('ui.title')
     qs('#laserTitle').textContent = t('alarm.title')
@@ -413,10 +458,13 @@ export function updateHud(el, game) {
     el.classList.toggle('veil', veil)
     el._obsBar.classList.toggle('veil', veil)
     // 버튼은 시각적으로만 지우는 게 아니라 실제로 잠근다.
-    // **언어 버튼만 예외다** — 판을 잠그는 것과 "무슨 말로 보여 줄까"는 상관이
-    // 없고, 하필 판이 잠기는 순간(개막·게임 오버)이 문구를 제일 오래 들여다보는
-    // 때다. 그때 언어를 못 바꾸면 그게 제일 답답하다.
-    for (const btn of el.querySelectorAll('button')) btn.disabled = veil && btn.id !== 'lang'
+    // **언어 버튼과 음소거 버튼만 예외다** — 판을 잠그는 것과 "무슨 말로
+    // 보여 줄까 / 소리를 낼까"는 상관이 없고, 하필 판이 잠기는 순간(개막·게임
+    // 오버)이 문구를 제일 오래 들여다보는 때다. 그때 언어를 못 바꾸면 그게
+    // 제일 답답하고, 소리를 못 끄면 그건 답답한 정도로 안 끝난다.
+    for (const btn of el.querySelectorAll('button')) {
+      btn.disabled = veil && btn.id !== 'lang' && btn.id !== 'mute'
+    }
     // 막이 걷힐 때 전부 다시 열어 버렸으므로, 조준 가능 여부에 따른 잠금은
     // 아래에서 다시 계산하게 한다(안 그러면 발사 불가 상태에서도 버튼이 산다).
     el._aimable = undefined
