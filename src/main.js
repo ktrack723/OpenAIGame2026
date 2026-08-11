@@ -9,6 +9,7 @@ import { LangPick } from './ui/LangPick.js'
 import { Comms } from './ui/Comms.js'
 import { Ground } from './ui/Ground.js'
 import { Victory } from './ui/Victory.js'
+import { Lab } from './ui/Lab.js'
 import { StartGate } from './ui/StartGate.js'
 import { AUDIO } from './audio/index.js'
 
@@ -28,10 +29,12 @@ inspector.bind((b) => view.renderRadius(b))
 // 손으로 하는 조준 — 발사대(또는 예측선)를 짚고 끌면 조준이 손끝을 따라온다.
 // 각이 바뀌면 패널의 각도 숫자도 그 자리에서 같이 바뀌어야 한다(_sync).
 const aimPointer = new AimPointer(game, view.rig, view.renderer.domElement, () => hud._sync())
-// 승리 화면 — "다음 스테이지" 버튼 대신 축하 장면을 띄우고,
-// 버튼을 누르면 그때 다음 침공(=다음 스테이지)이 시작된다.
-const victory = new Victory(game, () => game.nextStage())
-window.__game = game; window.__view = view; window.__victory = victory; window.__audio = AUDIO
+// 승리 화면 → 과학연구실. "다음 스테이지" 버튼 하나로 넘어가던 걸 두 화면으로
+// 나눴다: 먼저 축하 장면(Victory)이 뜨고, 닫으면 정치자금을 쓰는 연구실(Lab)이
+// 뜬다. 연구실의 버튼을 눌러야 비로소 다음 침공(=다음 스테이지)이 시작된다.
+const lab = new Lab(game, () => game.nextStage())
+const victory = new Victory(game, () => lab.open())
+window.__game = game; window.__view = view; window.__victory = victory; window.__lab = lab; window.__audio = AUDIO
 window.__aim = aimPointer
 document.querySelector('.boot')?.remove()
 

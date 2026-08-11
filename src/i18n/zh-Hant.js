@@ -267,11 +267,19 @@ export const zhHant = {
   'vic.tag': '突破第 {stage} 關 · 底注 {ante}',
   'vic.title': '佐格要塞 全滅',
   'vic.body': '管制室爆出歡呼。這一次地球又挺過來了。',
-  'vic.go': '在下次入侵前享受和平',
-  'vic.goSub': '佐格還會再來 ▶',
+  'vic.go': '前往科學研究室',
+  'vic.goSub': '花掉政治資金 ▶',
   'vic.row.forts': '擊破的目標', 'vic.row.forts.v': '{n}座',
   'vic.row.time': '剩餘時限', 'vic.row.alive': '倖存天體', 'vic.row.alive.v': '{n}顆 — 原樣進入下一關',
   'vic.row.earth': '地球體力', 'vic.row.earth.v': '{hp}/{hpMax} — 會帶到下一關',
+
+  // ── 科學研究室（政治資金的運用） ──
+  'lab.tag': '科學研究室',
+  'lab.status': '整備運行中',
+  'lab.title': '政治資金的運用',
+  'lab.body': '研究員拆解擄獲的佐格殘骸，用政治資金整備艦隊。',
+  'lab.go': '在下次入侵前享受和平',
+  'lab.goSub': '佐格還會再來 ▶',
 
   'over.reached': '打到第{stage}關（安特{ante}）· 累計政治資金 {pol}',
   'chip.pol': '政治資金',

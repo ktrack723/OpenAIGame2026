@@ -267,11 +267,19 @@ export const ja = {
   'vic.tag': 'ステージ{stage}突破 · アンテ{ante}',
   'vic.title': 'ゾルグ要塞 全滅',
   'vic.body': '管制室が歓声でひっくり返った。今回も地球は無事だ。',
-  'vic.go': '次の侵攻まで平和を楽しむ',
-  'vic.goSub': 'ゾルグがまた来る ▶',
+  'vic.go': '科学研究室へ向かう',
+  'vic.goSub': '政治資金を使う ▶',
   'vic.row.forts': '撃破した目標', 'vic.row.forts.v': '{n}基',
   'vic.row.time': '残り時限', 'vic.row.alive': '生き残った天体', 'vic.row.alive.v': '{n}基 — そのまま次の面へ',
   'vic.row.earth': '地球の体力', 'vic.row.earth.v': '{hp}/{hpMax} — 次の面へ引き継がれる',
+
+  // ── 科学研究室（政治資金の活用） ──
+  'lab.tag': '科学研究室',
+  'lab.status': '整備稼働中',
+  'lab.title': '政治資金の活用',
+  'lab.body': '鹵獲したゾルグの残骸と政治資金で艦隊を整備する。',
+  'lab.go': '次の侵攻まで平和を楽しむ',
+  'lab.goSub': 'ゾルグがまた来る ▶',
 
   'over.reached': 'ステージ{stage}（アンテ{ante}）まで · 政治資金 {pol} 獲得',
   'chip.pol': '政治資金',
