@@ -181,9 +181,10 @@ export function makeHud(game, view) {
     e.stopPropagation()
     game.setToast(msg('toast.obsSpeed', { n: game.cycleObsSpeed() }))
   }
-  // 추진기 — 관측 중에만, 재고가 있을 때만 보인다. 확인 문구는 안 띄운다:
-  // 관측 모드에서는 새 토스트가 안 뜨고(아래 toast 블록), 무엇보다 답은
-  // 화면에 이미 있다 — 조준선이 붉은색에서 청록으로 바뀐다.
+  // 추진기 — 관측 중에만, 재고가 있을 때만 보이고, **조르그가 지구를 겨누고
+  // 있을 때만 눌린다**(game.canThrust). 확인 문구는 안 띄운다: 관측 모드에서는
+  // 새 토스트가 안 뜨고(아래 toast 블록), 무엇보다 답은 화면에 이미 있다 —
+  // 조준선이 붉은색에서 청록으로 바뀌고, 그러면 이 버튼의 불도 같이 꺼진다.
   obsBar.querySelector('#obsThr').onclick = (e) => { e.stopPropagation(); game.earthThrust() }
   el._obsBar = obsBar
 
@@ -299,7 +300,8 @@ export function makeHud(game, view) {
     if (e.code === 'Tab') { e.preventDefault(); game.toggleMode(); el._sync(); return }
     if (e.key === 'Shift') startWait()
     if (e.key === 's' || e.key === 'S') { game.setToast(msg('toast.obsSpeed', { n: game.cycleObsSpeed() })); return }
-    // T — 지구 추진기. 관측 모드에서만 듣는다(canThrust가 그것까지 본다).
+    // T — 지구 추진기. 관측 모드에서, 그것도 겨눠지고 있을 때만 듣는다
+    // (canThrust가 그 둘을 다 본다 — 아니면 조용히 아무 일도 안 일어난다).
     // 아래 "관측 중엔 아무 키나 누르면 조준으로 돌아온다"보다 **먼저** 걸러야
     // 한다 — 안 그러면 T가 추진 대신 모드 전환이 된다.
     if (e.key === 't' || e.key === 'T') { game.earthThrust(); return }
@@ -544,15 +546,24 @@ export function updateHud(el, game) {
     btn.classList.toggle('alarm', alarm)
     const spd = game.obsSpeedLabel
     if (bar._spd !== spd) { bar._spd = spd; bar.querySelector('#obsSpdV').textContent = spd }
-    // 추진기 — 살 수 있게 되기 전(3스테이지 전)이거나 재고가 0이면 **버튼 자체가
-    // 없다.** 못 누르는 버튼이 앉아 있으면 그건 지금 쓸 수 있다는 거짓말이다.
+    // 추진기 — 재고가 0이면 **버튼 자체가 없다.** 못 누르는 버튼이 앉아 있으면
+    // 그건 지금 쓸 수 있다는 거짓말이다.
     // (obsBar의 버튼들은 veil 잠금 루프가 안 닿으므로 여기서 직접 잠근다.)
+    //
+    // 재고가 있어도 **겨눠지기 전까지는 잠겨 있다**(canThrust). 그래서 이 버튼은
+    // 두 상태로 읽힌다: 흐릿하면 "가진 건 있는데 지금 쓸 데가 없다", 주황으로
+    // 불이 들어오면 "지금 이대로면 맞는다 — 지금 눌러라". armed 클래스가 그 불이다.
     const thr = bar.querySelector('#obsThr')
-    const showThr = game.thrusters > 0 && game.stageIdx >= CFG.THRUST_STAGE
+    const showThr = game.thrusters > 0
     if (thr._show !== showThr) { thr._show = showThr; thr.hidden = !showThr }
-    if (showThr) {
-      if (thr._n !== game.thrusters) { thr._n = game.thrusters; thr.querySelector('#obsThrV').textContent = `${game.thrusters}` }
-      thr.disabled = !game.canThrust
+    // 불은 **숨은 동안에도** 끈다. 재고가 0이 되는 순간(=마지막 한 발을 태운
+    // 그 순간)은 언제나 armed 상태이므로, 안에서만 끄면 켜진 채로 숨는다 —
+    // 다음에 하나를 사서 버튼이 돌아올 때 그 잔불을 물려받는다.
+    // canThrust는 재고 0이면 이미 거짓이라 여기서 따로 안 본다.
+    const armed = game.canThrust
+    if (thr._armed !== armed) { thr._armed = armed; thr.classList.toggle('armed', armed); thr.disabled = !armed }
+    if (showThr && thr._n !== game.thrusters) {
+      thr._n = game.thrusters; thr.querySelector('#obsThrV').textContent = `${game.thrusters}`
     }
     return   // 패널이 숨겨져 있으므로 나머지 갱신은 통째로 건너뛴다
   }

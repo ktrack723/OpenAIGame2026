@@ -288,7 +288,7 @@ export const zhHant = {
   'shop.yield': '炸藥上限+3',
   'shop.yield.brief': '推得更狠 — 重球也開始動',
   'shop.thruster': '地球推進器',
-  'shop.thruster.brief': '觀測中用一次，從光線走廊側閃（T）',
+  'shop.thruster.brief': '被瞄準時於觀測中點燃，從光線走廊側閃（T）',
   'over.title': '行動失敗', 'over.doom': '他們來了……',
   'over.new': '開始新一輪',
   'over.why': '{why}  ·  {reached}',

@@ -20,6 +20,13 @@ const OBS_SPEEDS = [1, 2, 4, 8]
 // 정치자금이 안 붙는 파괴 사유. **조르그가 제 광선으로 부순 것은 내 공이 아니다** —
 // 예전 점수표에서도 laser만 0점이었고, 화폐가 바뀌어도 그 규칙은 그대로다.
 const NO_CREDIT = new Set(['laser'])
+
+// 조르그 하나를 부순 값. 등급은 **체력 상한 하나**로 갈린다 — 요새는 전부
+// 체력 1이고, 그보다 단단한 것은 대형 요새(2)와 모함(5)뿐이다. 별도의 등급
+// 표를 두지 않는 이유는 그 표가 곧 두 번째 진실이 되기 때문이다: 새 조르그가
+// 생겼을 때 한쪽만 고치면 값이 조용히 틀어진다. 체력은 이미 화면에 보인다.
+const polFor = (b) => ((b.hpMax ?? 1) > 1 ? CFG.POL_FORT_ELITE : CFG.POL_FORT)
+
 export class Game {
   constructor(seed) {
     this.bodies = []
@@ -46,7 +53,10 @@ export class Game {
     this.polEarned = 0      // 총 획득 — 패배 화면이 "이번 런에 얼마나 벌었나"를 말한다
     this.polFlash = 0       // 획득 표시 펄스(실시간 초)
     this.buys = { speed: 0, yield: 0 }
-    this.thrusters = 0
+    // 추진기는 **한 발을 쥐고 시작한다.** 상점에서만 얻는 물건이면 첫 판에서는
+    // 존재조차 모르는 채로 첫 광선을 맞는데, 이건 레이저에 대한 네 가지 대응
+    // 중 하나다 — 한 번은 써 보고 나서 살지 말지를 정하는 게 맞다.
+    this.thrusters = CFG.THRUST_START
     // 상한은 **CFG가 아니라 런 상태**다. CFG.YIELD_MAX는 판 생성이 "밀 수 있는
     // 큐볼인가"를 재는 데 쓰므로(system.js), 그걸 올리면 난이도 곡선이 빌드에
     // 따라 흔들린다. 클램프는 HUD 스테퍼 두 곳뿐이라 여기서 주는 편이 싸다.
@@ -648,10 +658,18 @@ export class Game {
   // 되는지 안 되는지는 화면이 즉시 답한다: 조준선이 붉은색(맞는다)에서
   // 청록(빗나간다)으로 바뀐다(laser.js의 L.safe). 토스트로 알릴 필요가 없다 —
   // 애초에 관측 모드에서는 새 토스트가 안 뜬다.
+  //
+  // **겨눠지고 있을 때만 켜진다.** 예전에는 관측 중이면 언제든 태울 수 있었다
+  // ("미리 비켜서는 것도 수다"). 그런데 위협이 없을 때의 분사는 기준선이 지구의
+  // 진로라 방향에 뜻이 없고 — 무엇보다 **세 발뿐인 자원을 아무 일도 안 일어나는
+  // 화면에서 태워 없앨 수 있었다.** 지금은 버튼이 곧 경보다: 조르그가 조준을
+  // 걸면 켜지고, 비켜서서 안전해지면(L.safe) 그 자리에서 꺼진다. 켜져 있다는
+  // 사실 자체가 "지금 이대로면 맞는다"는 뜻이다.
   get canThrust() {
-    return this.thrusters > 0 && this.stageIdx >= CFG.THRUST_STAGE
+    return this.thrusters > 0
       && this.mode === 'observe' && !this.doom && !this.won && !this.lost
       && this.earth.alive && !this.warpCurtain
+      && !!this.mostUrgentBeam()
   }
 
   // 지금 지구를 가장 임박하게 겨누는 광선. 없으면 null.
@@ -672,11 +690,14 @@ export class Game {
   earthThrust() {
     if (!this.canThrust) return false
     const e = this.earth
-    // 밀 방향의 기준선: 위협이 있으면 그 광선이 오는 방향, 없으면 지구의 진로.
-    // (위협이 없을 때도 쓸 수 있게 둔다 — 미리 비켜서는 것도 수다.)
+    // 밀 방향의 기준선은 **그 광선이 오는 방향** 하나다. canThrust가 위협이
+    // 있을 때만 참이므로 여기서 L은 언제나 있다 — 없으면 누를 수 없는 버튼이다.
     const L = this.mostUrgentBeam()
-    const bx = L ? (L.state === LASER_TRAVEL ? L.ux : L.ax - L.ox) : e.vel.x
-    const by = L ? (L.state === LASER_TRAVEL ? L.uy : L.ay - L.oy) : e.vel.y
+    if (!L) return false
+    // 충전 중이면 총구→조준점이 곧 광선이 갈 선이고, 이미 날고 있으면 그 진행
+    // 방향이다. 둘 다 "지구를 꿰는 직선"이라 직각을 잡는 기준으로 같은 값이다.
+    const bx = L.state === LASER_TRAVEL ? L.ux : L.ax - L.ox
+    const by = L.state === LASER_TRAVEL ? L.uy : L.ay - L.oy
     const s = Math.hypot(bx, by) || 1
     let nx = -by / s, ny = bx / s                    // 기준선에 직각 (둘 중 하나)
     if (nx * e.pos.x + ny * e.pos.y < 0) { nx = -nx; ny = -ny }   // 태양 반대쪽
@@ -1006,8 +1027,9 @@ export class Game {
     // 자금·목표 갱신·문구를 전부 건너뛴다 — 이 화면의 문장은 하나뿐이다.
     if (this.doom) return
     const wasFort = this.isTarget(b)
-    // 요새 하나가 2. 중립 행성은 0 — 판을 정리한 것이지 판돈을 회수한 게 아니다.
-    if (wasFort && !NO_CREDIT.has(cause)) this.addPol(CFG.POL_FORT, b.pos.x, b.pos.y)
+    // 일반 조르그 행성이 2, 엘리트 이상(대형 요새·모함)이 3. 중립 행성은 0 —
+    // 판을 정리한 것이지 판돈을 회수한 게 아니다.
+    if (wasFort && !NO_CREDIT.has(cause)) this.addPol(polFor(b), b.pos.x, b.pos.y)
     const label = { name: nameOf(b), cause: msg(`cause.${cause}`) }
     if (wasFort) {
       // 요새 하나가 곧 포대 하나다 — 부수면 그 순번이 통째로 사라진다.

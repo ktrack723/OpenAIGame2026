@@ -684,7 +684,30 @@ button:disabled{opacity:.32;cursor:not-allowed;box-shadow:none}
 .shopmeta em{font-style:normal;color:#fde68a;font-size:10px;font-weight:800}
 .shopitem:disabled .shopmeta em{color:var(--dim)}
 
-/* 관측 바의 추진기 버튼 — 배속 버튼과 같은 몸에 색만 지구 편으로. */
-.thrbtn{border-color:#2f6f9c;color:#bfdbfe}
+/* 관측 바의 추진기 버튼 — 배속 버튼과 같은 몸에 색만 **주황**으로.
+   분사 불꽃(Explosions.earthBurn)과 같은 주황이라 누른 버튼의 색이 그대로
+   화면에서 타오른다. 옆의 배속 버튼은 금색(--am)이라 나란히 놓아도 안 섞인다.
+
+   상태가 둘이고, 그 둘이 이 버튼의 전부다:
+     · 잠김 — 추진기는 있는데 아무도 안 겨눈다. 흐릿하게 앉아만 있는다.
+     · armed — 조르그가 조준을 걸었고 지금 이대로면 맞는다. 불이 들어오고
+       맥동한다. 즉 이건 재고 표시가 아니라 **경보**다(hud.js가 canThrust로 켠다).
+   상위 .spdbtn 규칙이 :hover에서 금색을 덮어쓰므로 여기서 같은 깊이로 되받는다. */
+.thrbtn{border-color:#7a3d10;color:#fdba74;
+  background:linear-gradient(180deg,rgba(42,20,5,.94),rgba(24,11,2,.94))}
 .thrbtn[hidden]{display:none}
-.thrbtn:disabled{opacity:.4}
+.thrbtn .spdv{color:#ff9a3c;text-shadow:0 0 12px #ff7a1855}
+.thrbtn .spdlbl{color:#a35f1e}
+.thrbtn:disabled{opacity:.34}
+.thrbtn:hover,.thrbtn:focus-visible{
+  background:linear-gradient(180deg,rgba(42,20,5,.94),rgba(24,11,2,.94));box-shadow:0 12px 40px #000a}
+.thrbtn.armed{border-color:#ff7a18;
+  background:linear-gradient(180deg,rgba(92,40,4,.96),rgba(52,21,2,.96));
+  animation:thrarm 1s ease-in-out infinite}
+.thrbtn.armed .spdv{color:#ffb066;text-shadow:0 0 16px #ff7a18aa}
+.thrbtn.armed .spdlbl{color:#ffb066}
+.thrbtn.armed:hover,.thrbtn.armed:focus-visible{
+  background:linear-gradient(180deg,#a2500a,#5c2803);
+  box-shadow:0 12px 40px #000a,0 0 26px #ff7a1888}
+@keyframes thrarm{0%,100%{box-shadow:0 12px 40px #000a,0 0 8px #ff7a1844}
+  50%{box-shadow:0 12px 40px #000a,0 0 26px #ff7a18cc}}

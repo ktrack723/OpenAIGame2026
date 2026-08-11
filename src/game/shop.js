@@ -40,9 +40,9 @@ export const ITEMS = [
     id: 'thruster',
     have: (g) => g.thrusters,
     max: () => CFG.THRUST_MAX,
-    // 요새가 추진기를 달고 오는 판(FORT_DODGE_STAGE)의 **다음 판**부터 판다.
-    // 쓸 수 없는 물건을 미리 팔면 그건 함정이지 선택이 아니다.
-    show: (g) => g.stageIdx + 1 >= CFG.THRUST_STAGE,
+    // **판을 안 가린다.** 지구는 첫 판부터 한 발을 쥐고 시작하므로(THRUST_START)
+    // 1스테이지에서 이미 써 버렸을 수 있다 — 그때 진열대에 없으면 "다 쓰면
+    // 끝"이 되어 버린다. 쓴 만큼 5원에 되채우는 것이 이 물건의 값이다.
     ok: (g) => g.thrusters < CFG.THRUST_MAX,
     buy: (g) => { g.thrusters++ },
   },

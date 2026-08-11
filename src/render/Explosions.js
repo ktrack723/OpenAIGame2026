@@ -95,24 +95,29 @@ export class Explosions {
 
   // ─── 지구의 추진 분사 ────────────────────────────────────────
   // 요새의 회피 분사(boost)와 **같은 물건이라는 게 그림으로 읽혀야** 하므로
-  // 같은 문법(점화 섬광 + 배기 화염 + 잔염)을 쓰되, 색은 지구 편으로 돌린다.
+  // 같은 문법(점화 섬광 + 배기 화염 + 잔염)을 쓴다. 다른 것은 색 하나다.
   //
-  // 다른 점 하나: `rig.focus`를 안 부른다. 저건 "저기 봐라"라고 카메라를 끌어
+  // **주황이다.** 둘은 같은 화면에 동시에 뜰 수 있다 — 요새가 내 탄을 피하는
+  // 그 순간 지구가 광선을 피한다 — 그래서 누가 태운 불인지가 색 하나로 갈려야
+  // 한다. 조르그는 분홍(0xff5c9e), 지구는 주황이다. 관측 바의 추진기 버튼도
+  // 같은 주황이라, 누른 버튼의 색이 그대로 화면에서 타오른다.
+  //
+  // 다른 점 하나 더: `rig.focus`를 안 부른다. 저건 "저기 봐라"라고 카메라를 끌어
   // 당기는 연출인데, 이건 플레이어가 **직접 누른** 버튼이다 — 이미 보고 있다.
   // 관측 중에 카메라가 홱 움직이면 레이저 회랑을 읽던 눈이 끊긴다.
   earthBurn(e) {
     const P = this.parts, R = Math.max(56, (e.r ?? 24) * 2.2)
     P.puff(e.x, e.y, { r0: R * 0.08, r1: R * 0.5, ttl: 0.16, color: 0xffffff, alpha: 1 })
-    P.puff(e.x, e.y, { r0: R * 0.12, r1: R * 1.0, ttl: 0.7, color: 0x8ad4ff, alpha: 0.85, delay: 0.04 })
-    P.burst(e.x, e.y, { n: 220, color: 0x60a5fa, speed: 560, size: 15, ttl: 1.7, spread: 0.5, dir: e.a })
-    P.burst(e.x, e.y, { n: 130, color: 0xd7f0ff, speed: 900, size: 10, ttl: 1.1, spread: 0.3, dir: e.a })
+    P.puff(e.x, e.y, { r0: R * 0.12, r1: R * 1.0, ttl: 0.7, color: 0xffb066, alpha: 0.85, delay: 0.04 })
+    P.burst(e.x, e.y, { n: 220, color: 0xff7a18, speed: 560, size: 15, ttl: 1.7, spread: 0.5, dir: e.a })
+    P.burst(e.x, e.y, { n: 130, color: 0xffdcb0, speed: 900, size: 10, ttl: 1.1, spread: 0.3, dir: e.a })
     P.burst(e.x, e.y, { n: 80, color: 0xffffff, speed: 1250, size: 7, ttl: 0.6, spread: 0.18, dir: e.a })
-    P.burst(e.x, e.y, { n: 90, color: 0x1e4f8a, speed: 130, size: 22, ttl: 3.0, spread: 0.9, dir: e.a, drag: 0.4 })
-    P.spikes(e.x, e.y, { n: 14, color: 0xd7f0ff, speed: 1300, size: 8, ttl: 0.6 })
+    P.burst(e.x, e.y, { n: 90, color: 0x8a3d05, speed: 130, size: 22, ttl: 3.0, spread: 0.9, dir: e.a, drag: 0.4 })
+    P.spikes(e.x, e.y, { n: 14, color: 0xffdcb0, speed: 1300, size: 8, ttl: 0.6 })
     P.shock(e.x, e.y, R, 0xffffff, 0.45, { thin: true, from: 0.08, to: 2.4, alpha: 0.9 })
-    P.shock(e.x, e.y, R, 0x60a5fa, 1.0, { from: 0.14, to: 3.0, delay: 0.1, alpha: 0.65 })
+    P.shock(e.x, e.y, R, 0xff7a18, 1.0, { from: 0.14, to: 3.0, delay: 0.1, alpha: 0.65 })
     this.rig.hit(10)
-    this.flash(0.16, '#dbeafe')
+    this.flash(0.16, '#ffe0bf')
   }
 
   // ─── 정치자금 획득 ───────────────────────────────────────────

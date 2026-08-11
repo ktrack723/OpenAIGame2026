@@ -306,7 +306,7 @@ export const ko = {
   'shop.yield': '작약 상한 +3',
   'shop.yield.brief': '더 세게 밀 수 있다 — 무거운 공도 움직인다',
   'shop.thruster': '지구 추진기',
-  'shop.thruster.brief': '관측 중 한 번, 레이저 회랑에서 비켜선다 (T)',
+  'shop.thruster.brief': '조준당한 동안 관측 중에 태운다 — 회랑에서 비켜선다 (T)',
   // ── 패배 ──────────────────────────────────────────────────────
   'over.title': '작전 실패', 'over.doom': '그들이 왔다…',
   'over.new': '새 런 시작',

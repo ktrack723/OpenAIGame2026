@@ -288,7 +288,7 @@ export const ja = {
   'shop.yield': '炸薬の上限+3',
   'shop.yield.brief': '強く押せる — 重い球も動きだす',
   'shop.thruster': '地球のスラスター',
-  'shop.thruster.brief': '観測中に一度、レーザー回廊から横へ逃げる（T）',
+  'shop.thruster.brief': '狙われている間、観測中に焚いてレーザー回廊から逃れる（T）',
   'over.title': '作戦失敗', 'over.doom': '奴らが来た…',
   'over.new': '新しいランを始める',
   'over.why': '{why}  ·  {reached}',
