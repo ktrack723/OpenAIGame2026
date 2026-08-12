@@ -29,6 +29,9 @@ const CAT_STYLE = {
   zorg: { icon: '👁', color: '#e879f9' },
   hive: { icon: '🛸', color: '#e879f9' },
   debris: { icon: '·', color: '#94a3b8' },
+  // 산탄은 잔해와 **다른 물건**이다(Scene.shardGeo). 종류(type)는 둘 다 debris라
+  // 표에서 갈 수 없으므로 여기 따로 두고 catOf가 b.shard를 보고 고른다.
+  shardAmmo: { icon: '➤', color: '#bef264' },
 }
 export const CATEGORY = Object.fromEntries(Object.entries(CAT_STYLE).map(([k, v]) => [k, {
   ...v, key: k,
@@ -42,6 +45,9 @@ export const HIVE_MARK = { icon: '◎', color: '#e879f9', get label() { return t
 export const hostileMark = (b) => (b.role === 'hive' ? HIVE_MARK : HOSTILE)
 
 export const categoryOf = (type) => CATEGORY[type] ?? CATEGORY.rock
+// 천체 하나의 분류. 종류만으로는 못 가르는 자리가 하나 있다 — 잔해와 산탄은
+// 둘 다 debris지만 판에서 하는 일이 다르다(하나는 배경, 하나는 날아가는 탄).
+export const catOf = (b) => (b && b.shard ? CATEGORY.shardAmmo : categoryOf(b && b.type))
 
 // 배지 한 장 굽기 — 원형 칩 위에 글리프. 이모지가 없는 환경에서도
 // 폴백 글꼴이 뭔가는 그리므로 최악의 경우에도 "표식이 있다"는 읽힌다.

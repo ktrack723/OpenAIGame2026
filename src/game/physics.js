@@ -264,7 +264,7 @@ export function shardBurst(b, bodies, rnd, dirX, dirY) {
     const ang = base + spread + (rnd() - 0.5) * cone * 0.3
     const sp = CFG.UNSTABLE_SPEED * (1 + (rnd() - 0.5) * CFG.UNSTABLE_SPEED_VAR)
     bodies.push(makeBody({
-      id: `${b.id}s${bodies.length}`, nameKey: 'planet.debris', mu: muF, radius: rF,
+      id: `${b.id}s${bodies.length}`, nameKey: 'planet.shard', mu: muF, radius: rF,
       // 껍데기가 있던 자리에서 출발한다 — 중심에서 뿜으면 공 속에서 태어난 것처럼 보인다
       pos: { x: b.pos.x + Math.cos(ang) * b.radius * 1.15, y: b.pos.y + Math.sin(ang) * b.radius * 1.15 },
       vel: { x: b.vel.x + Math.cos(ang) * sp, y: b.vel.y + Math.sin(ang) * sp },
@@ -340,13 +340,25 @@ export function resolveBodyPairs(bodies, game) {
     const dx = b.pos.x - a.pos.x, dy = b.pos.y - a.pos.y, cd = contactDist(a, b)
     if (dx * dx + dy * dy >= cd * cd) continue
     if (aD || bD) {
-      // 파편은 행성 대기권에서 소멸한다 — **닿는 순간 그 자리에서 끝난다.**
-      // 튕겨 나가게 두면 이미 부서진 공의 부스러기가 판을 영영 굴러다닌다.
-      const frag = aD ? a : b, hit = aD ? b : a
+      const frag = aD ? a : b
+      if (!frag.shard) {
+        // ── 장식용 잔해 — **튕긴다** ──
+        // 예전에는 행성 대기권에서 타 없어졌다. 그러면 잔해가 사라지는 자리가
+        // 판마다 달라져서 "저건 어디까지 굴러가나"를 눈으로 못 쫓는다.
+        // 이제 잔해도 공이다: 당구공처럼 튕기고, 없어지는 곳은 판의 두 끝
+        // (카이퍼 벨트·태양)뿐이다. 대신 **아무도 안 깎는다** — 체력은
+        // 산탄만 건드린다(body.shard 주석). 그래서 판이 저 혼자 안 정리된다.
+        elasticBounce(a, b)
+        continue
+      }
+      // ── 산탄 — **체력 1짜리 공과 똑같이 판정한다** ──
+      // 같은 함수(onPlanetCollision)를 그대로 지난다. 그래서 가스 행성에
+      // 꽂히면 유폭하고, 불안정 행성에 꽂히면 그놈이 다시 쪼개진다(연쇄).
+      // 산탄만의 규칙은 하나뿐이다: **한 발에 한 번.** 판정이 어떻게 나오든
+      // 닿았으면 거기서 끝난다(체력 1이라 대개 판정 자체로 이미 죽는다).
+      const changed = game.onPlanetCollision(a, b) === 'destroyed'
       frag.alive = false
-      // 산탄만 때린다(body.shard 주석). 무엇에 얼마나 꽂혔는지는 게임이 정한다 —
-      // 여기서는 "닿았다"까지만 말하고, 배열이 바뀌었으면 그 스텝을 끝낸다.
-      if (frag.shard && game.onShardHit(frag, hit) === 'destroyed') return
+      if (changed) return
       continue
     }
     // 파괴가 일어나면 파편 생성으로 배열이 변한다 — 그 스텝은 거기서 끝낸다

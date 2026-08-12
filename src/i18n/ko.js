@@ -87,12 +87,13 @@ export const ko = {
   'cat.ice': '얼음 행성', 'cat.ice.mech': '가볍다 — 같은 크기 대비 질량 절반, 두 배로 밀린다',
   'cat.iron': '금속 행성', 'cat.iron.mech': '무겁다 — 핵 임펄스가 절반만 먹는다',
   'cat.gas': '가스 행성', 'cat.gas.mech': '터진다 — 핵을 맞거나 세게 처박히면 대규모 유폭',
-  'cat.shard': '불안정 행성', 'cat.shard.mech': '쪼개진다 — 맞은 반대쪽으로 파편을 샷건처럼 뿌린다',
+  'cat.shard': '불안정 행성', 'cat.shard.mech': '쪼개진다 — 맞은 반대쪽으로 산탄을 뿌린다. 가스·불안정에 꽂히면 연쇄',
   'cat.void': '특이점', 'cat.void.mech': '삼킨다 — 닿는 것을 없앤다. 부술 수 없다',
   'cat.earth': '지구', 'cat.earth.mech': '우리 집 — 세 번 처박히면 게임 오버',
   'cat.zorg': '조르그 모성', 'cat.zorg.mech': '부술 수 없다 — 시한이 끝나면 온다',
   'cat.hive': '조르그 모함', 'cat.hive.mech': '증원을 실어 나른다 — 부수면 그친다',
-  'cat.debris': '파편', 'cat.debris.mech': '미사일을 조기 격발시킨다',
+  'cat.debris': '잔해', 'cat.debris.mech': '튕겨 다닌다 — 미사일을 조기 격발시킨다. 벨트·태양에서만 사라진다',
+  'cat.shardAmmo': '산탄', 'cat.shardAmmo.mech': '불안정 행성이 쏜 탄 — 체력 1처럼 판정된다. 닿으면 그 자리에서 끝',
   'cat.hostile': '조르그 요새',
 
   // ── 태그 ──────────────────────────────────────────────────────
@@ -111,7 +112,7 @@ export const ko = {
   'role.volatile.brief': '🪐 터진다. 핵을 맞으면 그 자리에서 유폭해 반경 안의 모든 천체를 밀어낸다.',
   'role.volatile.aim': '가스 행성 — 맞는 순간 유폭한다 (주황 원 안이 전부 밀린다)',
   'role.unstable': '불안정 행성',
-  'role.unstable.brief': '💥 쪼개진다. 핵을 맞으면 **맞은 반대쪽으로** 파편 {n}갈래를 {deg}° 부채꼴에 샷건처럼 뿌린다. 한 갈래가 체력 1을 깎고 닿는 즉시 사라진다 — 부채꼴 안에 요새가 둘이면 한 발로 둘이 끝난다. 지구가 그 안에 들면 지구가 깎인다.',
+  'role.unstable.brief': '💥 쪼개진다. 핵을 맞으면 **맞은 반대쪽으로** 파편 {n}갈래를 {deg}° 부채꼴에 샷건처럼 뿌린다. 한 갈래는 **체력 1짜리 공과 똑같이 판정된다** — 처박은 속도만큼 깎고(1~3) 닿는 즉시 사라지며, 가스 행성에 꽂히면 유폭하고 다른 불안정 행성에 꽂히면 그놈이 또 쪼개진다(연쇄). 부채꼴 안에 요새가 둘이면 한 발로 둘이 끝난다. 지구가 그 안에 들면 지구가 깎인다.',
   'role.unstable.aim': '불안정 행성 — 친 살의 반대쪽으로 산탄 {n}갈래가 나간다 ({deg}° 부채꼴)',
   'role.light': '얼음 행성',
   'role.light.brief': '🧊 가볍다. 질량이 같은 크기 대비 절반이라 핵 한 방에 두 배로 밀린다 — 최고의 큐볼.',
@@ -141,7 +142,7 @@ export const ko = {
   'planet.hygiea': '히기에이아 Hygiea', 'planet.jupiter': '목성 Jupiter', 'planet.saturn': '토성 Saturn',
   'planet.uranus': '천왕성 Uranus', 'planet.neptune': '해왕성 Neptune', 'planet.pluto': '명왕성 Pluto',
   'planet.haumea': '하우메아 Haumea', 'planet.makemake': '마케마케 Makemake', 'planet.eris': '에리스 Eris',
-  'planet.debris': '파편', 'planet.mothership': '조르그 모성',
+  'planet.debris': '잔해', 'planet.shard': '산탄', 'planet.mothership': '조르그 모성',
 
   // ── 판 진행 메시지 ────────────────────────────────────────────
   'msg.stage.reinforce': '조르그 증원 워프 — 요새 {n}기 진입. {rule}',
@@ -166,7 +167,7 @@ export const ko = {
   'msg.nuke.armor': ' (장갑에 막혀 거의 안 밀렸다)',
   'msg.volatile': '{name} 유폭! — 반경 {r} GU 안이 전부 밀렸다',
   'msg.unstable': '{name} 파열! — 방위 {dir}°로 산탄 {n}갈래',
-  'msg.shard.hit': '산탄 명중 — {name} (상대속도 {v})',
+  'msg.shard.hit': '산탄 명중 — {name} · 상대속도 {v} · 피해 {dmg}',
   'msg.absorb': '{prey}이(가) {hole}에 삼켜졌다 — 특이점 질량 {mu} (반경 {r}, 중력 ×{g})',
   'msg.collide.volatile': '{a} ✕ {b} — 상대속도 {v}, 충돌 유폭!',
   'msg.collide.unstable': '{a} ✕ {b} — 상대속도 {v}, 충돌 파열! 산탄이 {b} 반대쪽으로 나갔다',
