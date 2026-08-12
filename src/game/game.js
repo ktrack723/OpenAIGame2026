@@ -1262,6 +1262,9 @@ export class Game {
       for (let j = i + 1; j < live.length; j++) {
         const a = live[i], b = live[j]
         if (!a.alive || !b.alive) continue     // 이 스텝에 이미 큐로 쓰인 탄
+        // 총구를 막 떠난 탄은 아직 무장 전이다 — 그 자리에서 붙는 건 오발이다
+        // (CFG.MISSILE_ARM). 예측도 같은 문턱을 본다(aim.predictPath).
+        if (a.age < CFG.MISSILE_ARM || b.age < CFG.MISSILE_ARM) continue
         const u = sweepMeet(a.prev, a.pos, b.prev, b.pos, CFG.MISSILE_HIT_R)
         if (u < 0) continue
         // 빠른 쪽이 큐다 — 플레이어가 고른 발사 속도가 그대로 역할이 된다

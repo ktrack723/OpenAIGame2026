@@ -88,7 +88,10 @@ export function predictPath(game) {
     if (live.length) {
       for (let k = live.length - 1; k >= 0; k--) if (spentProbe(live[k], sim, rIn2, beltR2)) live.splice(k, 1)
       let meet = null, mu = 0
-      for (const L of live) {
+      // 무장 전(총구 앞)에는 서로를 못 친다 — 판과 같은 문턱이다(game.crossFire).
+      // 이 발의 나이는 스텝 수가 곧 나이다(m.age), 저 탄의 나이는 같이 굴러간다.
+      if (m.age >= CFG.MISSILE_ARM) for (const L of live) {
+        if (L.age < CFG.MISSILE_ARM) continue
         const u = sweepMeet(m.prev, m.pos, L.prev, L.pos, CFG.MISSILE_HIT_R)
         if (u >= 0) { meet = L; mu = u; break }
       }
