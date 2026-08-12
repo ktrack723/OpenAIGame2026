@@ -2425,9 +2425,14 @@ export class SceneView {
         // 예측선도 잡는 물건이다(AimPointer) — 지구가 패널 뒤로 들어가는 화면에서는
         // 이 선이 유일하게 트인 손잡이다. 손이 닿으면 여기도 같이 굵어진다.
         this.ribbon(pred.pts, grab ? 3.4 : 2.6, PRED_TONE[pred.outcome] ?? 0x67e8f9, { fade: false, opacity: 0.9, z: 0, tailWidth: 1 })
-        // 리드선 — "지금 저기 있는 저 공"과 "맞는 순간 여기 와 있을 자리"를 잇는다
+        // 리드선 — "지금 저기 있는 저 공"과 "맞는 순간 여기 와 있을 자리"를 잇는다.
+        // 무는 것이 공이 아니라 **날고 있는 내 탄**일 수도 있다(relay) — 그때는
+        // 같은 선을 그 탄에서 긋는다. 리드선이 없으면 화면에서 제일 빠른 물건을
+        // 락온만 보고 찾아야 한다.
         if (pred.hit) {
-          const now = g.bodies.find(b => b.id === pred.hit.id)
+          const now = pred.hit.missile
+            ? g.missiles.find(m => m.alive && m.id === pred.hit.id)
+            : g.bodies.find(b => b.id === pred.hit.id)
           if (now && Math.hypot(now.pos.x - pred.hit.x, now.pos.y - pred.hit.y) > pred.hit.r * 0.4)
             this.ribbon([now.pos, { x: pred.hit.x, y: pred.hit.y }], 1.4, PRED_TONE[pred.outcome] ?? 0x67e8f9,
               { fade: false, opacity: 0.32, z: 0, tailWidth: 1 })

@@ -1,4 +1,4 @@
-import { CFG, R_SCALE, blastRadius, contactDist, radiusOf } from './config.js'
+import { CFG, R_SCALE, blastRadius, contactDist, nukeDv, radiusOf } from './config.js'
 import { cloneBody, makeBody } from './body.js'
 import { effDv } from './roles.js'
 import { clone, vec } from '../core/vector.js'
@@ -125,6 +125,42 @@ export function segCircleEntry(ax, ay, bx, by, cx, cy, r) {
   }
   const tc = Math.min(1, t)
   return { x: ax + dx * tc, y: ay + dy * tc }
+}
+
+// ─── 움직이는 두 점이 한 스텝 안에서 만나는가 ────────────────────
+// 탄두끼리의 판정이다(game.crossFire · aim.predictPath). "선분 대 원"으로는
+// 못 푼다 — 원 쪽도 같이 움직이기 때문이다. 한쪽을 세운 **상대 좌표**로
+// 옮기면 다시 선분 대 원이 되고, 그러면 스텝 안의 어느 시점에 만나는지까지
+// 그대로 나온다. 둘 다 초당 수십 GU로 나는 물건이라 스텝 끝 위치만 비교하면
+// 서로를 통과해 버린다(같은 이유로 천체 판정도 스윕이다).
+// 돌려주는 값은 처음 반경 r 안에 드는 시점 u∈[0,1], 안 만나면 -1.
+// 만나는 자리는 부르는 쪽이 u로 보간해 구한다 — 두 점의 자리가 서로 다르므로
+// 여기서 하나로 정해 줄 수가 없다(폭심은 큐 쪽, 밀리는 방향은 공 쪽이다).
+export function sweepMeet(a0, a1, b0, b1, r) {
+  const fx = a0.x - b0.x, fy = a0.y - b0.y
+  const c = fx * fx + fy * fy - r * r
+  if (c <= 0) return 0                        // 스텝 머리에서 이미 겹쳐 있다
+  const dx = (a1.x - a0.x) - (b1.x - b0.x), dy = (a1.y - a0.y) - (b1.y - b0.y)
+  const a = dx * dx + dy * dy
+  if (a < 1e-12) return -1                    // 상대 정지 — 이 스텝에는 안 가까워진다
+  const b = 2 * (fx * dx + fy * dy)
+  const disc = b * b - 4 * a * c
+  if (disc < 0) return -1
+  const u = (-b - Math.sqrt(disc)) / (2 * a)  // 첫 교점
+  return (u >= 0 && u <= 1) ? u : -1
+}
+
+// ─── 탄두를 미는 핵 ──────────────────────────────────────────────
+// applyNuke와 **같은 규칙**이다: 방향은 폭심 → 맞은 것의 중심, 크기는
+// 작약량 / 질량. 다른 것은 나뉘는 질량뿐이다 — 탄두는 다 같은 물건이라
+// μ가 하나로 고정된다(CFG.MISSILE_MU). 그래서 "어느 살을 치나"라는 조준법이
+// 공에서 탄두로 그대로 넘어온다.
+// 미는 것은 부르는 쪽이 한다(vel += dx*dv). 예측은 **밀지 않고 값만** 읽어
+// 화살표를 그리기 때문이다 — 둘이 같은 함수를 봐야 조준이 거짓말을 안 한다.
+export function missilePush(blastX, blastY, atX, atY, yld) {
+  let dx = atX - blastX, dy = atY - blastY
+  const d = Math.hypot(dx, dy) || 1   // 정확히 겹치는 일은 없다(판정 반경이 24 GU다)
+  return { dx: dx / d, dy: dy / d, dv: nukeDv(yld, CFG.MISSILE_MU) }
 }
 
 // 스텝당 객체를 만들지 않는다 — 예측 한 발이 6천여 스텝 × 천체 수를 돌므로

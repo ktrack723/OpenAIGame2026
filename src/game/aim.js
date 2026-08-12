@@ -1,7 +1,10 @@
 import { fromAngle } from '../core/vector.js'
 import { wrapPi } from '../core/angle.js'
 import { CFG, beltRadius, blastRadius, hitRadiusOf } from './config.js'
-import { buildBodyTrack, cloneBodies, makeStepCache, segCircleEntry, segHitsCircle, stepBodies, stepMissile, trackFrame } from './physics.js'
+import {
+  buildBodyTrack, cloneBodies, makeStepCache, missilePush, segCircleEntry, segHitsCircle,
+  stepBodies, stepMissile, sweepMeet, trackFrame,
+} from './physics.js'
 import { SHARD_N, effDv, shardCone, shardReach, volatileRadius } from './roles.js'
 import { msg } from '../i18n/index.js'
 
@@ -9,7 +12,7 @@ import { msg } from '../i18n/index.js'
 // 상태를 바꾸는 건 scanContact가 game.aim을 쓰는 것뿐이고,
 // 나머지는 전부 판을 복제해 굴려 보기만 한다. game.js는 얇은 래퍼만 남긴다.
 
-const EMPTY_PRED = { pts: [], outcome: null, hit: null }
+const EMPTY_PRED = { pts: [], outcome: null, hit: null, nudged: false }
 
 // ─── 예측 전용 시간 진행 ────────────────────────────────────────
 // 미사일은 촘촘하게, 천체는 성기게 굴린다. 행성이 스무 개로 늘면서
@@ -42,14 +45,26 @@ export function predictPath(game) {
   const sim = cloneBodies(game.bodies), bc = makeStepCache()
   const p = game.launchPos()
   const m = { pos: { ...p }, vel: fromAngle(game.aim, game.power), age: 0, pathN: 0, path: null, minSunDist: Infinity, prev: { ...p } }
+  // ── 이미 날고 있는 내 탄두 ──
+  // 같이 굴린다. 탄두끼리도 부딪히므로(game.crossFire) **저 탄이 곧 공**이고,
+  // 그러면 예측선은 그 사실을 말해야 한다 — 안 그리면 판 위에서 제일 작은 공
+  // 하나만 예측이 없는 셈이 되고, "느리게 걸어 두고 빠르게 친다"는 수는
+  // 눈대중으로만 시도할 수 있는 물건이 된다.
+  // 날고 있는 탄이 없으면 배열이 비어 이 아래는 전부 공짜다.
+  const live = game.missiles.filter(x => x.alive).map(x => ({
+    id: x.id, yld: x.yld,
+    pos: { ...x.pos }, vel: { ...x.vel }, prev: { ...x.pos },
+    age: x.age, pathN: 0, path: null, minSunDist: Infinity,
+  }))
   const pts = [{ ...p }]
-  let outcome = 'timeout', hit = null
+  let outcome = 'timeout', hit = null, nudged = false
   const beltR = beltRadius(game.aMax), beltR2 = beltR * beltR
   const rIn = CFG.R_STAR + 8, rIn2 = rIn * rIn
   const steps = Math.round(CFG.MISSILE_TTL / CFG.DT)
   for (let i = 0; i < steps; i++) {
     if (bodyTurn(i, BODY_EVERY)) stepBodies(sim, CFG.DT * BODY_EVERY, bc)
     stepMissile(m, sim, CFG.DT)
+    for (const L of live) stepMissile(L, sim, CFG.DT)
     if (i % 8 === 0) pts.push({ x: m.pos.x, y: m.pos.y })
     let bodyHit = null, point = null, bestD = Infinity
     for (const o of sim) {
@@ -66,6 +81,39 @@ export function predictPath(game) {
       outcome = hit.outcome
       break
     }
+    // ── 탄이 탄을 친다 ──
+    // 순서는 판과 같다: 천체 판정이 먼저고(위에서 끊었다) 그다음이 탄끼리다
+    // (game.step → contact → crossFire). 먼저 결판난 탄은 명단에서 뺀다 —
+    // 죽은 탄은 crossFire에 안 넘어가므로 여기서도 없는 탄이어야 한다.
+    if (live.length) {
+      for (let k = live.length - 1; k >= 0; k--) if (spentProbe(live[k], sim, rIn2, beltR2)) live.splice(k, 1)
+      let meet = null, mu = 0
+      for (const L of live) {
+        const u = sweepMeet(m.prev, m.pos, L.prev, L.pos, CFG.MISSILE_HIT_R)
+        if (u >= 0) { meet = L; mu = u; break }
+      }
+      if (meet) {
+        const at = (o) => ({ x: o.prev.x + (o.pos.x - o.prev.x) * mu, y: o.prev.y + (o.pos.y - o.prev.y) * mu })
+        const mine = at(m), his = at(meet)
+        // 빠른 쪽이 큐다(game.crossFire와 같은 규칙). 이 발이 언제나 나중에
+        // 쏜 발이므로 속력이 같으면 이쪽이 큐다.
+        if (Math.hypot(m.vel.x, m.vel.y) >= Math.hypot(meet.vel.x, meet.vel.y)) {
+          pts.push(mine)
+          hit = relayInfo(meet, mine, his, game.yieldMt, sim.find(o => o.isEarth))
+          outcome = 'relay'
+          break
+        }
+        // 저 탄이 큐 — 이번엔 **이 발이 밀린다.** 선은 여기서 끊기지 않는다:
+        // 그 자리에서 꺾여 계속 간다(끊으면 거짓말이다 — 이 발은 살아서 난다).
+        // 큐 쪽이 터지며 일으키는 폭풍까지는 안 굴린다. 예측선은 언제나
+        // "이 한 발이 어디에 닿는가"까지만 말한다.
+        const push = missilePush(his.x, his.y, mine.x, mine.y, meet.yld)
+        m.vel.x += push.dx * push.dv; m.vel.y += push.dy * push.dv
+        live.splice(live.indexOf(meet), 1)
+        pts.push(mine)
+        nudged = true
+      }
+    }
     const r2 = m.pos.x * m.pos.x + m.pos.y * m.pos.y
     if (r2 < rIn2) { outcome = 'sun'; pts.push({ x: m.pos.x, y: m.pos.y }); break }
     // 카이퍼 벨트 = 탄이 끝나는 자리. 공은 튕기지만 탄두는 거기서 터진다
@@ -78,8 +126,47 @@ export function predictPath(game) {
     }
   }
   game._predKey = key
-  game._pred = { pts, outcome, hit }
+  game._pred = { pts, outcome, hit, nudged }
   return game._pred
+}
+
+// 날고 있던 탄이 이 스텝에 결판났는가 — 천체 직격 · 태양 · 벨트 · 자폭 시한.
+// 무엇에 닿았는지는 안 묻는다. 여기서 필요한 답은 "그 뒤로도 판 위에 있는가"
+// 하나뿐이고, 그 탄이 무엇을 밀었는지는 이 발의 예측이 말할 몫이 아니다.
+function spentProbe(L, sim, rIn2, beltR2) {
+  if (L.age > CFG.MISSILE_TTL) return true
+  const r2 = L.pos.x * L.pos.x + L.pos.y * L.pos.y
+  if (r2 < rIn2 || r2 >= beltR2) return true
+  for (const o of sim) {
+    if (!o.alive) continue
+    if (segHitsCircle(L.prev.x, L.prev.y, L.pos.x, L.pos.y, o.pos.x, o.pos.y, hitRadiusOf(o))) return true
+  }
+  return false
+}
+
+// ─── 탄이 탄을 치는 한 건 ────────────────────────────────────────
+// impactInfo와 **같은 모양**의 물건을 돌려준다 — 화면(AimHelper)과 LCD가 공을
+// 칠 때 쓰던 어휘를 그대로 쓰기 위해서다: 락온 원 · 노란 임펄스 화살표 ·
+// 흰 진로 화살표 · 폭풍 원. 다른 것은 맞는 것이 공이 아니라 **내 탄두**라는
+// 사실 하나뿐이고, 그래서 체력·산탄·회피처럼 탄두에 없는 칸은 비어 있다.
+function relayInfo(L, blast, at, yld, simEarth) {
+  const push = missilePush(blast.x, blast.y, at.x, at.y, yld)
+  const R = blastRadius(yld)
+  return {
+    name: '', nameKey: 'shot.mine', isEarth: false, isTarget: false, type: 'missile', id: L.id,
+    outcome: 'relay', x: at.x, y: at.y, r: CFG.MISSILE_HIT_R,
+    px: blast.x, py: blast.y,               // 폭심 = 만나는 순간 이 발이 있는 자리
+    dx: push.dx, dy: push.dy, dv: push.dv,  // 저 탄이 밀리는 방향/크기
+    vx: L.vel.x + push.dx * push.dv, vy: L.vel.y + push.dy * push.dv,   // 밀린 직후의 진로
+    blast: R,
+    // 폭풍이 지구를 훑는가 — 공을 칠 때와 같은 경고다. 허공에서 터졌다고
+    // 지구가 안 밀리는 게 아니다(game.relay도 같은 폭풍을 터뜨린다).
+    earthInBlast: !!simEarth && Math.hypot(simEarth.pos.x - blast.x, simEarth.pos.y - blast.y) < R,
+    vAfter: 0, vEsc: 0, willEject: false,
+    role: null, volatileR: 0, shards: 0, shardCone: 0, shardReach: 0, earthInCone: false,
+    hp: 0, hpMax: 0, boost: 0,
+    missile: true,   // 이건 공이 아니라 탄이다 — 리드선이 어디서 찾을지가 갈린다(Scene)
+  }
 }
 
 // ─── 이 탄은 앞으로 무엇에 꽂히는가 ─────────────────────────────
@@ -91,17 +178,19 @@ export function predictPath(game) {
 // 계측에서 요새 판정 원 47 GU 안쪽 48 GU까지 스쳐 간 탄을 **끝까지 위협으로
 // 못 봤다** — 매 순간의 속도로 그은 직선은 내내 엉뚱한 데를 가리켰기 때문이다.
 // 그래서 예측선과 같은 적분기를 쓴다. 대신 해상도를 크게 낮췄다: 답이
-// "닿는가/언제"뿐이고 탄은 한 번에 한 발뿐이라(inFlight) 초당 몇 번이면 된다.
+// "닿는가/언제"뿐이고 탄은 많아야 두 발이라(CFG.MAX_INFLIGHT) 초당 몇 번이면 된다.
 // 해상도는 "10초 뒤에 판정 원 30 GU 안으로 들어오는가"를 틀리지 않을 만큼만.
 // 처음엔 1/12초로 잡았다가 계측에서 위협을 **5~7초 전에야** 알아봤다 —
 // 적분 오차가 10초 동안 쌓여 판정 원을 비껴갔고, 그만큼 회피할 시간이 없었다.
-// 1/30초로 조이니 예정대로 10초 전에 잡는다. 탄은 한 번에 한 발뿐이고
-// (inFlight) 이 질의는 초당 세 번이라 이 해상도가 프레임을 먹지 않는다.
+// 1/30초로 조이니 예정대로 10초 전에 잡는다. 탄은 많아야 두 발이고
+// 이 질의는 초당 세 번이라 이 해상도가 프레임을 먹지 않는다.
 const THREAT_DT = 1 / 30, THREAT_BODY_EVERY = 5
 export function firstImpact(game, m, horizon) {
   // 트랙(buildBodyTrack)을 쓰지 않는 이유: 여기서는 닿는 순간의 **천체 속도**가
-  // 필요하다(상대 진입 속도) — 트랙에는 위치뿐이다. 탄은 한 번에 한 발이고
+  // 필요하다(상대 진입 속도) — 트랙에는 위치뿐이다. 탄은 많아야 두 발이고
   // 이 질의는 초당 몇 번이라, 캐시 넘긴 정직한 적분으로 충분히 싸다.
+  // 탄끼리의 충돌은 여기서 안 본다: 요새가 묻는 것은 "저 탄이 내게 꽂히는가"인데,
+  // 그 탄이 도중에 밀릴지 말지는 **아직 안 쏜 발**에 달렸다. 저쪽이 알 길이 없다.
   const sim = cloneBodies(game.bodies), bc = makeStepCache()
   const probe = {
     pos: { ...m.pos }, vel: { ...m.vel }, age: 0, pathN: 0, path: null,

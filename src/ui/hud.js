@@ -390,6 +390,14 @@ export function makeHud(game, view) {
 //   · 판의 승패 예측, 점수 예상, 최적 각도 추천.
 //   · 확률·추정치. LCD에 뜨는 숫자는 전부 결정론적 계산 결과다.
 function predLine(game, p) {
+  const line = predOutcome(game, p)
+  // 이 발은 날아가는 도중에 **밀린다** — 먼저 쏜 탄이 큐이고 이쪽이 공이다.
+  // 꺾이는 자리는 예측선이 이미 그리고 있으므로 여기서는 한 마디만 덧붙인다.
+  if (p.nudged) line[3] = [t('lcd.nudged'), line[3]].filter(Boolean).join(' · ')
+  return line
+}
+
+function predOutcome(game, p) {
   const h = p.hit
   const role = h && h.role ? ROLES[h.role] : null
   const badge = role ? ` [${role.icon}${roleLabel(h.role)}]` : ''
@@ -409,6 +417,15 @@ function predLine(game, p) {
         aim: roleAim(h.role), n: h.shards, dir: dirOf(h.dx, h.dy),
         deg: (h.shardCone * 2 * 180 / Math.PI).toFixed(0),
       }) + (h.earthInCone ? ` · ${t('lcd.warn.spray')}` : '')]
+    // 탄이 탄을 친다 — 밀리는 것은 **날고 있는 내 탄두**다. 2층에 들어가는
+    // 값은 공을 칠 때와 같다(충격 방향 · Δv · 바뀐 진로). 체력이 없는 물건이라
+    // ◆ 한 칸만 빠진다. 그 뒤에 저 탄이 무엇에 닿는지는 여기서도 안 말한다 —
+    // 접촉까지만 말하는 규칙은 맞는 것이 탄두라고 달라지지 않는다.
+    case 'relay': return [h.earthInBlast ? 'warn' : 'hit', t('lcd.tag.relay'), name,
+      t('lcd.relay.sub', {
+        push: dirOf(h.dx, h.dy), dv: h.dv.toFixed(1),
+        course: dirOf(h.vx, h.vy), speed: Math.hypot(h.vx, h.vy).toFixed(0),
+      }) + (h.earthInBlast ? ` · ${t('lcd.warn.blast')}` : '')]
     case 'debris': return ['warn', t('lcd.tag.debris'), t('lcd.debris'), '']
     case 'sun': return ['warn', t('lcd.tag.solar'), t('lcd.solar'), t('lcd.solar.sub')]
     // 벨트 기폭 — 판 밖으로 나가는 발이다. 공은 쿠션에 튕기지만 탄두는 거기서 끝난다.
@@ -682,14 +699,18 @@ export function updateHud(el, game) {
     el.querySelector('#lcdSub').textContent = sub
       || t('lcd.default', { yield: game.yieldMt, impulse: CFG.NUKE_IMPULSE, blast: blastRadius(game.yieldMt).toFixed(0) })
     fireBtn.classList.toggle('danger', p.outcome === 'earth')
-    fireBtn.disabled = game.inFlight || veil
-    fireBtn.querySelector('.ftext').textContent = game.inFlight ? t('ui.fire.reload')
+    // 막히는 것은 "탄이 날고 있을 때"가 아니라 **자리가 다 찼을 때**다
+    // (game.salvoFull). 한 발이 날고 있어도 다음 한 발은 쏠 수 있고,
+    // 그 두 번째 발로 첫 발을 치는 것이 이 게임의 새 수다.
+    fireBtn.disabled = game.salvoFull || veil
+    fireBtn.querySelector('.ftext').textContent = game.salvoFull ? t('ui.fire.reload', { max: CFG.MAX_INFLIGHT })
       : p.outcome === 'earth' ? t('ui.fire.abort') : t('ui.fire')
   } else {
     lcd.className = 'lcd off'
     el.querySelector('#lcdTag').textContent = t(game.runOver ? 'lcd.dead' : 'lcd.hold')
     el.querySelector('#lcdText').textContent = t(game.runOver ? 'lcd.dead.sub' : 'lcd.hold.sub')
-    el.querySelector('#lcdSub').textContent = game.inFlight ? t('lcd.inflight') : ''
+    el.querySelector('#lcdSub').textContent = game.inFlight
+      ? t('lcd.inflight', { n: game.flying, max: CFG.MAX_INFLIGHT }) : ''
     fireBtn.classList.remove('danger')
     fireBtn.querySelector('.ftext').textContent = t('ui.fire')
   }
