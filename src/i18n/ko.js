@@ -365,7 +365,7 @@ export const ko = {
   'over.reached': '{stage}스테이지까지 · 정치자금 {pol} 확보',
   'chip.pol': '정치자금',
   'ui.thrust': '추진기',
-  'msg.earthBurn': '지구 궤도 보정 분사 — 회랑에서 비켜섰다 (추진기 {n}기 남음)',
+  'msg.earthBurn': '지구 추진 분사 — 태양 반대쪽으로 Δv {dv} (추진기 {n}기 남음)',
   'shop.title': '보급',
   'shop.balance': '정치자금 {n}',
   'shop.cost': '{n}',
@@ -377,7 +377,7 @@ export const ko = {
   'shop.yield': '작약 상한 +3',
   'shop.yield.brief': '더 세게 밀 수 있다 — 무거운 공도 움직인다',
   'shop.thruster': '지구 추진기',
-  'shop.thruster.brief': '조준당한 동안 관측 중에 태운다 — 회랑에서 비켜선다 (T)',
+  'shop.thruster.brief': '조준당한 동안 관측 중에 태운다 — 태양 반대쪽으로 밀어 궤도를 통째로 바꾼다 (T)',
   // ── 패배 ──────────────────────────────────────────────────────
   'over.title': '작전 실패', 'over.doom': '그들이 왔다…',
   'over.new': '새 런 시작',
