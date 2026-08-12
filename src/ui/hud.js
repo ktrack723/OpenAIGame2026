@@ -539,8 +539,15 @@ export function updateHud(el, game) {
         })
       : game.laserFlying
         ? t('ui.obs.fly', { left: game.laserImpactLeft.toFixed(1) })
+      // 초엘리트의 잠금 — 광선보다 **뒤에** 둔다. 둘이 겹칠 때 급한 쪽은
+      // 광선이다(선은 못 되치지만 공은 되칠 수 있다). 그래도 판에서 이 줄이
+      // 유일하게 "몇 초 뒤에 공이 온다"를 말하므로 시계는 반드시 뜬다.
+      : game.siegeLocking
+        ? t('ui.obs.siege', { left: game.siegeLeft.toFixed(0) })
+      : game.siegeFlying
+        ? t('ui.obs.siegeFly')
         : t('ui.obs.run', { scale: game.effTimeScale(), clock })
-    const alarm = game.laserCharging || game.laserFlying || !!game.doom
+    const alarm = game.laserCharging || game.laserFlying || game.siegeLocking || game.siegeFlying || !!game.doom
     const bar = el._obsBar, btn = bar.querySelector('#toAim')
     if (btn._sub !== sub) { btn._sub = sub; bar.querySelector('#obsSub').textContent = sub }
     btn.classList.toggle('alarm', alarm)

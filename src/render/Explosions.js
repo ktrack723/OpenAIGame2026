@@ -34,6 +34,10 @@ export class Explosions {
         this.parts.shock(e.x, e.y, Math.max(24, (e.r ?? 10) * CFG.SWING_ZONE * 0.5), 0x67e8f9, 0.6)
         this.parts.burst(e.x, e.y, { n: 26, color: 0x67e8f9, speed: 110, size: 8, ttl: 0.7 })
       } else if (e.kind === 'hive') this.hive(e)
+      else if (e.kind === 'siegeLock') this.siegeLock(e)
+      else if (e.kind === 'siegeFire') this.siegeFire(e)
+      else if (e.kind === 'siegeNuke') this.siegeNuke(e)
+      else if (e.kind === 'siegePush') this.siegePush(e)
       else if (e.kind === 'boost') this.boost(e)
       else if (e.kind === 'earthBurn') this.earthBurn(e)
       else if (e.kind === 'pol') this.pol(e)
@@ -63,6 +67,73 @@ export class Explosions {
       P.shock(e.tx, e.ty, 90, C, 0.8)
       P.burst(e.tx, e.ty, { n: 26, color: C, speed: 90, size: 8, ttl: 0.7 })
     }
+  }
+
+  // ─── 초엘리트의 한 수 ────────────────────────────────────────
+  // 셋 다 조르그 것이므로 **주홍**으로 묶는다. 내 핵의 화구는 흰빛에서
+  // 호박·주황으로 식지만(nuke), 이쪽은 처음부터 끝까지 붉다 — 화면에 둘이
+  // 같이 터져도 어느 쪽이 내 것인지 색 하나로 갈린다.
+  //
+  // 잠금 — 실로가 열린다. 폭발이 아니라 **예고**이므로 아무것도 안 터진다:
+  // 안으로 조여드는 고리 하나와 실로에서 새는 불티뿐이다.
+  siegeLock(e) {
+    const P = this.parts, R = Math.max(60, (e.r ?? 40) * 1.8)
+    P.shock(e.x, e.y, R, 0xff3b1f, 0.7, { thin: true, from: 3.0, to: 0.9, alpha: 0.85 })
+    P.shock(e.x, e.y, R, 0xffb03a, 1.0, { thin: true, from: 3.8, to: 1.1, alpha: 0.5, delay: 0.1 })
+    P.burst(e.x, e.y, { n: 46, color: 0xff7a3a, speed: 120, size: 10, ttl: 1.2, drag: 0.4 })
+  }
+
+  // 발사 — 박격이다. 통에서 뭉툭한 것이 밀려 나가는 그림이라 배기가 **뒤로**
+  // 뿜고(e.a의 반대) 고리는 총구 앞으로 퍼진다.
+  siegeFire(e) {
+    const P = this.parts, R = Math.max(70, (e.r ?? 40) * 2.0)
+    const back = (e.a ?? 0) + Math.PI
+    P.puff(e.x, e.y, { r0: R * 0.1, r1: R * 0.7, ttl: 0.22, color: 0xffe0c0, alpha: 1 })
+    P.shock(e.x, e.y, R, 0xffffff, 0.45, { thin: true, from: 0.12, to: 2.6, alpha: 0.9 })
+    P.shock(e.x, e.y, R, 0xff3b1f, 0.9, { from: 0.18, to: 2.2, delay: 0.06 })
+    P.burst(e.x, e.y, { n: 150, color: 0xff5a2b, speed: 520, size: 13, ttl: 1.1, spread: 0.7, dir: back })
+    P.burst(e.x, e.y, { n: 70, color: 0xffd9c0, speed: 880, size: 8, ttl: 0.5, spread: 0.4, dir: back })
+    P.burst(e.x, e.y, { n: 60, color: 0x7a1226, speed: 130, size: 22, ttl: 2.6, spread: 1.1, dir: back, drag: 0.45 })
+    P.spikes(e.x, e.y, { n: 12, color: 0xffb03a, speed: 1200, size: 8, ttl: 0.45 })
+    this.rig.hit(14)
+    this.flash(0.16, '#ffd8c4')
+  }
+
+  // 기폭 — 내 핵(nuke)과 **같은 문법, 다른 색**이다. 겹의 구성이 같아야
+  // "저것도 핵이다"가 읽히고(임펄스 규칙이 실제로 같다), 색이 달라야
+  // "내가 쏜 게 아니다"가 읽힌다. 화구가 식지 않고 검붉게 가라앉는다.
+  siegeNuke(e) {
+    const yld = e.yld ?? CFG.SIEGE_YIELD ?? 9
+    const k = yld / CFG.YIELD_MAX
+    const R = Math.max(44, (e.r ?? 20) * 2.4) * (0.85 + 2.2 * k)
+    const P = this.parts
+    P.puff(e.x, e.y, { r0: R * 0.22, r1: R * 1.1, ttl: 0.18, color: 0xfff0e4, alpha: 1 })
+    this.flash(e.earth ? 0.9 : 0.34 + 0.5 * k, e.earth ? '#ffe8e8' : '#ffd9c8')
+    this.rig.focus(e.x, e.y, R * 2.2, 1.6)
+    P.spikes(e.x, e.y, { n: 18 + Math.round(18 * k), color: 0xffb03a, speed: 780 + 1200 * k, size: 8 + 7 * k, ttl: 0.5 })
+    // 화구 — 흰빛이 아주 짧게 스치고 곧바로 붉음으로 넘어간다
+    P.puff(e.x, e.y, { r0: R * 0.12, r1: R * 1.3, ttl: 0.6 + 0.5 * k, color: 0xff8a4a, alpha: 1 })
+    P.puff(e.x, e.y, { r0: R * 0.10, r1: R * 2.1, ttl: 1.1 + 0.8 * k, color: 0xff2f1c, alpha: 0.92, delay: 0.05 })
+    P.puff(e.x, e.y, { r0: R * 0.20, r1: R * 3.2, ttl: 2.1 + 1.2 * k, color: 0x4a0a12, alpha: 0.6, delay: 0.15, drift: 16 })
+    P.shock(e.x, e.y, R, 0xffffff, 0.5, { thin: true, from: 0.1, to: 4.0, alpha: 1 })
+    P.shock(e.x, e.y, R, 0xff3b1f, 1.0 + 0.6 * k, { from: 0.15, to: 3.1, delay: 0.06 })
+    P.shock(e.x, e.y, R, 0xc026d3, 1.5 + 0.7 * k, { thin: true, from: 0.2, to: 5.2, delay: 0.2, alpha: 0.5 })
+    P.burst(e.x, e.y, { n: 160 + Math.round(200 * k), color: 0xff5a2b, speed: 340 + 440 * k, size: 16 + 10 * k, ttl: 1.5 + 1.0 * k })
+    P.burst(e.x, e.y, { n: 70, color: 0xffe0c0, speed: 620 + 640 * k, size: 9, ttl: 0.6 })
+    P.burst(e.x, e.y, { n: 80, color: 0x7a0a1e, speed: 110, size: 22 + 12 * k, ttl: 3.2 + 1.6 * k, drag: 0.45 })
+    this.rig.hit(Math.min(VIS.SHAKE_MAX, e.earth ? VIS.SHAKE_MAX * 0.8 : 14 + 26 * k))
+  }
+
+  // 밀린 방향 — 폭풍 링과 임펄스 분사. 이 두 겹이 "당구를 쳤다"의 전부다:
+  // 어느 공이 어느 쪽으로 굴러가는지가 여기서 눈에 박혀야, 그다음 수십 초를
+  // 플레이어가 그 공을 좇으며 보낸다.
+  siegePush(e) {
+    const P = this.parts
+    if (e.wave) P.shock(e.x, e.y, e.wave, 0xff3b1f, 0.85, { thin: true, from: 0.05, to: 1.0, alpha: 0.55, delay: 0.02 })
+    if (e.px === undefined) return
+    const a = Math.atan2(e.py, e.px)
+    P.burst(e.x, e.y, { n: 90, color: 0xffb03a, speed: 420, size: 12, ttl: 0.9, spread: 0.9, dir: a })
+    P.shock(e.x, e.y, Math.max(50, (e.r ?? 20) * 2), 0xffb03a, 0.7, { thin: true, from: 0.2, to: 3.0, alpha: 0.7, delay: 0.05 })
   }
 
   // ─── 요새의 회피 분사 ────────────────────────────────────────
