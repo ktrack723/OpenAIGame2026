@@ -750,13 +750,22 @@ export class Game {
     // 추진기 달린 요새가 하나도 없으면 물어볼 것도 없다. 한 번의 판정이
     // 1.5ms짜리라 이 두 줄이 곧 "2스테이지까지는 공짜"를 만든다.
     if (!this.bodies.some(b => b.boost && b.alive && b.role === 'battery')) return
-    const threatened = new Set()
+    // ── 명단부터 짠다: 요새 하나당 **제일 먼저 닿는 탄** 하나 ──
+    // 예전에는 탄을 돌며 곧바로 경계를 깎았다. 탄이 한 번에 한 발일 때는 그게
+    // 같은 말이었는데, 자리가 둘이 되면서 **같은 요새를 두 발이 물면 경계가 한
+    // 틱에 두 번 깎인다** — 반응 시간이 절반이 되어 두 발을 겨눌수록 저쪽이 더
+    // 빨리 비켜서는, 아무도 의도한 적 없는 규칙이 생겼다. 경계는 요새의 성질이지
+    // 탄의 개수가 아니다. 비켜서는 방향만은 **먼저 닿는 탄** 기준으로 잡는다.
+    const threatened = new Map()
     for (const m of this.missiles) {
       if (!m.alive) continue
       const hit = Aim.firstImpact(this, m, CFG.FORT_DODGE_LEAD)
       const b = hit?.body
       if (!b || !b.boost || !b.alive || b.role !== 'battery') continue
-      threatened.add(b)
+      const cur = threatened.get(b)
+      if (!cur || hit.t < cur.t) threatened.set(b, hit)
+    }
+    for (const [b, hit] of threatened) {
       // 반응 시간은 요새마다 다르다. 처음 위협받는 순간에 뽑고, 그 뒤로는
       // 계속 물려 있는 동안만 깎인다.
       if (b.alert == null) {
@@ -1619,7 +1628,10 @@ export class Game {
     if (this.aliveThreats === 0) this.win()
   }
 
-  win() {
+  // force = **모성을 부숴서 판을 되찾은 승리**(doomBroken). 그 한 수는 남은
+  // 요새와 무관하게 판을 가져간다 — 시한이 끝난 뒤의 마지막 창에서 저것을
+  // 처박았다는 사실 자체가 이 판의 결말이다("모성 격파 — 판을 되찾았다").
+  win(force = false) {
     // 모성이 오는 중에는 절대 이기지 않는다. 예전엔 난사가 마지막 요새를
     // 태우는 순간 recordKill → win()이 그대로 걸려서, 성계가 쓸려나가는 와중에
     // 축하 화면이 떴다(그리고 won=true가 되면 시계가 멈춰 연출까지 얼어붙었다).
@@ -1632,7 +1644,9 @@ export class Game {
     // 시계까지 멎는다(계측: 여섯 시드 전부 재현).
     // 목표 숫자에는 이미 들어가 있는 놈이다(stepHive가 보내면서 goal.total을
     // 올린다) — 그러니 도착할 때까지 기다렸다가 마저 부수는 게 규칙에 맞다.
-    if (this.warpingThreats > 0) return
+    // (모성을 부순 승리는 예외다 — 아래 force. 거기서 막으면 그 판은 이기지도
+    //  지지도 못한 채 시한 뒤로 흘러 모성이 **한 번 더** 강림한다.)
+    if (!force && this.warpingThreats > 0) return
     this.won = true
     this.message = msg('msg.win')
     this.setToast(msg('toast.win'))
@@ -1824,7 +1838,7 @@ export class Game {
     this.timeWarn = 3                      // 시한 경고는 이미 다 울렸다
     this.setToast(msg('toast.doomDown'))
     this.message = msg('msg.doomDown')
-    this.win()
+    this.win(true)
   }
 
   fail(reason, msg) {
