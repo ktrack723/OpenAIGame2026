@@ -38,19 +38,128 @@ const GAP = {
   doomBeam: 0.07, toast: 0.5, laserAlarm: 0.4, uiTick: 0.03,
 }
 
+// ─── 더킹 — 손잡이 하나를 여럿이 잡는다 ──────────────────────────
+//
+// 큰 사건이 터지면 음악이 한 발 물러난다. 물러나는 것까지는 원래 있었는데
+// **돌아오는 길이 없었다.** 사건 더킹(기폭·격파)에는 unduck을 걸어 주는 곳이
+// 아무 데도 없어서, 조르그를 하나 잡으면 음악이 10%로 내려앉은 채 그 판이
+// 끝날 때까지 그대로 있었다 — 판이 바뀌는 자리에만 unduck이 있었기 때문이다.
+// 그게 "작아졌다가 커져야 할 곳에서 안 커진다"의 정체다.
+//
+// 그래서 손잡이를 **등록부**로 바꾼다. 누르는 사람은 둘이다:
+//
+//   · 사건(hit)  — 눌렀다가 제 시간이 지나면 **스스로 놓는다**
+//   · 상태(hold) — 승리·패배 화면이 서 있는 **동안** 잡고 있는다
+//
+// 여럿이 동시에 잡으면 **제일 깊이 누른 값이 이긴다**(min). 이게 없으면 얕은
+// 손이 놓는 순간 깊은 손이 아직 잡고 있는데도 음악이 올라와 버린다. 예전
+// unduck()은 "묻지 않고 1로"라서 정확히 그 사고를 냈다 — 승리 화면이 눌러 둔
+// 음악을 그 위에 겹친 폭발 하나가 통째로 되돌렸다.
+//
+// 상태 더킹을 **가장자리가 아니라 상태로** 거는 것도 같은 이유다. 가장자리는
+// 한 프레임만 놓치면(예고편이라 걸러졌다든가) 영영 안 풀린다. 상태는 못 낀다.
+
+const DUCK_HOLD = 0.35    // 바닥에 머무는 시간 (초). 사건음이 지나갈 만큼만.
+const DUCK_RISE = 1.1     // 놓고 다시 올라오는 데 (초). 내려갈 때보다 느긋하게.
+
+// 사건별 깊이. key가 같은 것들은 등록부에서 한 손으로 친다 —
+// 지구가 맞는 사건 셋은 한 프레임에 같이 오기도 하는데(핵이 지구에 박혀
+// 지구가 부서진다), 그때 얕은 쪽이 깊은 쪽을 밀어 올리면 안 된다.
+//
+// 깊이를 다시 잰 것은 격파(kill) 하나다. 이 값들은 원래 "영영 이만큼
+// 작아진다"였지 "잠깐 비킨다"가 아니었다. 되돌아오게 고치고 나면 판마다
+// 수십 번 오는 요새 격파의 0.1은 음악을 매번 20dB씩 파 놓는다. 그럴 이유도
+// 없다 — 같은 자리에서 격파음의 피크는 −8.8dBFS이고 음악은 −32~−30dBFS
+// RMS다(bgm.js). 이미 20dB 넘게 위에 있는 소리한테 자리를 더 내줄 것은 없다.
+// 지구가 맞은 자리와 모함 격파는 런에 몇 번 없는 사건이라 원래 깊이를 지킨다.
+const DUCK = {
+  nukeEarth:  { key: 'earth', level: 0.18, fall: 0.5 },   // 내 핵이 지구에 박혔다
+  lostEarth:  { key: 'earth', level: 0.15, fall: 0.6 },   // 지구가 부서졌다
+  siegeEarth: { key: 'earth', level: 0.22, fall: 0.6 },   // 초엘리트의 한 발이 꽂혔다
+  hive:       { key: 'kill',  level: 0.10, fall: 0.4 },   // 모함 격파 — 런에 한 번
+  kill:       { key: 'kill',  level: 0.55, fall: 0.25 },  // 요새 격파 — 판마다 여러 번
+  won:        { key: 'won',   level: 0.40, fall: 1.0 },   // 승리 화면
+  over:       { key: 'over',  level: 0.22, fall: 1.4 },   // 패배 화면
+}
+
+class Ducker {
+  // music : Bgm 또는 Music. 둘은 duck/unduck 인터페이스가 같아서 구분하지 않는다.
+  // clock : 초 단위 시계. **오디오 컨텍스트의 시계를 쓴다** — 이 게임은 폭발
+  //         한 번에 한 프레임이 100ms를 넘는 물건이라, 프레임으로 시간을 세면
+  //         제일 시끄러운 순간에 음악이 제일 늦게 올라온다.
+  constructor(music, clock) {
+    this.music = music
+    this.clock = clock
+    this.ducks = new Map()   // key → { level, until }.  until=Infinity면 상태 더킹
+    this.level = 1           // 지금 걸어 둔 값
+  }
+
+  // 사건. 같은 키가 겹치면 **깊은 쪽과 늦은 쪽**을 남긴다 — 나중에 온 얕은
+  // 사건이 앞선 깊은 사건을 짧게 끊어 먹지 않게.
+  hit(d) {
+    const until = this.clock() + d.fall + DUCK_HOLD
+    const prev = this.ducks.get(d.key)
+    this.ducks.set(d.key, prev
+      ? { level: Math.min(prev.level, d.level), until: Math.max(prev.until, until) }
+      : { level: d.level, until })
+    this.apply(d.fall)
+  }
+
+  // 상태. spec이 null이면 놓는다. **매 프레임 그대로 다시 걸어도 된다** —
+  // 값이 안 바뀌었으면 그 자리에서 돌아선다.
+  hold(key, spec) {
+    const prev = this.ducks.get(key)
+    if (!spec) {
+      if (!prev) return
+      this.ducks.delete(key)
+      this.apply(DUCK_RISE)
+      return
+    }
+    if (prev && prev.level === spec.level && prev.until === Infinity) return
+    this.ducks.set(key, { level: spec.level, until: Infinity })
+    this.apply(spec.fall)
+  }
+
+  // 시간이 다 된 사건 더킹을 걷는다. 매 프레임 부른다.
+  tick() {
+    if (this.ducks.size === 0) return
+    const now = this.clock()
+    let freed = false
+    for (const [k, d] of this.ducks) {
+      if (now >= d.until) { this.ducks.delete(k); freed = true }
+    }
+    if (freed) this.apply(DUCK_RISE)
+  }
+
+  // 잡고 있는 손들 중 제일 깊은 값. 아무도 없으면 1 — 그게 곧 복귀다.
+  apply(dur) {
+    let lv = 1
+    for (const d of this.ducks.values()) if (d.level < lv) lv = d.level
+    if (Math.abs(lv - this.level) < 0.005) return
+    this.level = lv
+    if (lv >= 1) this.music.unduck(dur)
+    else this.music.duck(lv, dur)
+  }
+}
+
 export class AudioSystem {
   constructor() {
     this.engine = new AudioEngine()
     this.sfx = new Sfx(this.engine)
     this.music = new Bgm(this.engine)
+    // 음악을 누르는 손은 **전부 여기를 지난다.** music.duck을 직접 부르는 곳이
+    // 하나라도 남으면 그 하나만 안 돌아온다 — 원래 그래서 안 돌아왔다.
+    this.ducker = new Ducker(this.music, () => this.engine.now)
     this.game = null
     this.view = null
     this.booted = false
     this.onMute = null        // 화면이 버튼 라벨을 고치려고 걸어 둔다
 
-    // 이전 프레임의 판 상태 — 가장자리(edge)를 잡는 데 쓴다
+    // 이전 프레임의 판 상태 — 가장자리(edge)를 잡는 데 쓴다.
+    // **소리에만** 쓴다. 더킹은 가장자리로 안 잡는다(Ducker 주석) — 한 번
+    // 놓치면 영영 안 풀리는 것을 여기에 걸어 둘 이유가 없다.
     this.prev = {
-      mode: null, curtain: null, won: false, over: false, stage: -1,
+      mode: null, curtain: null, won: false, over: false,
       timeWarn: 0, toast: null, goalDone: -1, doom: false, charging: false,
     }
     this.alarmT = 0
@@ -190,7 +299,7 @@ export class AudioSystem {
       case 'nuke': {
         const y = e.yld ?? 12
         const k = clamp01((y - 1) / 29)                  // 1~30Mt
-        if (e.earth) { at('nukeEarth', 1, { priority: 2 }); this.music.duck(0.18, 0.5) }
+        if (e.earth) { at('nukeEarth', 1, { priority: 2 }); this.ducker.hit(DUCK.nukeEarth) }
         else if (e.belt) at('nukeBelt', 0.75 + 0.2 * k)
         else at('nuke', 0.6 + 0.5 * k, { rate: 1.16 - 0.3 * k, priority: 1 })
         break
@@ -201,8 +310,10 @@ export class AudioSystem {
       // 광선에 녹은 중립 행성이 격파음을 내고 있었다. 이제 그림과 같은
       // 기준으로 가른다(Explosions.destroy / destroyZorg).
       case 'destroy':
-        if (e.earth) { at('destroyEarth', 1, { priority: 2 }); this.music.duck(0.15, 0.6) }
-        else if (e.zorg) { at('destroyZorg', 1, { priority: 1 }); this.music.duck(0.1, 0.4) }
+        if (e.earth) { at('destroyEarth', 1, { priority: 2 }); this.ducker.hit(DUCK.lostEarth) }
+        // 모함과 요새는 같은 소리를 쓰지만 음악을 누르는 깊이는 다르다 —
+        // 모함은 런에 한 번이고, 요새는 판마다 여러 번이다.
+        else if (e.zorg) { at('destroyZorg', 1, { priority: 1 }); this.ducker.hit(e.hive ? DUCK.hive : DUCK.kill) }
         else at('destroy', 0.85)
         break
 
@@ -268,7 +379,7 @@ export class AudioSystem {
       case 'siegeNuke':
         // 지구에 꽂힌 한 발은 판을 뒤집는 사건이다 — 음악을 잠깐 눌러 준다
         // (내 핵이 지구에 박혔을 때와 같은 처리다).
-        if (e.earth) { at('siegeNuke', 1, { priority: 2 }); this.music.duck(0.22, 0.6) }
+        if (e.earth) { at('siegeNuke', 1, { priority: 2 }); this.ducker.hit(DUCK.siegeEarth) }
         else at('siegeNuke', 0.95, { priority: 1 })
         break
 
@@ -318,7 +429,11 @@ export class AudioSystem {
   // main 루프가 불러 준다. 여기서 하는 일은 둘이다: 전황을 읽어 음악 레이어를
   // 크로스페이드하는 것과, 상태가 **바뀐 순간**에만 나는 소리를 잡는 것.
   frame(dt, game = this.game) {
-    if (!this.engine.ready || !game) return
+    if (!this.engine.ready) return
+    // 시간이 다 된 사건 더킹을 걷는다. **판을 보기 전에** — 판이 없는 동안
+    // (개막 전, 예고편과 본편 사이) 눌러 둔 음악도 올라와야 한다.
+    this.ducker.tick()
+    if (!game) return
     const P = this.prev
 
     // ── 전황 ──
@@ -428,21 +543,26 @@ export class AudioSystem {
     if (!P.doom && game.doom) { this.play('doomWarp', { gain: 1, priority: 2 }); this.music.setTheme('foe') }
     P.doom = !!game.doom
 
-    // 승리 / 패배 — 음악을 잠깐 눌러 준다. 마지막 폭발이 화음에 묻히면 안 된다.
-    if (!P.won && game.won && !game.runOver && !quiet) {
-      this.play('victory', { gain: 1, priority: 2 }); this.music.duck(0.4, 1.0)
-    }
-    if (P.won && !game.won) this.music.unduck()
+    // 승리 / 패배 — 팡파르는 그 순간 한 번(가장자리), 음악을 눌러 두는 것은
+    // 화면이 서 있는 **동안**(상태)이다. 둘을 같은 자리에서 잡던 것이 문제였다:
+    // 화면이 닫히는 가장자리를 한 번 놓치면 음악이 눌린 채로 남았고, 반대로
+    // 그때 부르던 unduck()은 마침 터진 폭발의 더킹까지 같이 들어 올렸다.
+    // 이제 팡파르만 가장자리로 잡는다.
+    if (!P.won && game.won && !game.runOver && !quiet) this.play('victory', { gain: 1, priority: 2 })
     P.won = !!game.won
 
-    if (!P.over && game.runOver && !quiet) { this.play('defeat', { gain: 1, priority: 2 }); this.music.duck(0.22, 1.4) }
-    if (P.over && !game.runOver) this.music.unduck()
+    if (!P.over && game.runOver && !quiet) this.play('defeat', { gain: 1, priority: 2 })
     P.over = !!game.runOver
 
-    // 판이 바뀌었다(다음 침공) — 눌러 둔 음악을 되돌리고, 곡이 바뀌는 판이면
-    // 갈아탄다. **매 프레임 걸어도 된다**: 같은 곡이면 setTrack이 그 자리에서
-    // 돌아서고(bgm), 크로스페이드는 실제로 바뀌는 그 한 번만 돈다.
-    if (P.stage !== game.stage) { if (P.stage >= 0) this.music.unduck(); P.stage = game.stage }
+    // 눌러 두는 쪽. **매 프레임 그대로 다시 건다** — 값이 같으면 그 자리에서
+    // 돌아선다(Ducker.hold). 판이 넘어가면 won·runOver가 내려가므로 여기서
+    // 저절로 놓인다. 판이 바뀌는 자리에 따로 unduck을 둘 필요가 없어졌다.
+    this.ducker.hold('won', game.won && !game.runOver && !quiet ? DUCK.won : null)
+    this.ducker.hold('over', game.runOver && !quiet ? DUCK.over : null)
+
+    // 곡이 바뀌는 판이면 갈아탄다. **매 프레임 걸어도 된다**: 같은 곡이면
+    // setTrack이 그 자리에서 돌아서고(bgm), 크로스페이드는 실제로 바뀌는
+    // 그 한 번만 돈다.
     this.music.setTrack(trackFor(game.stage))
   }
 }
