@@ -220,7 +220,6 @@ function impactInfo(game, o, point, simEarth) {
   let outcome = 'neutral'
   if (o.type === 'debris') outcome = 'debris'
   else if (o.isEarth) outcome = 'earth'
-  else if (o.role === 'void') outcome = 'void'
   else if (o.role === 'volatile') outcome = 'volatile'
   else if (o.role === 'unstable') outcome = 'unstable'
   else if (isT) outcome = 'target'
@@ -229,7 +228,9 @@ function impactInfo(game, o, point, simEarth) {
   dx /= d; dy /= d
   // 터지거나 쪼개지는 공은 **밀리지 않는다** — 그 자리에서 없어진다.
   // Δv를 0으로 두면 임펄스·진로 화살표가 통째로 꺼진다(AimHelper.push).
-  const dv = o.type === 'debris' || o.isEarth || o.role === 'volatile' || o.role === 'unstable'
+  // 밀리지 않는 것들 — 파편(그냥 사라진다) · 지구(게임오버) · 불안정(쪼개져 사라진다).
+  // **가스는 여기 없다.** 유폭해도 그 공은 남으므로 임펄스를 그대로 받는다(game.detonate).
+  const dv = o.type === 'debris' || o.isEarth || o.role === 'unstable'
     ? 0 : effDv(o, game.yieldMt)
   const R = blastRadius(game.yieldMt)
   // 큰 탄두는 폭풍이 지구까지 닿는다 — 쏘기 전에 그것만은 알려준다

@@ -89,6 +89,24 @@ export class Particles {
       scene.add(m); this.rings.push(m)
     }
 
+    // ─── 빛기둥 풀 ─────────────────────────────────────────────
+    // 중심에서 사방으로 뻗는 가늘고 긴 빛. **조르그가 부서질 때만** 쓴다 —
+    // 이 그림 하나가 곧 "판이 한 칸 줄었다"의 표식이라, 다른 사건에 쓰면
+    // 그 표식이 흐려진다(Explosions.zorgCharge · destroyZorg).
+    //
+    // 지오메트리는 한쪽 끝이 원점이 되게 미리 밀어 둔다 — 그래야 scale.x가
+    // 그대로 "기둥의 길이"가 되고, 회전은 각도 하나로 끝난다.
+    this.beamGeo = new THREE.PlaneGeometry(1, 1)
+    this.beamGeo.translate(0.5, 0, 0)
+    this.beams_ = []
+    for (let i = 0; i < 48; i++) {
+      const m = new THREE.Mesh(this.beamGeo, new THREE.MeshBasicMaterial({
+        transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+      }))
+      m.visible = false; m.renderOrder = 9
+      scene.add(m); this.beams_.push(m)
+    }
+
     // 화구/섬광 스프라이트 풀
     this.puffTex = puffTexture()
     this.puffs = []
@@ -159,6 +177,24 @@ export class Particles {
     m.userData = { t: 0, ttl, r, delay, from, to, alpha }
   }
 
+  // 사방으로 뻗는 빛기둥 n개. 만화의 "터지기 직전" 그림이다.
+  // n이 풀(48장)보다 크면 남는 것만 쓴다 — 한 사건이 풀을 다 먹으면
+  // 그다음 사건의 기둥이 통째로 안 뜨므로 한 번에 20장 안쪽으로 부른다.
+  beams(x, y, { n = 12, color = 0xffffff, len = 300, w = 12, ttl = 0.5, delay = 0, alpha = 1, roll = 0 } = {}) {
+    for (let k = 0; k < n; k++) {
+      const m = this.beams_.find(b => !b.visible)
+      if (!m) return                       // 다 쓰고 있으면 조용히 그만둔다
+      const ang = roll + (k / n) * Math.PI * 2
+      m.visible = true
+      m.position.set(x, y, 3.2)
+      m.rotation.z = ang
+      m.material.color.set(color)
+      m.material.opacity = 0
+      m.scale.set(1e-3, w, 1)
+      m.userData = { t: 0, ttl, delay, len, w, alpha }
+    }
+  }
+
   // 화구 — 부풀며 식는 빛덩어리. 핵의 부피감은 거의 전부 여기서 나온다
   puff(x, y, { r0 = 4, r1 = 60, ttl = 0.8, color = 0xffd9a0, delay = 0, alpha = 1, drift = 0 } = {}) {
     const s = this.puffs.find(p => !p.visible) || this.puffs[0]
@@ -177,6 +213,7 @@ export class Particles {
   clear() {
     this.life.fill(0); this.alpha.fill(0); this.size.fill(0)
     for (const m of this.rings) m.visible = false
+    for (const m of this.beams_) m.visible = false
     for (const s of this.puffs) s.visible = false
     this.geo.attributes.aAlpha.needsUpdate = true
     this.geo.attributes.aSize.needsUpdate = true
@@ -211,6 +248,19 @@ export class Particles {
       const s = d.r * (d.from + (d.to - d.from) * easeOut(u))
       m.scale.set(s, s, 1)
       m.material.opacity = (1 - u) * d.alpha
+    }
+
+    // 빛기둥 — 뻗어 나가며 끝이 가늘어지고 사라진다. 링과 같은 시계를 쓴다.
+    for (const m of this.beams_) {
+      if (!m.visible) continue
+      const d = m.userData
+      d.t += dt
+      if (d.t < d.delay) { m.material.opacity = 0; continue }
+      const u = (d.t - d.delay) / d.ttl
+      if (u >= 1) { m.visible = false; continue }
+      const e = easeOut(u)
+      m.scale.set(d.len * e, d.w * (1 - 0.75 * u), 1)
+      m.material.opacity = d.alpha * Math.pow(1 - u, 1.2)
     }
 
     for (const s of this.puffs) {

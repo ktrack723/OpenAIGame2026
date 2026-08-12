@@ -1,6 +1,6 @@
 import { fromAngle, len } from '../core/vector.js'
 import { Rng } from '../core/random.js'
-import { CFG, aMaxOf, beltRadius, escapeSpeed, hitRadiusOf, radiusOf } from './config.js'
+import { CFG, aMaxOf, beltRadius, escapeSpeed, hitRadiusOf } from './config.js'
 import {
   applyNuke, beltBounce, blastWave, cloneBodies, elasticBounce, resolveBodyPairs, segCircleEntry,
   segHitsCircle, shardBurst, shatter, stepBodies, stepMissile, updateEncounters,
@@ -10,8 +10,12 @@ import { makeGoal } from './objectives.js'
 import { msg, nameOf } from '../i18n/index.js'
 import { bearing } from '../core/angle.js'
 import { createSystem, reinforce, summonCue, summonFort } from './system.js'
+import { stepComets } from './comet.js'
 import { makeBody } from './body.js'
 import { chargeLeft, impactLeft, makeDoom, makeLaser, propagate, stepDoom, stepLaser, stepSpent, LASER_CHARGE, LASER_SPENT, LASER_TRAVEL } from './laser.js'
+import {
+  abortSiegeGun, makeSiegeGun, makeSiegeShot, siegeLeft, stepSiegeGun, stepSiegeShot, SIEGE_LOCK,
+} from './siege.js'
 import * as Aim from './aim.js'
 
 // 관측 모드 배속 단계 — 화면의 배속 버튼이 이 사이를 돈다
@@ -94,6 +98,8 @@ export class Game {
     this.bodies.length = 0; this.bodies.push(...sys.bodies)   // 배열 정체성 유지
     this.earth = sys.earth
     this.lasers = []          // 살아 있는 포대 하나당 하나 (syncLasers가 명단을 관리한다)
+    this.sieges = []          // 살아 있는 초엘리트 하나당 포 하나 (syncSieges)
+    this.foeShots = []        // 초엘리트가 쏜 탄. 내 탄(missiles)과 따로 산다 — 아래 주석
     this.pairCool.clear()
     this.loadStage()
   }
@@ -110,7 +116,9 @@ export class Game {
   //  "부쉈더니 손해"가 되는데, 그건 이 물건이 주려는 판단이 아니다.)
   get stageTime() {
     const grow = Math.min(this.stage - 1, CFG.STAGE_CAP - 1)
-    return CFG.TIME_BASE + CFG.TIME_PER_STAGE * grow + (this.hiveHere ? CFG.HIVE_TIME : 0)
+    return CFG.TIME_BASE + CFG.TIME_PER_STAGE * grow
+      + (this.hiveHere ? CFG.HIVE_TIME : 0)
+      + (this.siegeHere ? CFG.SIEGE_TIME : 0)
   }
   get timeLeft() { return Math.max(0, this.stageTime - this.time) }
 
@@ -130,13 +138,15 @@ export class Game {
     // 잔해만 **제자리에서** 걷어낸다. 배열을 새로 만들면 렌더러가 성계를 통째로
     // 다시 짓고 카메라가 튀어서 판 사이에 화면이 끊긴다 — 이 게임은 성계가
     // 런 내내 하나로 이어지는 게 전제이므로 그 끊김이 거짓말이 된다.
+    // (혜성도 같이 걷는다 — 판을 넘기면 그 손님은 지나간 것이다. 남겨 두면
+    //  다음 판의 증원이 "지나가는 공" 옆에 요새를 세우는 일이 생긴다.)
     for (let i = this.bodies.length - 1; i >= 0; i--) {
       const b = this.bodies[i]
-      if (!b.alive || b.type === 'debris') this.bodies.splice(i, 1)
+      if (!b.alive || b.type === 'debris' || b.comet) this.bodies.splice(i, 1)
     }
     // 조르그 증원 — 지금 성계에 남은 것을 보고 그만큼만 보낸다.
     // 한꺼번에 뿅 나타나지 않고 **순서대로** 워프해 들어온다(stepWarpIns).
-    const { added, fortresses, hives } = reinforce(this.rng, this.bodies, this.earth, this.stage)
+    const { added, fortresses, hives, sieges } = reinforce(this.rng, this.bodies, this.earth, this.stage)
     // 마릿수가 많으면 간격을 조여 도착 전체를 WARP_SPAN 안에 담는다 —
     // 막이 마지막 한 기까지 기다리므로, 간격이 고정이면 후반 개막이 10초를 넘는다.
     const gap = added.length > 1
@@ -162,10 +172,18 @@ export class Game {
     this.hiveKeep = Math.ceil(fortresses.length * CFG.HIVE_KEEP_FRAC)
     this.hiveHere = this.targets.some(b => b.role === 'hive')
     this.hiveT = 0; this.hiveSent = false; this.hiveN = 0
+    this.siegeHere = this.targets.some(b => b.role === 'siege')
+    // 혜성 시계 — 판마다 처음부터 센다(첫 방문은 COMET_FIRST 뒤)
+    this.cometT = 0; this.cometN = 0
     // 포대 명단은 판마다 새로 짠다 — 시차(순번)를 처음부터 다시 세워야 하고,
     // 새 판이 시작하자마자 지난 판의 충전이 이어져 발사되면 안 된다.
+    // 초엘리트의 포와 그 탄도 같은 이유로 같이 비운다: 판이 열리는 순간에
+    // 지난 판의 조준이 살아 있으면 개막부터 지구로 공이 굴러온다.
     this.lasers.length = 0
+    this.sieges.length = 0
+    this.foeShots.length = 0
     this.syncLasers()
+    this.syncSieges()
 
     this.pairCool.clear()
     this.doom = null; this.mothership = null
@@ -194,6 +212,7 @@ export class Game {
     if (fortresses.some(b => (b.hpMax ?? 1) > 1)) add('goal.heavy')
     if (fortresses.some(b => b.boost > 0)) add('goal.boost')
     if (hives.length) add('goal.hive')
+    if (sieges.length) add('goal.siege')
     this.message = added.length
       ? msg('msg.stage.reinforce', { n: fortresses.length, rule })
       : msg('msg.stage.open', { rule })
@@ -202,7 +221,7 @@ export class Game {
   // 이 판에 깔린 태그 목록(패널 범례용).
   // **아직 워프해 들어오는 중인 것도 센다** — 이 함수는 loadStage에서 불리는데
   // 그 시점의 증원은 전부 alive=false(도착 대기)라, 살아 있는 것만 세면 방금
-  // 도착한 요새·모함·특이점의 칩이 범례에서 통째로 빠진다.
+  // 도착한 요새·모함의 칩이 범례에서 통째로 빠진다.
   presentRoles() {
     const set = new Set()
     for (const b of this.bodies) {
@@ -223,15 +242,16 @@ export class Game {
   get target() {
     return this.targets.find(t => t.alive) || this.targets[0] || this.earth
   }
-  // 위협 = 조르그 요새 + 모함. 이것들만 전멸시키면 판이 끝난다.
+  // 위협 = 조르그 요새 + 모함 + 초엘리트. 이것들만 전멸시키면 판이 끝난다.
   get aliveFortresses() { return this.bodies.filter(b => b.alive && b.role === 'battery').length }
   get aliveHives() { return this.bodies.filter(b => b.alive && b.role === 'hive').length }
-  get aliveThreats() { return this.aliveFortresses + this.aliveHives }
+  get aliveSieges() { return this.bodies.filter(b => b.alive && b.role === 'siege').length }
+  get aliveThreats() { return this.aliveFortresses + this.aliveHives + this.aliveSieges }
   // id로 비교한다 — 예측선은 cloneBodies()가 만든 복제본을 넘기므로
   // 참조 비교를 쓰면 "예측에서는 목표가 목표가 아닌" 사고가 난다.
   // 표적 = 조르그 요새. 규칙이 하나로 통일됐으므로 id 목록이 아니라
   // 성질로 판정한다 — 예측선이 넘기는 복제본에서도 그대로 성립한다.
-  isTarget(b) { return b.role === 'battery' || b.role === 'hive' }
+  isTarget(b) { return b.role === 'battery' || b.role === 'hive' || b.role === 'siege' }
   get aliveTargets() { return this.aliveThreats }
 
   launchPos() {
@@ -247,7 +267,8 @@ export class Game {
   get inFlight() { return this.missiles.some(m => m.alive) }
 
   fire() {
-    if (this.won || this.lost || this.doom || !this.earth.alive) return
+    // 모성이 와 있어도 쏜다 — 저것을 부수는 유일한 길이 공을 던지는 것이다.
+    if (this.won || this.lost || !this.earth.alive) return
     if (this.warpCurtain) return   // 개막 중 — 아직 내 차례가 아니다
     if (this.inFlight) {
       this.setToast(msg('toast.inflight'))
@@ -313,7 +334,12 @@ export class Game {
     // 같이 켜 버리는데, 그 구간은 화면에 아무 UI도 없어야 한다.
     if (this.paused) return 0
     if (this.lost || this.won) return 0   // 클리어 후에는 시계를 세운다
-    if (this.doom) return 1               // 모성이 오는 동안엔 1×로만 흐른다 (조작 불가)
+    // ── 모성이 온 뒤 ──
+    // **이 판만은 안 멈춘다.** 조준 모드로 들어가도 난사는 계속 온다(느려질 뿐이다).
+    // 0으로 두면 조준 모드로 난사를 얼려 놓고 느긋하게 겨눌 수 있는데, 그러면
+    // 마지막 장면이 그냥 한 판 더가 된다. 배속을 올리는 것도 막는다 — 저쪽의
+    // 시간이다. 진행 버튼(SHIFT)을 누르는 동안에만 제 속도로 흐른다.
+    if (this.doom) return this.mode === 'aim' ? (this.advancing ? 1 : CFG.DOOM_AIM_SCALE) : 1
     if (this.mode === 'aim') {
       // 기본은 정지. 진행 버튼(SHIFT)을 누르고 있는 동안만 흐른다.
       if (!this.advancing) return 0
@@ -350,6 +376,8 @@ export class Game {
       // 포대는 요새가 실제로 **도착한 뒤에** 생긴다. loadStage 시점에는 살아 있는
       // 요새가 0이라(전부 워프 대기 중) 거기서 명단을 짜면 영영 비어 있다.
       if (b.role === 'battery') this.syncLasers()
+      // 초엘리트의 포도 같은 이유로 도착 후에 생긴다.
+      if (b.role === 'siege') this.syncSieges()
     }
   }
 
@@ -403,6 +431,136 @@ export class Game {
   // 지금 살아 있는 포대 수 — 주기를 정하는 값이다(laser.nextPeriod).
   get batteryCount() { return Math.max(1, this.aliveFortresses) }
 
+  // ─── 초엘리트 명단 ───────────────────────────────────────────
+  // 살아 있는 초엘리트 하나당 포 하나. 요새의 광선과 같은 구조다(syncLasers) —
+  // 새로 도착한 놈에게 포를 달아 주고, 부서진 놈의 포는 걷어낸다.
+  //
+  // 다만 **잠금 중에 부서지면 그 발은 취소된다**(abortSiegeGun). 요새의 광선이
+  // 충전 중에 격파당하면 발사가 취소되는 것과 같은 규칙이고, 그래서 "선제
+  // 격파"가 이쪽에도 정당한 대응이 된다. 이미 나가 있는 탄(foeShots)은
+  // 그대로 날아간다 — 쏜 것은 쏜 것이다.
+  syncSieges() {
+    const live = this.bodies.filter(b => b.alive && b.role === 'siege')
+    const set = new Set(live)
+    for (let i = this.sieges.length - 1; i >= 0; i--) {
+      const S = this.sieges[i]
+      if (set.has(S.from)) continue
+      if (abortSiegeGun(S)) {
+        this.message = msg('msg.siege.abort', { name: nameOf(S.from) })
+        this.setToast(msg('toast.siege.abort', { name: nameOf(S.from) }))
+      }
+      this.sieges.splice(i, 1)
+    }
+    for (const b of live) {
+      if (this.sieges.some(S => S.from === b)) continue
+      // 판이 열릴 때 온 놈은 SIEGE_FIRST를 쉬고, 판 도중에 온 놈(다음 판의
+      // 첫 기가 개막 전에 들어오는 경우)은 절반만 쉰다 — 요새의 늦은 증원이
+      // 시차 한 칸만 두고 줄에 서는 것과 같은 이유다.
+      const wait = this.arrivals?.includes(b) ? CFG.SIEGE_FIRST : CFG.SIEGE_FIRST * 0.5
+      this.sieges.push(makeSiegeGun(this.rng, b, wait))
+    }
+  }
+
+  // 지금 잠금 중인 초엘리트의 포 — HUD 경보가 "지금 뭐가 오는가"를 묻는 자리.
+  // 여럿일 수 있으므로 남은 시간이 짧은 쪽을 준다.
+  get siegeGun() {
+    let best = null
+    for (const S of this.sieges) {
+      if (S.state !== SIEGE_LOCK) continue
+      if (!best || siegeLeft(S) < siegeLeft(best)) best = S
+    }
+    return best
+  }
+  get siegeLocking() { return !!this.siegeGun }
+  get siegeLeft() { const S = this.siegeGun; return S ? siegeLeft(S) : 0 }
+  get siegeFlying() { return this.foeShots.some(m => m.alive) }
+
+  // ─── 초엘리트의 한 수 ────────────────────────────────────────
+  // 상태기 자체는 siege.js에 있고 여기서는 그 결과를 판에 옮긴다.
+  tickSieges(dt) {
+    if (this.won || this.lost || this.doom) return
+    // 명단을 먼저 맞춘다 — 부서진 초엘리트의 포는 여기서 빠지고, 잠금 중이었다면
+    // 그 발이 취소된다(tickLaser가 syncLasers를 먼저 부르는 것과 같은 자리).
+    this.syncSieges()
+    for (const S of this.sieges.slice()) {
+      const ev = stepSiegeGun(S, this, dt)
+      if (!ev) continue
+      if (ev.kind === 'lock') {
+        this.addFx({ kind: 'siegeLock', x: ev.src.pos.x, y: ev.src.pos.y, r: hitRadiusOf(ev.src) })
+        this.message = msg('msg.siege.lock', { name: nameOf(ev.src), cue: nameOf(ev.cue) })
+        this.setToast(msg(ev.hits ? 'toast.siege.lock' : 'toast.siege.graze', { cue: nameOf(ev.cue) }))
+      } else if (ev.kind === 'lost') {
+        // 큐볼이 사라졌다 — 플레이어가 조준을 통째로 무의미하게 만든 것이다.
+        this.setToast(msg('toast.siege.lost'))
+      } else if (ev.kind === 'fire') {
+        const m = makeSiegeShot(S)
+        this.foeShots.push(m)
+        this.addFx({
+          kind: 'siegeFire', x: m.pos.x, y: m.pos.y,
+          a: Math.atan2(m.vel.y, m.vel.x), r: hitRadiusOf(ev.src),
+        })
+        this.message = msg('msg.siege.fire', { name: nameOf(ev.src), cue: nameOf(ev.cue) })
+      }
+    }
+  }
+
+  // ─── 초엘리트의 탄 ───────────────────────────────────────────
+  // 내 탄(missiles)과 배열을 따로 두는 이유는 규칙이 다르기 때문이다:
+  // 이쪽은 중력을 안 받고(유도탄), 한 번에 여러 발이 날 수 있고, 무엇보다
+  // **내 발사 차례를 막지 않는다**(inFlight는 missiles만 본다). 한 배열에
+  // 섞으면 조르그가 쏜 탄이 내 재장전을 잠그는 사고가 난다.
+  stepFoeShots(dt) {
+    // 모성이 왔으면 저쪽 탄도 멎는다. 판돈을 회수하러 본대가 직접 온 자리에서
+    // 부하가 쏜 탄이 마저 날아와 지구를 한 대 더 때리면, 그 한 대가 난사보다
+    // 먼저 판정을 내려(fail) 연출이 중간에 끊긴다.
+    if (this.doom) return
+    for (const m of this.foeShots) {
+      if (!m.alive) continue
+      const ev = stepSiegeShot(m, this, dt)
+      if (!ev) continue
+      m.alive = false
+      if (ev.kind === 'hit') this.siegeDetonate(m, ev.body, ev.point)
+      else if (ev.kind === 'sun') this.addFx({ kind: 'sun', x: m.pos.x, y: m.pos.y, r: 20 })
+      // 판 밖으로 나갔거나 수명이 끝난 탄은 아무 소리 없이 사라진다 —
+      // 저쪽 실수를 팡파르로 알려 줄 이유가 없다(화면에 궤적만 남아 흐려진다).
+    }
+  }
+
+  // 조르그 탄두의 기폭. **임펄스 규칙은 내 핵과 한 글자도 다르지 않다**
+  // (applyNuke: 방향 = 폭심 → 중심, 크기 = 작약/질량). 저쪽 핵만 다르게 굴면
+  // 판 내내 배운 조준 감각이 그 순간 거짓말이 된다.
+  //
+  // 다른 것은 둘이다. ① 이 기폭으로는 **정치자금이 안 붙는다.**
+  // ② 지구에는 애초에 안 꽂힌다 — 이 탄은 배정된 공에만 무장돼 있다
+  // (siege.stepSiegeShot의 지구 제외 주석에 근거가 있다). 지구가 받는 것은
+  // 폭풍뿐이고, 그건 0.3배로 눌린 값이라 경고 한 줄로 읽히고 되돌릴 수 있다.
+  siegeDetonate(m, b, point) {
+    const yld = m.yld
+    this.addFx({ kind: 'siegeNuke', x: point.x, y: point.y, yld, r: b.radius })
+
+    // 모성에는 저쪽 핵도 안 통한다 — 그건 공을 던져야만 부서진다.
+    if (b.mothership) return
+    // 아래 셋은 **내 핵과 같은 분기**다(detonate). 저쪽 핵이라고 가스가 안 터지거나
+    // 불안정 행성이 안 쪼개지면, 이 판의 규칙이 쏘는 쪽에 따라 갈리는 것이 된다.
+    // (조르그는 이런 공을 큐볼로 고르지 않는다 — siege.candidates가 걸러 낸다.
+    //  여기 오는 것은 탄이 표적으로 가는 길에 걸린 공이고, 그건 저쪽 실수다.)
+    // 가스는 내 핵과 같다: 밀리고, 터지고, 체력 1을 잃는다(volatileBlast).
+    if (b.role === 'volatile') { applyNuke(b, point.x, point.y, yld); this.volatileBlast(b); return }
+    if (b.role === 'unstable') { this.shardShot(b, b.pos.x - point.x, b.pos.y - point.y); return }
+    if (b.type === 'debris') { blastWave(this.bodies, point.x, point.y, yld, b); b.alive = false; return }
+
+    const push = applyNuke(b, point.x, point.y, yld)
+    const wave = blastWave(this.bodies, point.x, point.y, yld, b)
+    this.addFx({
+      kind: 'siegePush', x: point.x, y: point.y, yld, r: b.radius,
+      px: push.dx, py: push.dy, wave: wave.radius,
+    })
+    this.message = msg('msg.siege.hit', {
+      name: nameOf(b), dv: push.dv.toFixed(1), dir: bearing(push.dx, push.dy).toFixed(0),
+    })
+    if (wave.pushed.some(p => p.body.isEarth)) this.setToast(msg('toast.blastEarth'))
+  }
+
   // ─── 대표 광선 ───────────────────────────────────────────────
   // HUD 경보와 예고편은 "지금 무엇이 제일 급한가" 하나만 알면 된다. 여럿이
   // 동시에 돌 수 있으므로 그중 하나를 골라 준다: 비행 중 > 충전 중(남은 시간이
@@ -454,6 +612,7 @@ export class Game {
     if (!this.warpHold && this.openT < this.openHold) this.openT += dtFrame
     this.stepWarpIns(dtFrame)
     this.stepDodgeCool(dtFrame)
+    this.stepDying(dtFrame)
     // 이미 박힌 광선의 꼬리는 판이 멈춰 있어도 끝까지 들어간다 — 광선이 지구를
     // 부순 그 순간에도(그때 판이 서 버린다) 빛은 마저 빨려 들어가야 한다.
     const n = this.batteryCount
@@ -467,6 +626,9 @@ export class Game {
     stepBodies(this.bodies, dt)
     this.stepDodge(dt)
     this.stepHive(dt)
+    stepComets(this, dt)
+    this.tickSieges(dt)
+    this.stepFoeShots(dt)
     for (const m of this.missiles) {
       if (!m.alive) continue
       stepMissile(m, this.bodies, dt)
@@ -503,11 +665,13 @@ export class Game {
   // 실시간(dtFrame)으로 센다. 조준 모드는 판을 세우므로 인게임 시계로 재면
   // 마지막 궤적이 화면에 그대로 굳어 버린다 — 그게 지금 고치는 그 증상이다.
   fadeSpentShots(dtFrame) {
-    for (let i = this.missiles.length - 1; i >= 0; i--) {
-      const m = this.missiles[i]
-      if (m.alive) continue
-      m.fade += dtFrame
-      if (m.fade >= CFG.SHOT_TRAIL_FADE) this.missiles.splice(i, 1)
+    for (const arr of [this.missiles, this.foeShots]) {
+      for (let i = arr.length - 1; i >= 0; i--) {
+        const m = arr[i]
+        if (m.alive) continue
+        m.fade += dtFrame
+        if (m.fade >= CFG.SHOT_TRAIL_FADE) arr.splice(i, 1)
+      }
     }
   }
 
@@ -613,7 +777,9 @@ export class Game {
     // 만들어서, 배열 길이로 세면 몇 수 만에 정원을 넘겨 모함이 조용해진다
     // (계측: 자동 플레이 6수 뒤 보충이 통째로 멎었다). 정원은 증원을 짤 때와
     // 같은 기준으로 센다(reinforce의 live).
-    const live = this.bodies.filter(b => b.alive && b.type !== 'debris')
+    // (혜성도 안 센다 — 지나가는 손님이라 정원에도 재고에도 안 든다.
+    //  reinforce의 live와 같은 기준이다.)
+    const live = this.bodies.filter(b => b.alive && b.type !== 'debris' && !b.comet)
     if (live.length >= CFG.SYSTEM_CAP) return
     // 요새가 먼저다. 요새가 제 수만큼 있으면 그다음은 굴릴 공을 채운다 —
     // 큐볼이 바닥나면 요새를 부술 방법 자체가 없어지기 때문이다.
@@ -639,6 +805,18 @@ export class Game {
     this.addFx({ kind: 'hive', x: h.pos.x, y: h.pos.y, r: hitRadiusOf(h), tx: b.pos.x, ty: b.pos.y })
     this.message = msg(kind === 'fort' ? 'msg.hive.fort' : 'msg.hive.cue', { name: nameOf(h) })
     this.setToast(msg(kind === 'fort' ? 'toast.hive.fort' : 'toast.hive.cue'))
+  }
+
+  // ─── 혜성이 왔다 ─────────────────────────────────────────────
+  // 워프가 아니다. 저건 조르그가 보낸 게 아니라 **원래 지나가던 것**이라
+  // 도착 연출도 다르다: 벨트를 뚫고 들어오는 자리에 얼음 파문 한 겹뿐이다.
+  // (comet.js가 이 자리를 부른다.)
+  onComet(b) {
+    this.addFx({ kind: 'comet', x: b.pos.x, y: b.pos.y, r: hitRadiusOf(b), a: Math.atan2(b.vel.y, b.vel.x) })
+    // 범례는 판이 열릴 때 한 번 짜인다 — 판 도중에 온 태그는 여기서 얹어 준다.
+    this.stageRoles = this.presentRoles()
+    this.message = msg('msg.comet', { name: nameOf(b) })
+    this.setToast(msg('toast.comet'))
   }
 
   // ─── 태양 둘레의 두 이체 궤도 ────────────────────────────────
@@ -866,8 +1044,8 @@ export class Game {
   }
 
   // ─── 조르그 레이저 ─────────────────────────────────────────
-  // 닿는 것은 체력과 무관하게 부서진다. 태양과 특이점만 예외로, 막되 안 부서진다
-  // — 원래 부술 수 없는 것들이라 여기서만 예외를 만들면 규칙이 어긋난다.
+  // 닿는 것은 체력과 무관하게 부서진다. 태양만 예외로, 막되 안 부서진다
+  // — 원래 부술 수 없는 것이라 여기서만 예외를 만들면 규칙이 어긋난다.
   tickLaser(dt) {
     // 포대가 여럿이므로 명단을 먼저 맞춘다 — 부서진 요새의 광선은 여기서 빠지고,
     // 그러면 남은 포대의 주기가 그만큼 짧아진다(nextPeriod가 마릿수를 본다).
@@ -928,13 +1106,8 @@ export class Game {
       this.setToast(msg('toast.laser.earth'))
       return
     }
-    if (b.role === 'void') {   // 특이점도 막되 안 부서진다
-      this.message = msg('msg.laser.void', { name: nameOf(b) })
-      this.setToast(msg('toast.laser.void', { name: nameOf(b) }))
-      return
-    }
     // 체력 불문 파괴. 막아 준 대가가 그 공의 소멸이다.
-    this.addFx({ kind: 'destroy', x: b.pos.x, y: b.pos.y, r: b.radius * 1.8, big: true })
+    this.blastFx(b)
     this.message = msg('msg.laser.kill', { name: nameOf(b) })
     this.setToast(msg('toast.laser.kill', { name: nameOf(b) }))
     this.killBody(b, 'laser', { fx: false })
@@ -985,21 +1158,22 @@ export class Game {
     m.alive = false; m.hit = b
     const yld = m.yld
 
-    // 모성 — 핵도 안 통한다. 부술 수 없는 것에는 부술 수 없다고 말해 준다.
+    // 모성 — **핵은 안 통한다.** 부술 수는 있게 됐지만(DOOM_HP) 그 길은 공을
+    // 던지는 것 하나뿐이다. 다만 폭풍은 그대로 터진다: 모성 옆의 공을 밀어
+    // 붙이는 수가 성립해야 "던져서 부순다"가 계획 가능한 일이 된다.
     if (b.mothership) {
-      this.addFx({ kind: 'nuke', x: point.x, y: point.y, yld, r: b.radius })
+      const wave = blastWave(this.bodies, point.x, point.y, yld, b)
+      this.addFx({ kind: 'nuke', x: point.x, y: point.y, yld, r: b.radius, wave: wave.radius })
       this.message = msg('msg.nuke.mothership', { name: nameOf(b) })
       return
     }
 
-    // 특이점 — 탄두째로 삼킨다. 밀리지도, 터지지도 않는다.
-    if (b.role === 'void') {
-      this.addFx({ kind: 'absorb', x: point.x, y: point.y, r: b.radius, small: true })
-      this.message = msg('msg.nuke.void', { name: nameOf(b) })
-      return
-    }
-
-    // 휘발성 — 맞는 순간 그 자리에서 유폭. 반경 안이 통째로 밀린다.
+    // 휘발성 — 맞는 순간 그 자리에서 유폭하고 **없어진다.** 작약량은 안 본다:
+    // 1Mt이든 12Mt이든 가스 행성에 핵이 닿으면 한 방이다.
+    // (한동안은 체력 1만 닳고 살아남았다. 그러면 이 태그가 "터지는 공"이 아니라
+    //  "터지는 시늉을 하는 공"이 된다 — 같은 유폭을 세 번 보고 나서야 없어지므로
+    //  한 번의 사건이 세 번으로 흐려지고, 유폭을 노린 한 수의 값도 1/3이 된다.
+    //  터지는 것은 한 번뿐이어야 그 한 번이 계획할 값어치를 갖는다.)
     if (b.role === 'volatile') {
       this.addFx({ kind: 'nuke', x: point.x, y: point.y, yld, r: b.radius })
       this.volatileBlast(b)
@@ -1055,6 +1229,15 @@ export class Game {
   // ─── 휘발성 유폭 ─────────────────────────────────────────────
   // 반경은 그 행성의 크기로 고정 — 조준 전에 원으로 그려 줄 수 있어야
   // "여기까지 밀린다"를 계획할 수 있다.
+  // ── 유폭은 자살이 아니다 ──
+  // 예전에는 여기서 그 공을 죽였다: 한 번 터지면 가스 행성이 판에서 사라졌다.
+  // 그래서 이 태그는 **한 번 쓰고 버리는 폭탄**이었고, 목성·토성처럼 판의 지형을
+  // 이루는 덩치가 스치듯 맞은 한 방에 통째로 없어졌다.
+  //
+  // 이제 유폭이 하는 일은 **미는 것 하나뿐**이다. 그 공 자신은 체력 1을 잃는다 —
+  // 체력이 3이니 세 번까지 터뜨릴 수 있고, 세 번째에 비로소 부서진다. 그때의
+  // 파괴는 다른 공과 똑같은 경로를 탄다(damage → blastFx). 즉 "터졌다"와
+  // "부서졌다"가 서로 다른 사건으로 갈린다.
   volatileBlast(b) {
     if (!b.alive) return
     const R = volatileRadius(b)
@@ -1070,6 +1253,7 @@ export class Game {
       o.trailFlash = 2
     }
     this.message = msg('msg.volatile', { name: nameOf(b), r: R.toFixed(0) })
+    // **제 몸은 남지 않는다.** 유폭은 한 번이고, 그 한 번에 이 공이 없어진다.
     this.killBody(b, 'blast', { fx: false })
   }
 
@@ -1104,20 +1288,6 @@ export class Game {
     else this.addFx({ kind: 'bump', x, y, r: (hitRadiusOf(a) + hitRadiusOf(b)) * 0.5, v: vRel, soft })
   }
 
-  // ─── 특이점 흡수 ─────────────────────────────────────────────
-  absorb(hole, prey) {
-    this.addFx({ kind: 'absorb', x: hole.pos.x, y: hole.pos.y, r: hitRadiusOf(hole) })
-    if (hole.mu < CFG.VOID_MU_MAX) {   // 삼킨 만큼 자란다 — 판이 점점 위험해진다
-      hole.mu = Math.min(CFG.VOID_MU_MAX, hole.mu + prey.mu * CFG.VOID_GROW)
-      hole.radius = radiusOf(hole.mu)
-    }
-    this.message = msg('msg.absorb', {
-      prey: nameOf(prey), hole: nameOf(hole), mu: hole.mu.toFixed(0),
-      r: hitRadiusOf(hole).toFixed(0), g: (hole.mu / 900).toFixed(2),
-    })
-    this.killBody(prey, 'absorb', { fx: false, shatterIt: false })
-  }
-
   // ─── 행성끼리의 충돌 = 당구 + 체력 ────────────────────────────
   // 규칙: 부딪히면 **당구공처럼 튕긴다**(운동량 보존). 그리고 체력이 닳는다
   // (상대속도가 빠를수록 1~3). 중립 행성은 체력 3이라 "같은 공을 계속 몰아붙이기"가
@@ -1132,12 +1302,6 @@ export class Game {
   // 산탄이라서 달라지는 것은 **말과 그림 둘뿐**이고(hitFx·아래 message),
   // 판정은 한 글자도 안 갈린다.
   onPlanetCollision(a, b) {
-    // 특이점 — 상대만 삼킨다. 특이점끼리 만나면 큰 쪽이 작은 쪽을 먹는다.
-    if (a.role === 'void' || b.role === 'void') {
-      const hole = a.role === 'void' && (b.role !== 'void' || a.mu >= b.mu) ? a : b
-      this.absorb(hole, hole === a ? b : a)
-      return 'destroyed'
-    }
     // 가스 행성 — **세게** 처박히면 그 자리에서 유폭한다. 연쇄를 노릴 자리.
     //
     // 접촉만 하면 무조건 터지게 뒀더니 태양계가 저 혼자 정리돼 버렸다(계측:
@@ -1146,13 +1310,22 @@ export class Game {
     // 그 정도 접촉으로 목성이 사라지면 판의 지형이 통째로 없어진다.
     // 그래서 문턱을 둔다: 스치는 건 튕기고, 진짜로 처박아야 터진다.
     const vRel0 = Math.hypot(a.vel.x - b.vel.x, a.vel.y - b.vel.y)
-    if ((a.role === 'volatile' || b.role === 'volatile') && vRel0 >= CFG.VOLATILE_TRIGGER_V) {
+    // 쌍의 쿨다운을 **여기서 미리 읽는다.** 아래 당구 판정이 쓰는 것과 같은
+    // 창이라야 "한 번의 만남은 한 번"이 두 규칙에서 같은 뜻이 된다 — 유폭이든
+    // 파열이든 당구든, 한 번 붙은 쌍은 이 창 안에서 다시 판정되지 않는다.
+    const key = a.id < b.id ? `${a.id}|${b.id}` : `${b.id}|${a.id}`
+    const last = this.pairCool.get(key) ?? -99
+    const cool = (a.isEarth || b.isEarth) ? CFG.EARTH_HIT_COOLDOWN : CFG.HIT_COOLDOWN
+    const fresh = this.time - last >= cool
+    if (fresh && (a.role === 'volatile' || b.role === 'volatile') && vRel0 >= CFG.VOLATILE_TRIGGER_V) {
+      this.pairCool.set(key, this.time)
       const vol = a.role === 'volatile' ? a : b, other = vol === a ? b : a
       this.message = msg('msg.collide.volatile', { a: nameOf(vol), b: nameOf(other), v: vRel0.toFixed(0) })
-      // 친 공에게는 **한 대**만 준다. 예전에는 3이라 중립 행성(체력 3)이
+      // 친 공에게는 **한 대**만 준다. 3이던 시절에는 중립 행성(체력 3)이
       // 가스를 처박는 순간 같이 즉사했다 — 유폭 반경이 크다는 것과 "닿은 공이
       // 죽는다"는 다른 이야기인데 그 둘이 붙어 있었다. 유폭은 여전히 반경
-      // 안을 통째로 밀지만(volatileBlast), 미는 것으로 죽지는 않는다.
+      // 안을 통째로 밀지만(volatileBlast), 미는 것으로 죽는 천체는 없다.
+      // (튕기지는 않는다 — 가스는 이 자리에서 사라지므로 튕길 것이 없다.)
       this.damage(other, 1, 'collision')
       this.volatileBlast(vol)
       return 'destroyed'
@@ -1174,11 +1347,21 @@ export class Game {
 
     const cx = (a.pos.x + b.pos.x) / 2, cy = (a.pos.y + b.pos.y) / 2
     const vRel = elasticBounce(a, b)   // ← 여기서 실제로 튕긴다
-    const key = a.id < b.id ? `${a.id}|${b.id}` : `${b.id}|${a.id}`
-    const last = this.pairCool.get(key) ?? -99
     a.bumpFlash = 0.5; b.bumpFlash = 0.5
     // 접촉 판정은 한 번의 충돌에서 여러 스텝 이어질 수 있다 — 쿨다운으로 한 번만 센다
-    if (this.time - last < CFG.HIT_COOLDOWN) {
+
+    //
+    // **지구만 창이 길다.** 0.7초는 "같은 쌍이 여러 스텝 겹쳐 있다"를 막는 값인데,
+    // 반발계수가 1이고 둘이 서로 끌어당기므로 한 번의 스침에서 접촉이 몇 번씩
+    // 되풀이된다. 체력 1인 요새에서는 첫 판정에 끝나서 드러나지 않았지만,
+    // 체력 3인 지구에서는 **한 번의 만남이 세 대**가 됐다(계측: 10시드 무입력
+    // 시뮬에서 한 번의 당구로 지구가 3 → 0으로 죽는 판이 하나. 55초 동안 피해
+    // 판정이 다섯 번 났다). 그러면 바로 위에서 눈금을 하나로 자른 것이 무의미해진다.
+    // 한 번의 만남은 한 대다 — 나중에 궤도를 한 바퀴 돌아 다시 오는 것은
+    // 새로운 만남이고(EARTH_HIT_COOLDOWN보다 한참 길다) 그건 그대로 또 맞는다.
+    // (창 자체는 위에서 `fresh`로 이미 읽어 두었다 — 유폭 판정과 같은 창을
+    //  써야 "한 번의 만남은 한 번"이 두 규칙에서 같은 뜻이 된다.)
+    if (!fresh) {
       this.hitFx(a, b, cx, cy, vRel, true)
       return null
     }
@@ -1205,12 +1388,31 @@ export class Game {
   // ─── 체력 처리 ───────────────────────────────────────────────
   // 지구도 예외가 아니다. 세 번 처박히면 지구도 끝난다 — 다만 그 전까지는
   // 튕겨 나갈 뿐이라 "스치기만 해도 즉사"하던 예전 규칙보다 훨씬 관대하다.
+  //
+  // ── 지구는 한 번에 한 대만 맞는다 ──
+  // 충돌 피해는 상대속도로 갈린다: 90 넘으면 2, 160 넘으면 3(onPlanetCollision).
+  // 그 눈금은 **부수라고 있는 것**이다 — 잘 처박은 한 방이 대형 요새(체력 2)를
+  // 그 자리에서 끝내는 것이 플레이어의 보상이므로 그렇게 잡혀 있다.
+  // 그런데 같은 눈금이 지구에도 그대로 걸려서, 상대속도 160으로 굴러온 공 하나가
+  // **꽉 찬 지구를 그 한 번에 지웠다.** 그건 이 게임이 스스로 적어 둔 규칙과
+  // 어긋난다(CFG.PLANET_HP 주석: "지구도 한 번 스쳤다고 끝나지 않는다").
+  //
+  // 계측으로 드러난 자리이기도 하다. 초엘리트가 가벼운 소행성을 9Mt로 밀면
+  // Δv가 117이라 지구에 닿을 때 상대속도가 160을 넘는데, 10시드 무입력
+  // 시뮬에서 **첫 한 수에 지구가 3 → 0으로 죽는** 판이 둘 있었다(t≈220).
+  // 경고는 62초 있었지만 눈금이 하나도 안 남으므로, 플레이어는 "위험했다"를
+  // 배울 기회 없이 런을 잃는다.
+  //
+  // 그래서 지구만 한 대씩 받는다. 세 번 처박히면 끝나는 것은 그대로이고
+  // (EARTH_HP), 그 세 번이 화면에 세 번으로 보이게 된다. 미는 힘·튕김·폭풍은
+  // 아무것도 안 바뀐다 — 깎이는 것은 **눈금 하나뿐**이다.
+  // (지구에 직접 핵을 박는 것은 여전히 즉시 게임 오버다 — detonate는 체력을
+  //  아예 안 거치고 판을 끝낸다. 그건 규칙이 아니라 선언이다.)
   damage(b, n, cause) {
     // 산탄은 **체력 1짜리 공**이라 여기서 안 걸러진다 — 맞으면 그대로 죽는다.
     // 걸러지는 건 장식용 잔해뿐이다: 잔해는 튕기기만 하고 아무 체력도 안 가진다.
     if (!b.alive || (b.type === 'debris' && !b.shard)) return false
-    if (b.mothership) return false        // 모성은 부술 수 없다
-    b.hp = (b.hp ?? CFG.PLANET_HP) - n
+    b.hp = (b.hp ?? CFG.PLANET_HP) - (b.isEarth ? Math.min(n, CFG.EARTH_MAX_DMG) : n)
     b.hitFlash = Math.max(b.hitFlash, 0.6)
     b.trailFlash = 2.0
     b.scorch = Math.min(3, (b.scorch || 0) + 1)
@@ -1228,20 +1430,67 @@ export class Game {
     // 행성 폭파 연출로 알리면, 일곱 갈래가 꽂히는 동안 화면이 그걸로 덮인다.
     // 꽂혔다는 건 hitFx가 이미 말했다.
     if (b.shard) { this.killBody(b, cause, { fx: false }); return true }
-    this.addFx({ kind: 'destroy', x: b.pos.x, y: b.pos.y, r: b.radius * 1.6, big: true })
+    this.blastFx(b, 1.6)
     this.killBody(b, cause, { fx: false })
     return true
   }
 
-  killBody(b, cause, { fx = true, shatterIt = cause === 'collision' } = {}) {
-    if (b.mothership) return          // 모성은 어떤 사유로도 안 죽는다
+  // ─── 부서지는 그림 ───────────────────────────────────────────
+  // **조르그와 행성은 다르게 터진다.** 예전에는 이 fx 하나를 넷이 나눠 쓰고
+  // 차이는 big 플래그(소리만) 하나였다 — 화면에서는 목성이 부서지는 것과 요새가
+  // 부서지는 것이 같은 주황 화구였다. 이 게임의 유일한 보상이 배경 사건과
+  // 구분이 안 됐다는 뜻이다.
+  //
+  // 이제 조르그는 **두 박자**다: 중심에서 사방으로 빛기둥이 뻗고(예열),
+  // ZORG_BLAST_LEAD 뒤에 터진다(stepDying). 행성은 그대로 한 박자다.
+  // 발행 자리를 여기 하나로 모아 둔다 — 부르는 곳이 넷이라(damage · laserEvent ·
+  // tickDoom · killBody) 갈라 두면 그중 하나만 조용히 옛 그림으로 남는다.
+  blastFx(b, rMul = 1.8) {
+    if (b.zorg) {
+      b.dying = CFG.ZORG_BLAST_LEAD
+      this.addFx({
+        kind: 'zorgCharge', x: b.pos.x, y: b.pos.y, r: hitRadiusOf(b),
+        hive: b.role === 'hive' || !!b.mothership,
+      })
+      return
+    }
+    this.addFx({ kind: 'destroy', x: b.pos.x, y: b.pos.y, r: b.radius * rMul })
+  }
+
+  // 예열이 끝난 조르그를 터뜨린다. **실시간(dtFrame)으로 센다** — 마지막 요새를
+  // 부수면 그 순간 판이 멈추므로(won → effTimeScale 0) 인게임 초로 재면 그
+  // 폭발이 영영 안 온다. (워프인·추진기 대기가 실시간인 것과 같은 이유다.)
+  stepDying(dtFrame) {
+    for (const b of this.bodies) {
+      if (!(b.dying > 0)) continue
+      b.dying -= dtFrame
+      if (b.dying > 0) continue
+      b.dying = 0
+      this.addFx({
+        kind: 'destroy', x: b.pos.x, y: b.pos.y, r: b.radius * 1.8,
+        zorg: true, hive: b.role === 'hive' || !!b.mothership,
+      })
+    }
+  }
+
+  // shatterIt 기본값에서 조르그를 뺀다 — **조르그는 파편을 안 남긴다.**
+  // 빛기둥과 함께 통째로 증발하는 그림이라 잔해가 남으면 그 그림이 거짓말이 되고,
+  // 덤으로 후반 판의 파편 노이즈(충돌 한 번에 예닐곱 개)가 그만큼 준다.
+  killBody(b, cause, { fx = true, shatterIt = cause === 'collision' && !b.zorg } = {}) {
     if (b.trail) b.trail.length = 0   // 죽은 공의 잔여 트레일은 즉시 지운다
     if (!b.alive) return
     b.alive = false
-    if (fx && b.type !== 'debris') this.addFx({ kind: cause === 'sun' ? 'sun' : 'destroy', x: b.pos.x, y: b.pos.y, r: b.radius })
+    if (fx && b.type !== 'debris') {
+      if (cause === 'sun') this.addFx({ kind: 'sun', x: b.pos.x, y: b.pos.y })
+      else this.blastFx(b, 1)
+    }
     // 파편은 더 쪼개지지 않는다 — 잔해의 잔해는 아무 정보도 아니다.
     if (shatterIt && b.type !== 'debris') shatter(b, this.bodies, () => this.rng.next())
     this.recordKill(b, cause)
+    // 모성이 부서지면 난사가 그 자리에서 멎는다. **recordKill 다음이다** —
+    // 저쪽이 판을 쓸어내는 동안의 파괴는 전과가 아니라는 규칙(recordKill의
+    // doom 가드)을 모성 자신에게도 그대로 적용해야, 격파 문구가 하나로 남는다.
+    if (b.mothership) this.doomBroken()
   }
 
   // 목표 판정에는 파괴 사유가 상관없다 — 요새가 없어졌으면 그걸로 끝이다.
@@ -1264,8 +1513,11 @@ export class Game {
       this.goal.update(this.aliveThreats)
       this.message = msg('msg.kill.goal', { ...label, title: msg('goal.title'), count: this.goal.label() })
       // 모함이 부서지는 건 요새 하나가 부서지는 것과 다른 사건이다 —
-      // 그 순간부터 판이 유한해진다. 문구도 그렇게 갈라 준다.
-      this.setToast(msg(b.role === 'hive' ? 'toast.hiveDown' : 'toast.fortDown', { count: this.goal.label() }))
+      // 그 순간부터 판이 유한해진다. 초엘리트도 그렇다: 그 순간부터 지구로
+      // 공이 굴러오지 않는다. 셋 다 다른 사건이라 문구도 갈라 준다.
+      const down = b.role === 'hive' ? 'toast.hiveDown'
+        : b.role === 'siege' ? 'toast.siegeDown' : 'toast.fortDown'
+      this.setToast(msg(down, { count: this.goal.label() }))
     } else {
       this.message = msg('msg.kill', label)
     }
@@ -1328,6 +1580,11 @@ export class Game {
     for (const b of this.bodies) {
       if (!b.alive) continue
       const r = len(b.pos)
+      // ── 혜성만은 벽을 안 느낀다 ──
+      // 이 판에서 카이퍼 벨트를 통과하는 유일한 천체다. 들어올 때도 나갈 때도
+      // 그냥 지나간다(퇴장 판정은 comet.stepComets). **태양 낙하는 그대로
+      // 적용된다** — 예외는 벨트 하나뿐이라는 게 이 태그의 전부다.
+      if (b.comet && r >= this.beltR) continue
       if (r < CFG.R_STAR + 15) {
         if (b.isEarth) {
           this.addFx({ kind: 'sun', x: b.pos.x, y: b.pos.y })
@@ -1386,11 +1643,16 @@ export class Game {
 
   // ─── 시한 종료 — 조르그 모성 ─────────────────────────────────
   // 시한을 넘기면 판돈을 회수하러 모성이 직접 온다. 지구 반대편 하늘로 워프해
-  // 들어와 사방에 광선을 뿌린다. 부술 수도, 막을 수도 없다 — 이건 싸움이 아니라
-  // 통보다. 그래서 화면에 남기는 문장도 하나뿐이다: **그들이 왔다…**
+  // 들어와 사방에 광선을 뿌린다. 막을 수는 없다 — 이건 싸움이 아니라 통보다.
+  // 그래서 화면에 남기는 문장도 하나뿐이다: **그들이 왔다…**
   //
   // (예전에는 "작전 시한 초과. 조르그가 회랑을 재정비했다"라는 두 줄짜리 통보로
   //  끝냈다. 진 이유를 글로 읽는 것과 판이 쓸려나가는 걸 보는 것은 다른 일이다.)
+  //
+  // 다만 **길이 하나는 열려 있다.** 총구가 달아오르는 DOOM_WARP초(40초) 동안
+  // 조준과 발사가 살아 있고, 그 안에 모성에 공을 처박으면 판을 되찾는다
+  // (doomBroken). 핵은 안 통하므로 방법은 그것뿐이다.
+  // 대부분의 판은 그래도 진다 — 난사가 시작되면 지구는 2초를 못 버틴다.
   summonMothership() {
     if (this.doom) return
     // 자리: **지구와 같은 쪽 하늘, 궤도 바깥.** 처음엔 지구 정반대편(+π)에
@@ -1404,36 +1666,61 @@ export class Game {
       id: 'mothership', nameKey: 'planet.mothership', type: 'zorg',
       mu: CFG.DOOM_MU, radius: CFG.DOOM_R,
       pos: { x: Math.cos(a) * R, y: Math.sin(a) * R }, vel: { x: 0, y: 0 },
-      hp: 1, zorg: true, mothership: true, warp: 1,
+      hp: CFG.DOOM_HP, zorg: true, mothership: true, warp: 1,
     })
     this.bodies.push(ship)
     this.mothership = ship
     this.doom = makeDoom(ship.pos.x, ship.pos.y, this.aMax * CFG.LASER_RANGE_MUL, ship)
     this.addFx({ kind: 'warp', x: ship.pos.x, y: ship.pos.y, r: hitRadiusOf(ship), fort: true })
+    // 총구가 달아오른다 — 요새가 충전할 때와 **같은 신호**를 쓴다. 저 붉은
+    // 수축 링이 곧 "아직 안 쐈다"이고, 그동안이 마지막 한 수의 창이다.
+    this.addFx({ kind: 'laserCharge', x: ship.pos.x, y: ship.pos.y, r: hitRadiusOf(ship) })
     this.setMode('observe')
     this.message = msg('msg.doom')
     this.setToast(msg('toast.doom'))
   }
 
   tickDoom(dt) {
-    for (const e of stepDoom(this.doom, this, dt)) {
+    // 난사 도중에 모성이 부서질 수 있다(doomBroken이 this.doom을 끊는다) —
+    // 그래서 이 함수는 지역 변수로 물고 돈다. 안 그러면 그 프레임의 남은
+    // 사건에서 this.doom.x가 터진다.
+    const D = this.doom
+    for (const e of stepDoom(D, this, dt)) {
       if (e.kind === 'beam') {
-        this.addFx({ kind: 'laserFire', x: this.doom.x, y: this.doom.y, a: e.a })
+        this.addFx({ kind: 'laserFire', x: D.x, y: D.y, a: e.a })
         continue
       }
       const b = e.body
       this.addFx({ kind: 'laserHit', x: e.x, y: e.y, r: b ? hitRadiusOf(b) : CFG.R_STAR, sun: !b })
-      if (!b || b.role === 'void' || b.mothership) continue   // 태양·특이점·모성은 안 부서진다
+      if (!b || b.mothership) continue   // 태양과 제 몸은 안 부서진다
       if (b.isEarth) {
         this.addFx({ kind: 'destroy', x: b.pos.x, y: b.pos.y, r: b.radius * 2, earth: true })
         b.alive = false
       } else {
-        this.addFx({ kind: 'destroy', x: b.pos.x, y: b.pos.y, r: b.radius * 1.8, big: true })
+        this.blastFx(b)
         this.killBody(b, 'laser', { fx: false })
       }
     }
+    if (!this.doom) return   // 이 난사 도중에 모성이 부서졌다(doomBroken)
     this.message = msg('msg.doom')
-    if (this.doom.done) this.fail('TIME_UP', msg('msg.doom'))
+    if (D.done) this.fail('TIME_UP', msg('msg.doom'))
+  }
+
+  // ─── 모성이 부서졌다 ─────────────────────────────────────────
+  // 시한을 넘긴 판은 거의 다 진다. 그래도 **길이 하나는 있어야 한다** —
+  // 못 부수는 물건이 하늘에 떠서 판을 지우는 동안 아무것도 할 수 없다면,
+  // 그건 게임의 마지막 장면이 아니라 로딩 화면이다.
+  //
+  // 부수는 방법은 하나뿐이다: 공을 던지는 것(핵은 안 통한다 — detonate 참고).
+  // 성공하면 난사가 그 자리에서 멎고, 아직 남은 요새가 있어도 판은 이긴 것으로
+  // 친다. 모성을 잡은 판에서 요새 두어 기를 더 세라는 것은 규칙이 아니라 벌이다.
+  doomBroken() {
+    if (!this.doom) return
+    this.doom = null                       // 총구가 멎는다(tickDoom이 더 안 돈다)
+    this.timeWarn = 3                      // 시한 경고는 이미 다 울렸다
+    this.setToast(msg('toast.doomDown'))
+    this.message = msg('msg.doomDown')
+    this.win()
   }
 
   fail(reason, msg) {
@@ -1444,8 +1731,10 @@ export class Game {
   setToast(text) { this.toast = text; this.toastT = 1.6 }
 
   // 조준 가능 = 조준 모드일 것. 관측 모드에서는 조준선도 발사대도 사라진다.
+  // (모성이 와 있어도 조준은 열려 있다 — 다만 그동안 판이 안 멈춘다.
+  //  effTimeScale의 DOOM_AIM_SCALE 참고.)
   get canAim() {
-    return this.mode === 'aim' && !this.won && !this.lost && !this.doom && this.earth.alive
+    return this.mode === 'aim' && !this.won && !this.lost && this.earth.alive
   }
 
   // ─── 조준 보조 (aim.js) ─────────────────────────────────────

@@ -396,9 +396,10 @@ function predLine(game, p) {
   const name = h ? nameOf(h) : ''
   switch (p.outcome) {
     case 'earth': return ['bad', t('lcd.tag.abort'), t('lcd.abort'), t('lcd.abort.sub')]
-    case 'void': return ['warn', t('lcd.tag.void'), `${name}${badge}`, roleAim(h.role)]
+    // 체력을 같이 보여 준다 — 유폭이 더 이상 그 공을 죽이지 않으므로
+    // "몇 번 더 터뜨릴 수 있나"가 이 태그를 쓰는 계획의 전부다.
     case 'volatile': return ['hit', t('lcd.tag.chain'), `${name}${badge}`,
-      t('lcd.chain.sub', { aim: roleAim(h.role), r: h.volatileR.toFixed(0) })]
+      t('lcd.chain.sub', { aim: roleAim(h.role), r: h.volatileR.toFixed(0), hp: h.hp, hpMax: h.hpMax })]
     // 샷건 — 2층(직접 결과)에 들어가는 값은 **갈래 수와 총구 방향** 둘뿐이다.
     // 그 부채꼴 안에서 무엇이 맞는지는 안 말한다(2차 충돌은 안 알려준다는 규칙).
     // 다만 지구가 그 안에 서 있는 것만은 3층 경고로 못 박는다 — 판을 통째로
@@ -463,7 +464,10 @@ export function updateHud(el, game) {
   // (canAim), 그 컷은 조준 패널을 안 보여 주는 게 요점이라 모드는 조준으로 두고
   // 패널과 관측 바를 둘 다 걷어낸다.
   const cine = !!game.cinematic
-  const observing = ((game.mode === 'observe' || !!game.doom) && !game.runOver) || cine
+  // 모성이 와 있어도 조준 패널은 걷지 않는다 — 저것을 부수는 유일한 길이
+  // 공을 던지는 것이라(game.doomBroken), 패널을 감추면 그 길이 닫힌다.
+  // 그 대신 판이 안 멈춘다(effTimeScale의 DOOM_AIM_SCALE).
+  const observing = (game.mode === 'observe' && !game.runOver) || cine
   // 관측 바(조준 모드 · 배속)는 **플레이어의 것**이다. 그래서 예고편이 도는
   // 동안에는 안 띄운다 — 누를 수 없는 버튼이 화면 아래에 앉아 있으면 지금
   // 조작할 수 있다는 거짓말이 되고, 무엇보다 그 화면은 전부 저쪽 몫이다.
@@ -548,8 +552,15 @@ export function updateHud(el, game) {
         })
       : game.laserFlying
         ? t('ui.obs.fly', { left: game.laserImpactLeft.toFixed(1) })
+      // 초엘리트의 잠금 — 광선보다 **뒤에** 둔다. 둘이 겹칠 때 급한 쪽은
+      // 광선이다(선은 못 되치지만 공은 되칠 수 있다). 그래도 판에서 이 줄이
+      // 유일하게 "몇 초 뒤에 공이 온다"를 말하므로 시계는 반드시 뜬다.
+      : game.siegeLocking
+        ? t('ui.obs.siege', { left: game.siegeLeft.toFixed(0) })
+      : game.siegeFlying
+        ? t('ui.obs.siegeFly')
         : t('ui.obs.run', { scale: game.effTimeScale(), clock })
-    const alarm = game.laserCharging || game.laserFlying || !!game.doom
+    const alarm = game.laserCharging || game.laserFlying || game.siegeLocking || game.siegeFlying || !!game.doom
     const bar = el._obsBar, btn = bar.querySelector('#toAim')
     if (btn._sub !== sub) { btn._sub = sub; bar.querySelector('#obsSub').textContent = sub }
     btn.classList.toggle('alarm', alarm)
