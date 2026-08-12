@@ -229,6 +229,14 @@ export class Game {
   get aliveHives() { return this.bodies.filter(b => b.alive && b.role === 'hive').length }
   get aliveSieges() { return this.bodies.filter(b => b.alive && b.role === 'siege').length }
   get aliveThreats() { return this.aliveFortresses + this.aliveHives + this.aliveSieges }
+  // 아직 도착 안 한 표적 — 워프 중이라 화면에도 없고 alive도 아니지만, 목표
+  // 숫자에는 이미 들어가 있다(loadStage의 targets · stepHive의 goal.total).
+  // 승리 판정은 이것까지 봐야 한다(win).
+  get warpingThreats() {
+    let n = 0
+    for (const b of this.bodies) if (!b.alive && (b.warpIn ?? 0) > 0 && this.isTarget(b)) n++
+    return n
+  }
   // id로 비교한다 — 예측선은 cloneBodies()가 만든 복제본을 넘기므로
   // 참조 비교를 쓰면 "예측에서는 목표가 목표가 아닌" 사고가 난다.
   // 표적 = 조르그 요새. 규칙이 하나로 통일됐으므로 id 목록이 아니라
@@ -1616,6 +1624,15 @@ export class Game {
     // 태우는 순간 recordKill → win()이 그대로 걸려서, 성계가 쓸려나가는 와중에
     // 축하 화면이 떴다(그리고 won=true가 되면 시계가 멈춰 연출까지 얼어붙었다).
     if (this.won || this.lost || this.doom) return
+    // **워프해 들어오는 중인 표적이 있으면 아직 안 끝났다.** 모함이 보낸 요새는
+    // 0.5초(WARP_LEAD) 동안 alive=false로 대기하는데, aliveThreats는 살아 있는
+    // 것만 세므로 그 창 안에서 마지막 요새를 부수면 위협 0으로 읽혀 클리어가 난다.
+    // 그리고 won이 서면 checkEnd가 더 안 보므로, 그 뒤에 도착한 요새는 **클리어된
+    // 판 위에 그대로 선다** — 목표는 5/5인데 판에는 조르그가 살아 있는 상태로
+    // 시계까지 멎는다(계측: 여섯 시드 전부 재현).
+    // 목표 숫자에는 이미 들어가 있는 놈이다(stepHive가 보내면서 goal.total을
+    // 올린다) — 그러니 도착할 때까지 기다렸다가 마저 부수는 게 규칙에 맞다.
+    if (this.warpingThreats > 0) return
     this.won = true
     this.message = msg('msg.win')
     this.setToast(msg('toast.win'))
