@@ -89,7 +89,7 @@ export const en = {
   'cat.shard': 'Unstable planet', 'cat.shard.mech': 'Splits — sprays shards away from the hit. Chains off gas and unstable planets',
   'cat.comet': 'Comet', 'cat.comet.mech': 'It passes through — in from beyond the Kuiper belt, straight across the system',
   'cat.earth': 'Earth', 'cat.earth.mech': 'Home — three impacts and the run is over',
-  'cat.zorg': 'Zorg mothership', 'cat.zorg.mech': 'It arrives when the clock runs out — nukes do nothing. Only a thrown planet breaks it',
+  'cat.zorg': 'Zorg mothership', 'cat.zorg.mech': 'It arrives when the clock runs out — nukes do nothing. 10 HP, and only thrown planets break it, several of them',
   'cat.hive': 'Zorg hive ship', 'cat.hive.mech': 'ferries reinforcements — break it and they stop',
   'cat.debris': 'Debris', 'cat.debris.mech': 'Bounces around — sets off a missile early. Only the belt and the sun clear it',
   'cat.shardAmmo': 'Shard', 'cat.shardAmmo.mech': 'Fired by an unstable planet — judged like a 1 HP body. Spent on contact',
