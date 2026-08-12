@@ -402,6 +402,41 @@ function makeHive(rng, bodies, aMax, earth) {
   return b
 }
 
+// ── 초엘리트 조르그 행성 ────────────────────────────────────────
+// 모함과 정반대 자리에 앉는다. 모함은 궤도 **바깥**의 좁은 대역에 서서
+// "멀리 있는 두 번째 목표"였지만, 이놈은 **안쪽**이다 — 큐볼을 골라 지구로
+// 처박는 것이 하는 일 전부이므로(siege.js) 굴릴 공이 널린 지구 궤도
+// 언저리에 있어야 그 수 자체가 성립한다.
+//
+// 그래서 옆자리 요구가 여기서는 연출이 아니라 **기능**이다. 요새는 옆에
+// 밀 공이 없어도 그냥 표적으로 서 있을 수 있지만(플레이어가 못 치는 게
+// 문제일 뿐), 이놈은 밀 공이 없으면 아무 일도 안 하는 큰 돌덩이가 된다.
+const siegeBand = (earth) => {
+  const rE = Math.hypot(earth.pos.x, earth.pos.y)
+  return [rE * CFG.SIEGE_BAND[0], rE * CFG.SIEGE_BAND[1]]
+}
+
+function makeSiege(rng, bodies, aMax, earth) {
+  const band = siegeBand(earth)
+  // 제약을 하나씩 푼다 — 모함과 같은 순서이고 마지막 폴백도 같다(대역이 아니라
+  // 이웃 간격을 푼다). 자리가 없으면 이번 판에는 안 온다(다음 판에 다시 시도).
+  const orb = freeOrbit(rng, bodies, aMax, CFG.SIEGE_R, CFG.SIEGE_NEAR_BAND, band)
+    ?? freeOrbit(rng, bodies, aMax, CFG.SIEGE_R, 0, band)
+    ?? freeOrbit(rng, bodies, aMax, CFG.SIEGE_R, 0, [band[0] * 0.85, band[1] * 1.2])
+    ?? freeOrbit(rng, bodies, aMax, CFG.SIEGE_R * 0.35, 0, [band[0] * 0.85, band[1] * 1.2])
+  if (!orb) return null
+  // 이름 — 요새는 `Zorg Krath-5b`처럼 판 번호를 꼬리에 달지만 이놈은 한 판에
+  // 한 기뿐이라 번호가 의미가 없다. 계급을 붙인다.
+  const b = makeBody({
+    id: nextId(), name: `Zorg ${ZORG_NAMES[rng.int(0, ZORG_NAMES.length - 1)]} Ultima`,
+    type: 'siege', mu: CFG.SIEGE_MU, radius: CFG.SIEGE_R,
+    pos: orb.pos, vel: orb.vel, hp: CFG.SIEGE_HP,
+    zorg: true, warp: 1,
+  })
+  b.role = 'siege'; b.isTarget = true
+  return b
+}
+
 // 모함이 한 기 보낸다 — 판이 열릴 때와 같은 규칙으로 만들고, 자리도 같은
 // 제약(밀 수 있는 공 옆자리·지구에서 닿는 자리)으로 찾는다.
 export function summonFort(rng, bodies, earth, stage, tag) {
@@ -475,6 +510,17 @@ export function reinforce(rng, bodies, earth, stage) {
     if (h) added.push(h)
   }
 
+  // ── 초엘리트 ── 모함 다음, 요새보다 먼저.
+  // 순서가 규칙인 이유는 모함과 같다. 초엘리트 대역(0.85~1.65 rE)은 안쪽 요새
+  // 대역(0.55~1.6 rE)에 거의 통째로 덮여 있는데, 판정 원이 92.8 GU나 되는
+  // 덩치라 요새 예닐곱 기가 먼저 앉은 뒤에는 들어갈 틈이 남지 않는다.
+  // 물러설 자리가 넷인 요새와 달리 이놈에게는 제 대역 하나뿐이므로,
+  // 제약이 심한 쪽이 먼저 앉는다.
+  if (stage >= CFG.SIEGE_STAGE && !live.some(b => b.role === 'siege')) {
+    const s = makeSiege(rng, bodies.concat(added), aMax, earth)
+    if (s) added.push(s)
+  }
+
   // ── 난이도 ──
   // 2스테이지부터 **대형 요새**가 섞여 온다. 체력 2라 한 번 처박아서는 안
   // 부서지고 그만큼 크다. 판이 거듭될수록 그 수가 늘어, "이번 판은 지난 판보다
@@ -506,6 +552,7 @@ export function reinforce(rng, bodies, earth, stage) {
     added,
     fortresses: added.filter(b => b.role === 'battery'),
     hives: added.filter(b => b.role === 'hive'),
+    sieges: added.filter(b => b.role === 'siege'),
     aMax,
   }
 }

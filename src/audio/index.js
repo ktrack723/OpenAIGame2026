@@ -1,3 +1,4 @@
+import { CFG } from '../game/config.js'
 import { AudioEngine } from './engine.js'
 import { Sfx } from './sfx.js'
 import { Bgm } from './bgm.js'
@@ -17,11 +18,17 @@ import { Bgm } from './bgm.js'
 
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v)
 
-// 음악은 파일 한 곡을 루프로 깐다(bgm.js). Music(Tone.js 관현악)은 그 파일을
-// 못 받아 왔을 때 대신 서는 자리로 남아 있고, 둘은 build/start/stop/
-// setIntensity/setTheme/duck/unduck 인터페이스가 같아서 여기서는 구분하지
-// 않는다. 이 스위치를 내리면 다시 효과음만 나는 게임이 된다.
+// 음악은 파일 **두 곡**을 판에 따라 갈아 준다(bgm.js). Music(Tone.js 관현악)은
+// 그 파일을 못 받아 왔을 때 대신 서는 자리로 남아 있고, 둘은 build/start/stop/
+// setIntensity/setTheme/setTrack/duck/unduck 인터페이스가 같아서 여기서는
+// 구분하지 않는다. 이 스위치를 내리면 다시 효과음만 나는 게임이 된다.
 const MUSIC_ENABLED = true
+
+// 판이 바뀌면 곡도 바뀐다. 어느 판에서 바뀌는지는 게임이 정한다 —
+// **초엘리트가 서는 그 판**이다(CFG.SIEGE_STAGE). 하늘이 검붉어지는 판도,
+// 태양이 주홍으로 넘어가는 판도 같다(render/Scene.emberFor). 소리와 그림이
+// 다른 판에서 바뀌면 그건 연출이 아니라 두 개의 사고다.
+const trackFor = (stage) => (stage >= CFG.SIEGE_STAGE ? 'starforge' : 'dorian')
 
 // 사건이 몰리는 종류는 억제 창을 넓게 잡는다. 규약은 "같은 소리 30ms"이고
 // 그 아래로는 절대 안 내려가지만, 벨트 반사처럼 판마다 수십 번 울리는 것은
@@ -108,6 +115,11 @@ export class AudioSystem {
       try {
         await music
         this.music.setIntensity(0.2, 0.01)
+        // 어느 곡으로 열 것인가 — 시작 화면에서 열면 언제나 1판이지만,
+        // 이 게임은 소리가 열리기 전에 판이 굴러갈 수 있다(예고편이 실제 판을
+        // 굴린다). setTrack은 아직 start() 전이면 램프를 안 걸고 이름만 갈아
+        // 두므로(bgm.setTrack) 여기서 부르는 것이 곧 "이 곡으로 시작한다"다.
+        if (this.game) this.music.setTrack(trackFor(this.game.stage))
         this.music.start()
       } catch { /* 음악이 안 서도 효과음은 나야 한다 */ }
     })()
@@ -234,6 +246,23 @@ export class AudioSystem {
         at('hive', 0.95, { priority: 1 })
         break
 
+      // ── 초엘리트 ──
+      // 잠금은 경보다(요새의 충전과 같은 자리). 발사와 기폭은 사건이다.
+      case 'siegeLock':
+        at('siegeLock', 1, { priority: 1 })
+        break
+
+      case 'siegeFire':
+        at('siegeFire', 1, { priority: 1 })
+        break
+
+      case 'siegeNuke':
+        // 지구에 꽂힌 한 발은 판을 뒤집는 사건이다 — 음악을 잠깐 눌러 준다
+        // (내 핵이 지구에 박혔을 때와 같은 처리다).
+        if (e.earth) { at('siegeNuke', 1, { priority: 2 }); this.music.duck(0.22, 0.6) }
+        else at('siegeNuke', 0.95, { priority: 1 })
+        break
+
       case 'boost':
         at('boost', 0.7)
         break
@@ -300,6 +329,11 @@ export class AudioSystem {
         if (game.laserChargingCount > 1) danger = 0.65   // 배열을 훑으므로 물렸을 때만 묻는다
       }
       if (game.laserFlying) danger = Math.max(danger, 0.78)
+      // 초엘리트의 잠금은 광선의 충전과 같은 자리다 — 저쪽이 지구를 물었다.
+      // 다만 조금 낮게 잡는다: 대응할 수 있는 수가 셋이나 있고(siege.js),
+      // 무엇보다 발사되고 나서도 공이 오는 데 수십 초가 남는다.
+      if (game.siegeLocking) danger = Math.max(danger, 0.46)
+      if (game.siegeFlying) danger = Math.max(danger, 0.62)
       if (e && e.alive && (e.hp ?? 3) <= 1) danger = Math.max(danger, 0.60)
       const frac = game.stageTime ? game.timeLeft / game.stageTime : 1
       if (frac <= 0.25) danger = Math.max(danger, 0.55)
@@ -396,8 +430,11 @@ export class AudioSystem {
     if (P.over && !game.runOver) this.music.unduck()
     P.over = !!game.runOver
 
-    // 판이 바뀌었다(다음 침공) — 눌러 둔 음악을 되돌린다.
+    // 판이 바뀌었다(다음 침공) — 눌러 둔 음악을 되돌리고, 곡이 바뀌는 판이면
+    // 갈아탄다. **매 프레임 걸어도 된다**: 같은 곡이면 setTrack이 그 자리에서
+    // 돌아서고(bgm), 크로스페이드는 실제로 바뀌는 그 한 번만 돈다.
     if (P.stage !== game.stage) { if (P.stage >= 0) this.music.unduck(); P.stage = game.stage }
+    this.music.setTrack(trackFor(game.stage))
   }
 }
 
