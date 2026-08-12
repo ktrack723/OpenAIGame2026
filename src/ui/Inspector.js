@@ -1,7 +1,7 @@
 import { CFG, hitRadiusOf } from '../game/config.js'
 import { ROLES, SHARD_N, effDv, massClass, modsOf, roleBrief, roleLabel, shardCone, volatileRadius } from '../game/roles.js'
 import { t, nameOf } from '../i18n/index.js'
-import { categoryOf, hostileMark } from '../render/Icons.js'
+import { catOf, hostileMark } from '../render/Icons.js'
 
 // ─── 천체 정보창 ────────────────────────────────────────────────
 // 마우스를 올리거나(데스크톱) 손가락으로 짚으면(모바일) 그 공의 제원이 뜬다.
@@ -71,7 +71,7 @@ export class Inspector {
   }
 
   rows(b) {
-    const cat = categoryOf(b.type)
+    const cat = catOf(b)
     const g = this.game
     const r = Math.hypot(b.pos.x, b.pos.y)
     const v = Math.hypot(b.vel.x, b.vel.y)

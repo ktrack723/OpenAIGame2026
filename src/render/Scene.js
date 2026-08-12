@@ -63,6 +63,10 @@ const PALETTE = {
   siege: [0x3a0a12],       // 초엘리트 — 그 사이
   debris: [0x8b8f96],
 }
+// 산탄의 색 — 팔레트를 안 탄다. 이건 "이 조각이 어느 행성에서 나왔나"가 아니라
+// **지금 날아가는 탄**이라는 표시이고, 그 답은 언제나 하나여야 한다.
+// 쏜 행성(불안정)과 같은 연두라 어디서 나온 것인지도 색만으로 이어진다.
+const SHARD_TONE = 0xbef264
 // 천체 id → 팔레트 번호. 문자열 해시라 시드가 같으면 매번 같은 색이 나온다.
 function paletteIndex(id, type) {
   const p = PALETTE[type] ?? PALETTE.rock
@@ -746,6 +750,16 @@ export class SceneView {
     // 읽힌다. 크기 자체는 그대로 판정 반경이다(renderRadius 원칙은 안 건드린다) —
     // 모양만 바꿔서 눈에 띄게 한다.
     this.debrisGeo = new THREE.TetrahedronGeometry(1, 0)
+    // ── 산탄 전용 ──
+    // 잔해와 **한눈에 갈려야** 한다. 둘 다 debris지만 하나는 지나간 사건의
+    // 부스러기이고 하나는 지금 날아가는 탄이다. 셋을 다 다르게 만든다:
+    //   모양 — 뭉툭한 사면체 vs **앞이 뾰족한 다트**(진행 방향으로 눕힌다)
+    //   색   — 무채색 회색 vs 연두(불안정 행성의 색). 자체발광까지 얹는다
+    //   크기 — 화면 최소 지름 16px vs 26px
+    // 다트는 +x를 향하도록 만들어 둔다(속도 방향으로 회전시켜 쓴다).
+    const dart = new THREE.ConeGeometry(0.55, 2.4, 4)
+    dart.rotateZ(-Math.PI / 2); dart.translate(0.35, 0, 0)
+    this.shardGeo = dart
     this.discGeo = new THREE.CircleGeometry(1, 64)
     this.ringGeos = new Map()   // 안쪽 반경 비율(%) → 링 지오메트리 (공유)
     this.glowTex = glowTexture()
@@ -847,7 +861,10 @@ export class SceneView {
 
   // 찾기용 최소 크기 — 공이 아니라 **표식에만** 적용한다(외곽 링·체력 호·조준 물들임).
   markerRadius(b) {
-    const minPx = b.type === 'debris' ? VIS.MIN_DEBRIS_PX : VIS.MIN_PLANET_PX
+    // 산탄은 잔해보다 **크게** 그린다. 판정 반경은 둘이 비슷한데(둘 다 debris라
+    // 제 반지름 그대로다) 화면에서 하는 일이 다르다: 잔해는 배경이고 산탄은
+    // 지금 읽어야 하는 탄이다. 색·모양에 크기까지 얹어야 한눈에 갈린다.
+    const minPx = b.shard ? VIS.MIN_SHARD_PX : b.type === 'debris' ? VIS.MIN_DEBRIS_PX : VIS.MIN_PLANET_PX
     return Math.max(hitRadiusOf(b), minPx * 0.5 * this.rig.worldPerPx)
   }
 
@@ -1328,19 +1345,33 @@ export class SceneView {
     const pi = paletteIndex(b.id, b.type)
     const em = this.emissiveFor(b, pi, spec)
     const isDebris = b.type === 'debris'
-    // 파편은 구체 텍스처 대신 각진 사면체 + 단색을 쓴다 — 몇 픽셀짜리 크기에서는
+    const isShard = !!b.shard
+    // 파편은 구체 텍스처 대신 각진 저폴리 + 단색을 쓴다 — 몇 픽셀짜리 크기에서는
     // 표면 무늬가 안 보이므로, 무늬 대신 각(edge) 음영으로 "조각"을 읽힌다.
-    const mesh = new THREE.Mesh(isDebris ? this.debrisGeo : this.sphereGeo, new THREE.MeshStandardMaterial(
-      isDebris
-        ? { color: colorOf(b.type, pi), roughness: spec.rough, metalness: spec.metal, flatShading: true }
-        : {
-          map: this.texFor(b.type, pi), color: 0xffffff,
-          roughness: spec.rough, metalness: spec.metal,
-          emissiveMap: em.map,
-          emissive: new THREE.Color(em.tone), emissiveIntensity: em.base,
-        }
-    ))
-    if (isDebris) {
+    // 그 안에서 **잔해와 산탄은 다른 물건**이다(shardGeo 주석): 회색 사면체가
+    // 굴러다니는 부스러기이고, 연두로 빛나는 다트가 지금 날아가는 탄이다.
+    const mesh = new THREE.Mesh(
+      isShard ? this.shardGeo : isDebris ? this.debrisGeo : this.sphereGeo,
+      new THREE.MeshStandardMaterial(
+        isShard
+          ? {
+            color: SHARD_TONE, roughness: 0.4, metalness: 0.1, flatShading: true,
+            emissive: new THREE.Color(SHARD_TONE), emissiveIntensity: 1.1,
+          }
+          : isDebris
+            ? { color: colorOf(b.type, pi), roughness: spec.rough, metalness: spec.metal, flatShading: true }
+            : {
+              map: this.texFor(b.type, pi), color: 0xffffff,
+              roughness: spec.rough, metalness: spec.metal,
+              emissiveMap: em.map,
+              emissive: new THREE.Color(em.tone), emissiveIntensity: em.base,
+            }
+      ))
+    if (isShard) {
+      // 다트는 **안 구른다.** 자세가 곧 진행 방향이라(syncBodies에서 매 프레임
+      // 속도로 맞춘다) 여기서 굴려 두면 그 정보가 흐려진다.
+      mesh.rotation.set(0, 0, 0)
+    } else if (isDebris) {
       // 조각마다 제각각 기운 자세로 시작한다 — 다 같은 각도면 사면체 여럿이
       // 찍어낸 듯 똑같이 보인다. 굴러가는 동안은 기존 spin이 이어서 돌린다.
       mesh.rotation.set(Math.random() * 6.29, Math.random() * 6.29, Math.random() * 6.29)
@@ -1821,7 +1852,11 @@ export class SceneView {
       // 가스 행성은 고리가 판정 반경을 채우므로 구체를 그만큼 줄인다 —
       // 공이 커지는 게 아니라 같은 자리에 다른 그림이 들어가는 것이다.
       fx.mesh.scale.setScalar(b.role === 'volatile' ? scale * GAS_CORE : scale)
-      fx.mesh.rotation.y += fx.spin * dt
+      // 산탄은 **진행 방향으로 눕는다.** 다트의 코가 곧 "이쪽으로 간다"라,
+      // 굴리는 대신 속도로 자세를 맞춘다 — 일곱 갈래가 부채꼴로 벌어지는 게
+      // 조각의 방향만 봐도 읽힌다. 나머지는 예전대로 자전한다.
+      if (b.shard) fx.mesh.rotation.set(0, 0, Math.atan2(b.vel.y, b.vel.x))
+      else fx.mesh.rotation.y += fx.spin * dt
 
       // ── 혜성의 코마 ──
       // 꼬리는 **태양 반대쪽**으로 뻗는다(진행 방향이 아니다 — 실제 혜성이 그렇고,
@@ -1842,8 +1877,9 @@ export class SceneView {
       }
 
       // 핵을 맞을 때마다 그을음이 남는다(부서지진 않는다) + 히트 플래시 (§14.5)
-      // 파편은 damage()가 애초에 걸러내 hitFlash·scorch가 절대 안 붙는다 — 여기서
-      // 건드리면 늘 k=1이라 파편 고유 색(colorOf)이 매 프레임 흰색으로 덮인다.
+      // 파편은 빼 둔다. 잔해는 애초에 체력이 없고(damage가 거른다), 산탄은
+      // 체력 1이라 맞는 그 프레임에 죽으므로 어느 쪽도 그을 자리가 없다 —
+      // 여기서 건드리면 파편 고유 색(잔해의 회색·산탄의 연두)이 흰색으로 덮인다.
       if (b.type !== 'debris') {
         const c = fx.mesh.material.color
         if (b.hitFlash > 0) c.setRGB(2.4, 2.4, 2.4)
