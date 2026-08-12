@@ -72,7 +72,10 @@ const SAY = {
   // 요새 격파는 fx가 아니라 **명단을 대조해** 잡는다. destroy 이벤트는 광선이
   // 우리 행성을 녹일 때도 똑같이 나가서, 그걸로는 승패를 구분할 수 없다.
   fortDown: 6,
-  laserHit: 4, nuke: 4, volatile: 4,
+  // 파열(shatter)은 유폭과 같은 층이다. 산탄 한 갈래(shard)는 여기 없다 —
+  // 한 번의 파열에서 일곱 번까지 오는 사건이라 관제가 그때마다 입을 열면
+  // 정작 그 산탄이 무엇을 부쉈는지(fortDown)가 제 목소리에 묻힌다.
+  laserHit: 4, nuke: 4, volatile: 4, shatter: 4,
   // 벨트 기폭은 명중이 아니다 — 판 밖으로 나간 발이라 할 말이 다르다.
   beltBlast: 3,
   boost: 5,

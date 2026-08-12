@@ -3,9 +3,9 @@ import { Rng } from '../core/random.js'
 import { CFG, aMaxOf, beltRadius, escapeSpeed, hitRadiusOf, radiusOf } from './config.js'
 import {
   applyNuke, beltBounce, blastWave, cloneBodies, elasticBounce, resolveBodyPairs, segCircleEntry,
-  segHitsCircle, shatter, stepBodies, stepMissile, updateEncounters,
+  segHitsCircle, shardBurst, shatter, stepBodies, stepMissile, updateEncounters,
 } from './physics.js'
-import { hasRole, roleOf, volatileRadius } from './roles.js'
+import { hasRole, roleOf, shardReach, volatileRadius } from './roles.js'
 import { makeGoal } from './objectives.js'
 import { msg, nameOf } from '../i18n/index.js'
 import { bearing } from '../core/angle.js'
@@ -1006,6 +1006,15 @@ export class Game {
       return
     }
 
+    // 불안정 — 맞는 순간 쪼개지며 **맞은 반대쪽으로** 파편을 뿌린다.
+    // 총구 방향은 임펄스 방향과 같은 벡터다(폭심 → 중심): 이 공을 밀었다면
+    // 갔을 그 방향으로 대신 산탄이 나간다. 그래서 조준법이 하나로 유지된다.
+    if (b.role === 'unstable') {
+      this.addFx({ kind: 'nuke', x: point.x, y: point.y, yld, r: b.radius })
+      this.shardShot(b, b.pos.x - point.x, b.pos.y - point.y)
+      return
+    }
+
     if (b.type === 'debris') {
       this.addFx({ kind: 'nuke', x: point.x, y: point.y, yld, r: b.radius })
       blastWave(this.bodies, point.x, point.y, yld, b)
@@ -1064,6 +1073,44 @@ export class Game {
     this.killBody(b, 'blast', { fx: false })
   }
 
+  // ─── 불안정 행성 — 쪼개지며 쏜다 ─────────────────────────────
+  // 유폭(volatileBlast)과 나란히 읽어야 하는 함수다. 둘 다 "맞으면 그 공이
+  // 없어지고 주변이 뒤집힌다"인데, 미치는 자리가 다르다:
+  //   가스   — 제자리에서 원. 반경 안이 **전부** 밀린다. 아무도 안 부서진다.
+  //   불안정 — 맞은 반대쪽으로 부채꼴. **닿은 것만** 깎인다. 빗나간 갈래는 없다.
+  // 그래서 가스는 판을 흔드는 물건이고 이건 **표적을 지우는 물건**이다.
+  // 요새 체력이 1이므로 부채꼴 안에 요새가 둘 들어오면 한 발로 둘이 사라진다 —
+  // 이 태그의 값은 거기 있고, 그 대가로 방향을 잘못 잡으면 지구가 그 안에 든다.
+  shardShot(b, dirX, dirY) {
+    if (!b.alive) return
+    const a = Math.atan2(dirY, dirX)
+    this.addFx({
+      kind: 'shatter', x: b.pos.x, y: b.pos.y, r: b.radius, a,
+      cone: CFG.UNSTABLE_CONE, reach: shardReach(),
+    })
+    shardBurst(b, this.bodies, () => this.rng.next(), dirX, dirY)
+    this.message = msg('msg.unstable', { name: nameOf(b), n: CFG.UNSTABLE_SHARDS, dir: bearing(dirX, dirY).toFixed(0) })
+    // shatterIt=false — 산탄이 이미 이 공의 파편이다. 여기서 잔해까지 더하면
+    // 같은 사건이 두 벌의 부스러기를 남긴다.
+    this.killBody(b, 'burst', { fx: false, shatterIt: false })
+  }
+
+  // ─── 산탄 한 갈래가 무언가에 닿았다 ──────────────────────────
+  // physics.resolveBodyPairs가 파편을 이미 지운 뒤에 부른다 — 여기서 하는 일은
+  // "그 한 방이 무엇을 깎았는가"뿐이다. 반환값 'destroyed'는 배열이 아니라
+  // **판이 바뀌었다**는 신호다(부른 쪽이 그 스텝을 거기서 끝낸다).
+  onShardHit(s, o) {
+    const vRel = Math.hypot(s.vel.x - o.vel.x, s.vel.y - o.vel.y)
+    this.addFx({ kind: 'shard', x: s.pos.x, y: s.pos.y, r: hitRadiusOf(s), v: vRel })
+    // 식은 파편은 스러지기만 한다. 궤도를 한참 돌다 제 발로 굴러 들어온 조각이
+    // 행성 체력을 깎으면 그건 내가 쏜 게 아니다 — 당구 충돌의 COLLIDE_DMG_V와 같은 규칙.
+    if (vRel < CFG.SHARD_DMG_V) return null
+    // 삼키는 것과 못 부수는 것에는 안 통한다 — 광선·핵이 그러하듯 여기서도 같다.
+    if (o.role === 'void' || o.mothership) return null
+    this.message = msg('msg.shard.hit', { name: nameOf(o), v: vRel.toFixed(0) })
+    return this.damage(o, CFG.SHARD_DMG, 'shrapnel') ? 'destroyed' : null
+  }
+
   // ─── 특이점 흡수 ─────────────────────────────────────────────
   absorb(hole, prey) {
     this.addFx({ kind: 'absorb', x: hole.pos.x, y: hole.pos.y, r: hitRadiusOf(hole) })
@@ -1105,6 +1152,20 @@ export class Game {
       this.message = msg('msg.collide.volatile', { a: nameOf(vol), b: nameOf(other), v: vRel0.toFixed(0) })
       this.damage(other, 3, 'collision')
       this.volatileBlast(vol)
+      return 'destroyed'
+    }
+    // 불안정 행성 — 같은 문턱, 같은 이야기. 다만 사방이 아니라 **때린 공의
+    // 반대쪽으로** 쏜다: 공으로 밀어 쳐도 총구는 여전히 "맞은 살의 반대편"이라
+    // 핵으로 칠 때와 규칙이 하나로 남는다. 밀어서 쏘는 수가 그래서 성립한다.
+    const aU = a.role === 'unstable', bU = b.role === 'unstable'
+    if ((aU || bU) && vRel0 >= CFG.UNSTABLE_TRIGGER_V) {
+      const uns = aU ? a : b, other = uns === a ? b : a
+      this.message = msg('msg.collide.unstable', { a: nameOf(uns), b: nameOf(other), v: vRel0.toFixed(0) })
+      // 둘 다 불안정이면 **둘 다** 쪼개진다 — 서로의 반대쪽으로. 한쪽만 터뜨리면
+      // 같은 태그가 같은 사건에서 다르게 굴어, 규칙이 조용히 둘이 된다.
+      if (aU && bU) this.shardShot(other, other.pos.x - uns.pos.x, other.pos.y - uns.pos.y)
+      else this.damage(other, 1, 'collision')
+      this.shardShot(uns, uns.pos.x - other.pos.x, uns.pos.y - other.pos.y)
       return 'destroyed'
     }
 
@@ -1245,6 +1306,9 @@ export class Game {
   // 박살난 행성의 부스러기가 화면에는 거의 안 보이는 채로 벨트를 계속
   // "들이받는" 것처럼 보이는 원인이었다. 대기권·태양과 같은 취급으로
   // 맞춘다: 벨트에 닿으면 그 자리에서 조용히 소멸한다(폭발 연출 없음).
+  // 넷째 퇴장로는 **시간**이다: 안쪽으로 쏜 산탄은 대기권·태양·벨트 어디에도
+  // 안 걸린 채 궤도에 얹힐 수 있는데, 샷건은 그 순간의 사건이라 판에 남으면
+  // 안 된다. 그 시계는 여기가 아니라 stepBodies에 있다(예측과 공유해야 한다).
   bodyBounds() {
     for (const b of this.bodies) {
       if (!b.alive) continue

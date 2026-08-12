@@ -194,6 +194,17 @@ export class AudioSystem {
         at('volatile', 1, { priority: 1 })
         break
 
+      // 불안정 행성 파열 — 유폭과 같은 층의 사건이라 같은 우선순위로 낸다.
+      case 'shatter':
+        at('shatter', 1, { priority: 1 })
+        break
+
+      // 산탄 한 갈래. 같은 파열에서 일곱 번까지 오지만 DEDUP(30ms)이 겹침을
+      // 걷어내므로 결과적으로 "타닥" 한 번으로 들린다. 세기는 상대속도가 정한다.
+      case 'shard':
+        at('shard', 0.45 + 0.4 * clamp01((e.v ?? 0) / 200))
+        break
+
       case 'absorb':
         at('absorb', e.small ? 0.6 : 0.95, { rate: e.small ? 1.25 : 1 })
         break

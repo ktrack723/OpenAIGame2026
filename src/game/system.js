@@ -262,13 +262,13 @@ function warpBody(rng, bodies, aMax, spec) {
   return b
 }
 
-// 조르그 요새로 쓸 종류 — 가스(터짐)·특이점(못 부숨)은 제외한다.
-// 가스 요새는 핵 한 방에 제 유폭으로 죽어 표적 구실을 못 하고,
+// 조르그 요새로 쓸 종류 — 가스(터짐)·불안정(쪼개짐)·특이점(못 부숨)은 제외한다.
+// 가스·불안정 요새는 핵 한 방에 제 사건으로 죽어 표적 구실을 못 하고,
 // 특이점 요새는 아예 부술 수가 없어서 판이 성립하지 않는다.
 const FORT_TYPES = ['rock', 'rock', 'iron']   // 요새는 암석이 기본, 가끔 금속(안 밀리는 표적)
-// 큐볼로 굴러오는 중립 천체 종류 — 다섯 태그 중 넷(금속·가스·얼음·특이점)이
-// 여기서 나온다. 남은 하나(조르그 요새)는 위의 증원 경로에서만 붙는다.
-const NEUTRAL_TYPES = ['rock', 'ice', 'ice', 'iron', 'gas', 'void']
+// 큐볼로 굴러오는 중립 천체 종류 — 여섯 태그 중 다섯(금속·가스·얼음·특이점·
+// 불안정)이 여기서 나온다. 남은 하나(조르그 요새)는 위의 증원 경로에서만 붙는다.
+const NEUTRAL_TYPES = ['rock', 'ice', 'ice', 'iron', 'gas', 'shard', 'void']
 
 // ── 배역서 ──────────────────────────────────────────────────────
 // 요새 한 기와 중립 한 기를 만드는 규칙. 판이 열릴 때(reinforce)와 모함이
@@ -322,14 +322,19 @@ function fortSpec(rng, earth, stage, tag, heavy, outer = false) {
   }
 }
 
-function neutralSpec(rng, stage, tag, forceVoid = false) {
-  // 특이점은 **3스테이지에 반드시 한 번** 등장시킨다. 추첨에만 맡기면
-  // 다섯 태그 중 하나를 끝까지 못 보고 런이 끝난다(계측: 9스테이지까지 0회).
+// forceType — 그 판에 **반드시 보여 줘야 하는** 종류(아래 forcedType). 추첨에만
+// 맡기면 태그 하나를 끝까지 못 보고 런이 끝난다(특이점은 9스테이지까지 0회가
+// 나온 적이 있다). 못 박는 판은 config에 있다: VOID_STAGE · UNSTABLE_STAGE.
+function neutralSpec(rng, stage, tag, forceType = null) {
   let type = NEUTRAL_TYPES[rng.int(0, NEUTRAL_TYPES.length - 1)]
-  if (forceVoid) type = 'void'
+  if (forceType) type = forceType
   else if (type === 'void' && stage < CFG.VOID_STAGE) type = 'ice'
   return { mu: muFor(rng, stage), name: `${zorgName(rng, tag)}`, type }
 }
+// 이 판이 못 박고 보여 주는 종류(없으면 null). 두 판이 겹치지 않으므로
+// 순서만 정해 두면 된다 — 겹치면 앞의 것이 이긴다.
+const forcedType = (stage) =>
+  stage === CFG.UNSTABLE_STAGE ? 'shard' : stage === CFG.VOID_STAGE ? 'void' : null
 
 // 만들어 놓고 붙일 것 — 금속 요새는 장갑 태그를 겹쳐 얹는다.
 const dressFort = (b) => { if (b && b.type === 'iron') b.mods = ['armor']; return b }
@@ -441,13 +446,14 @@ export function reinforce(rng, bodies, earth, stage) {
   //
   // 이제 기준은 하나다: **굴릴 공이 모자란가.** 모함이 보충을 결정할 때 쓰는
   // 것과 같은 문턱(HIVE_KEEP_CUE)이라 성계를 채우는 두 경로가 같은 질문을 한다.
-  // 태그 구경은 3판의 특이점 보장(VOID_STAGE·forceVoid) 하나로 충분하다 —
+  // 태그 구경은 **못 박은 두 판**(UNSTABLE_STAGE·VOID_STAGE)으로 충분하다 —
   // 그 판만은 굴릴 공이 넉넉해도 한 기를 세운다(정원이 남아 있는 한).
   const cueBalls = live.filter(b => !b.isEarth && !b.zorg).length
   let neutral = cueBalls < CFG.HIVE_KEEP_CUE
     ? Math.min(CFG.REINF_NEUTRAL, cueBalls < 2 ? 2 : 1)
     : 0
-  if (stage === CFG.VOID_STAGE) neutral = Math.max(neutral, 1)
+  const forced = forcedType(stage)
+  if (forced) neutral = Math.max(neutral, 1)
   neutral = Math.min(neutral, Math.max(0, room - fort))
 
   const added = []
@@ -491,7 +497,7 @@ export function reinforce(rng, bodies, earth, stage) {
     if (b) added.push(b)
   }
   for (let i = 0; i < neutral; i++) {
-    const spec = neutralSpec(rng, stage, `${stage}x${i}`, stage === CFG.VOID_STAGE && i === 0)
+    const spec = neutralSpec(rng, stage, `${stage}x${i}`, i === 0 ? forced : null)
     const b = warpBody(rng, bodies.concat(added), aMax, spec)
     if (b) { b.zorg = false; added.push(b) }   // 중립으로 굴러온 잔챙이 — 큐볼로 쓴다
   }
