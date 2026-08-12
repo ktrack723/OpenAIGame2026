@@ -1299,10 +1299,17 @@ export class Game {
       kind: 'nuke', x: c.x, y: c.y, yld: cue.yld, r: CFG.MISSILE_HIT_R,
       px: push.dx, py: push.dy, wave: wave.radius, cue: true,
     })
-    this.message = msg('msg.nuke.relay', {
-      yield: cue.yld, dv: push.dv.toFixed(1), dir: bearing(push.dx, push.dy).toFixed(0),
-    })
-    this.setToast(msg('toast.relay'))
+    // 한가운데서 터지면 미는 방향이 없다(missilePush) — 그때는 "밀었다"고 하면
+    // 안 된다. 탄 하나가 값 없이 사라진 것이고, 판은 그 사실을 그대로 말한다.
+    if (push.dv > 0) {
+      this.message = msg('msg.nuke.relay', {
+        yield: cue.yld, dv: push.dv.toFixed(1), dir: bearing(push.dx, push.dy).toFixed(0),
+      })
+      this.setToast(msg('toast.relay'))
+    } else {
+      this.message = msg('msg.nuke.relay.center', { yield: cue.yld })
+      this.setToast(msg('toast.relay.center'))
+    }
     if (wave.pushed.some(q => q.body.isEarth)) this.setToast(msg('toast.blastEarth'))
   }
 
