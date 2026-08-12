@@ -640,8 +640,20 @@ const AMB_CALM = 0x8fb4ff, AMB_EMBER = 0xd08a86  // 환경광 — 살짝만 민�
 // 눈금이 된다 — 1판의 하늘과 5판의 하늘을 나란히 두면 무엇이 더 위험한
 // 판인지가 설명 없이 읽힌다. 게다가 아는 사람에게는 이름까지 읽힌다.
 //
-// 무늬도 같이 간다(nebulaTexture의 shape). 색만 갈면 "같은 구름에 조명만
+// 무늬도 같이 간다(fogTexture의 shape). 색만 갈면 "같은 구름에 조명만
 // 바꿔 끼웠다"로 보이므로, 그 성운이 실제로 어떤 모양인지까지 흉내 낸다.
+//
+// ── 눈금을 **별빛**으로 옮겼다 ────────────────────────────────
+// 예전에는 이 눈금을 성운 혼자 졌다. 그래서 판이 올라갈수록 성운을 진하게
+// 깔아야 했고(gain 1.85), 5판에서는 화면이 통째로 붉은 물감 한 통이 됐다 —
+// 배경이 눈에 띄는 순간 그건 배경이 아니고, 그 위의 별은 아예 안 보인다.
+//
+// 이제 판의 색은 **별이 진다**(SKY.star). 별밭의 자리와 밝기 분포는 판이
+// 바뀌어도 그대로고(붙박인 지형이라는 원칙은 안 건드린다) 색만 그 판 쪽으로
+// 물든다. 그러면 안개는 옅어도 되고, 하늘은 어두운 채로 판이 읽힌다.
+//   tint — 별빛이 물드는 쪽 색
+//   mix  — 얼마나 물드나 (0 = 제 색 그대로)
+//   gain — 그 판의 별 밝기 배율. 판이 거듭될수록 하늘이 밝아진다
 //
 // 5판부터는 **전부 같은 하늘**이다. 판에 끝이 없으므로(엔들리스) 계속 갈면
 // 색이 한 바퀴 돌아 6판이 1판보다 평온해 보인다 — 압력의 눈금이 거꾸로 간다.
@@ -660,8 +672,9 @@ const SKY = [
     name: 'Orion M42',
     tone: [0x2f62d0, 0x2478c4, 0x4838c8, 0x2a56b4, 0x6248c8],
     bg: 0x03060f,
-    op: [0.15, 0.11], wash: 0.20, gain: 1,
-    shape: { blobs: 52, spread: 0.32, lobes: 1, ring: 0, wisp: 0 },
+    op: [0.040, 0.032], wash: 0.050, gain: 1,
+    shape: { scale: 2.1, warp: 1.05, spread: 0.86, edge: 0.50, lobes: 1, ring: 0, wisp: 0.15 },
+    star: { tint: 0x9fc6ff, mix: 0.22, gain: 1.28 },
   },
   {
     // 2판 — **나선 성운 NGC 7293, 「신의 눈」.** 바깥 요새가 처음 오는 판이고,
@@ -670,9 +683,10 @@ const SKY = [
     // 청록 껍질에 붉은 테가 도는 것도 실제 색이다.
     name: 'Helix NGC 7293',
     tone: [0x18b09a, 0xc4602a, 0x22c0a8, 0x9a4a2a, 0x2aa890],
-    bg: 0x021009,
-    op: [0.15, 0.11], wash: 0.20, gain: 1.1,
-    shape: { blobs: 26, spread: 0.20, lobes: 1, ring: 1, wisp: 4 },
+    bg: 0x02100c,
+    op: [0.040, 0.032], wash: 0.050, gain: 1.05,
+    shape: { scale: 2.5, warp: 0.85, spread: 0.80, edge: 0.52, lobes: 1, ring: 0.85, wisp: 0.25 },
+    star: { tint: 0x8ff2e2, mix: 0.24, gain: 1.34 },
   },
   {
     // 3판 — **독수리 성운 M16, 창조의 기둥.** 특이점과 회피 추진기가 나오는
@@ -680,9 +694,10 @@ const SKY = [
     // 열 가닥 세워 기둥이 서 있는 느낌을 만든다.
     name: 'Eagle M16',
     tone: [0xd09a3a, 0x2b8f9c, 0xe0b046, 0xa87a38, 0xc08a44],
-    bg: 0x0a0904,
-    op: [0.15, 0.11], wash: 0.21, gain: 1.2,
-    shape: { blobs: 32, spread: 0.26, lobes: 1, ring: 0, wisp: 10 },
+    bg: 0x08080a,
+    op: [0.040, 0.032], wash: 0.048, gain: 1.10,
+    shape: { scale: 2.4, warp: 1.25, spread: 0.82, edge: 0.54, lobes: 1, ring: 0, wisp: 0.55 },
+    star: { tint: 0xffd79a, mix: 0.26, gain: 1.40 },
   },
   {
     // 4판 — **용골자리 성운 NGC 3372.** 모함이 오는 판. 에타 카리나가 뿜어낸
@@ -693,29 +708,39 @@ const SKY = [
     // 보다 하늘이 어두워 보인다 — 눈금이 한 칸 거꾸로 간다. 여기만 배율을
     // 한 단 더 올려 밝기가 판 순서대로 오르게 맞춘다.
     tone: [0xd8722e, 0xb84268, 0xe88a38, 0x8f3574, 0xc85c32],
-    bg: 0x0d0609,
-    op: [0.15, 0.11], wash: 0.23, gain: 1.58,
-    shape: { blobs: 44, spread: 0.34, lobes: 2, ring: 0, wisp: 7 },
+    bg: 0x0a0509,
+    op: [0.042, 0.034], wash: 0.052, gain: 1.18,
+    shape: { scale: 2.4, warp: 1.10, spread: 0.66, edge: 0.51, lobes: 2, ring: 0, wisp: 0.38 },
+    star: { tint: 0xffab86, mix: 0.29, gain: 1.46 },
   },
   {
     // 5판부터 — **하트 성운 IC 1805.** 수소 알파 한 색으로 타는 성운이라
     // 사진이 통째로 진홍이다. 초엘리트가 서고 태양이 주홍으로 넘어가는 그
     // 판의 하늘이고, 이 뒤로는 안 바뀐다.
     //
-    // 여기만 배율을 두 배 가까이 올린다(gain). 성운은 원래 판의 색과 부딪히지
+    // 여기만 배율을 한 단 더 올린다(gain). 성운은 원래 판의 색과 부딪히지
     // 않게 눌러 두는 물건인데 이 판부터는 반대로 **눈에 띄어야** 한다 —
     // 위험해 보이는 것은 색이 아니라 "배경이 앞으로 나왔다"는 사실이다.
+    // 다만 앞으로 나오는 몫은 이제 별이 더 크게 진다(star.gain 1.26) —
+    // 안개로만 밀면 5판 화면이 붉은 물감 한 통이 된다.
     name: 'Heart IC 1805',
     tone: [0xc41c1c, 0x8a0a22, 0xe0381a, 0x9f1234, 0xf0512a],
-    bg: 0x120306,
-    op: [0.15, 0.10], wash: 0.24, gain: 1.85,
-    shape: { blobs: 58, spread: 0.30, lobes: 1, ring: 0.55, wisp: 5 },
+    bg: 0x0e0206,
+    op: [0.044, 0.036], wash: 0.058, gain: 1.26,
+    shape: { scale: 2.2, warp: 1.00, spread: 0.90, edge: 0.49, lobes: 1, ring: 0.35, wisp: 0.30 },
+    star: { tint: 0xff9a92, mix: 0.33, gain: 1.54 },
   },
 ]
 // op   — 조각 하나의 불투명도 [기준, 흔들 폭]
 // wash — 성계 뒤를 통째로 덮는 광역 한 장의 불투명도(buildNebulaSet 주석)
 // gain — 그 판의 전체 배율. 판이 거듭될수록 하늘이 조금씩 앞으로 나온다.
-const SKY_SETS = 9                          // 한 하늘에 깔리는 성운 조각 수 (광역 한 장은 별도)
+// star — 그 판의 별빛(위 주석). 판의 눈금은 이제 이쪽이 주로 진다.
+//
+// 조각 수를 아홉에서 스물둘로 올렸다. 한 조각이 옅어졌으므로(op 0.15 → 0.055)
+// 같은 두께를 내려면 그만큼 겹쳐야 하고, 무엇보다 **겹쳐야 원이 사라진다** —
+// 스프라이트 하나는 아무리 잡음을 발라도 제 윤곽이 있는데, 스물두 장이 서로
+// 다른 각도로 포개지면 그 윤곽들이 서로를 지운다.
+const SKY_SETS = 22                         // 한 하늘에 깔리는 안개 조각 수 (광역 석 장은 별도)
 // 하늘이 갈리는 데 걸리는 시간(실시간 초). 판이 열리는 막이 그보다 길어서
 // (openHold: 스폰 + 뜸) 조작이 넘어올 때는 이미 다 갈려 있다.
 const SKY_FADE = 3.4
@@ -744,115 +769,230 @@ const skyRng = (seed) => {
   return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296)
 }
 
-// 별 하나. 화면에서 2~4px밖에 안 되는 점이라 **심지가 단단해야** 한다 —
+// 별 하나. 화면에서 2~6px밖에 안 되는 점이라 **심지가 단단해야** 한다 —
 // 예쁘게 퍼뜨리면 그 크기에서는 그냥 사라진다. 가운데를 꽉 채우고 바깥에만
 // 옅은 무리를 남긴다. 가장자리는 완전히 0이어야 가산 합성에서 네모가 안 보인다.
+//
+// 심지를 예전보다 더 조였다(0.30 → 0.16). 별을 키우고 나서 보니 옛 가락은
+// 커질수록 심지도 같이 부풀어 별이 아니라 **솜뭉치**가 됐다. 심지의 굵기를
+// 고정에 가깝게 두고 무리만 넓히면, 같은 텍스처가 2px에서도 12px에서도
+// "가운데가 탄 점"으로 읽힌다.
 function softDotTexture(size = 64) {
   const c = document.createElement('canvas'); c.width = c.height = size
   const g = c.getContext('2d')
   const h = size / 2
   const grd = g.createRadialGradient(h, h, 0, h, h, h)
   grd.addColorStop(0, 'rgba(255,255,255,1)')
-  grd.addColorStop(0.30, 'rgba(255,255,255,.92)')
-  grd.addColorStop(0.52, 'rgba(255,255,255,.32)')
-  grd.addColorStop(0.78, 'rgba(255,255,255,.07)')
+  grd.addColorStop(0.10, 'rgba(255,255,255,1)')
+  grd.addColorStop(0.22, 'rgba(255,255,255,.56)')
+  grd.addColorStop(0.36, 'rgba(255,255,255,.19)')
+  grd.addColorStop(0.58, 'rgba(255,255,255,.05)')
+  grd.addColorStop(0.82, 'rgba(255,255,255,.012)')
   grd.addColorStop(1, 'rgba(255,255,255,0)')
   g.fillStyle = grd; g.fillRect(0, 0, size, size)
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace
   return t
 }
 
-// 성운 한 조각 — 부드러운 얼룩을 여러 겹 겹쳐 뭉게구름을 만든다.
-// 값비싼 노이즈 대신 반투명 원 수십 개면 충분하다: 어차피 화면에서 수천 px로
-// 늘어나 흐려지므로, 필요한 건 "가장자리가 균일하지 않다"는 것뿐이다.
+// 밝은 별 — 회절 십자가 붙는다.
+// "더 밝게"를 밝기값만 올려서 내려고 하면 안 된다. 가산 합성 + ACES 톤매핑
+// 아래서 밝기를 올리면 색이 흰쪽으로 빨려 들어가고(채도 손실), 결국 **하얀
+// 점이 조금 커진 것**으로 끝난다. 밝다는 인상은 밝기가 아니라 **모양**이
+// 만든다 — 렌즈가 밝은 점에 그리는 그 십자가 붙는 순간 같은 밝기라도
+// "타오르는 별"로 읽힌다. 그래서 위 몇 %에만 이 텍스처를 준다.
 //
-// ── 무늬를 파라미터로 뺀 이유 ──────────────────────────────────
-// 판마다 다른 하늘을 주려면 색만 갈아서는 부족하다. 색만 바꾸면 "같은 구름에
-// 조명을 바꿔 끼웠다"로 읽히고, 실제로 판이 바뀐 줄은 알기 어렵다(계측 대신
-// 눈으로 확인한 것이다 — 5판 전환에서 검붉게만 바뀐 화면이 그랬다).
-// 그래서 실제 성운의 **생김새**를 넷으로 갈라 흉내 낸다:
-//   blobs/spread — 뭉게뭉게한 정도와 퍼진 반경 (오리온처럼 부푼 구름)
-//   lobes        — 중심이 하나냐 둘이냐 (용골자리의 모래시계)
-//   ring         — 껍데기 고리 (나선 성운의 눈, 하트 성운의 외곽)
-//   wisp         — 길고 가는 필라멘트 (창조의 기둥, 베일 성운의 실오라기)
-// 넷을 섞으면 SKY 표의 다섯 하늘이 나온다.
-function nebulaTexture(seed = 1, shape = {}) {
-  const { blobs = 46, spread = 0.30, lobes = 1, ring = 0, wisp = 0 } = shape
-  const S = 256, H = S / 2
-  const c = document.createElement('canvas'); c.width = c.height = S
+// 십자는 폭이 다른 막대 셋을 가산으로 포개 만든다. 한 겹으로 그으면 굵기가
+// 균일한 막대라 십자가 아니라 더하기 기호가 된다 — 가운데가 굵고 끝으로
+// 갈수록 가늘어져야 빛으로 보인다.
+//
+// 막대를 텍스처 폭의 4~19%로 **두껍게** 잡는다. 실제 회절 십자는 실낱같지만,
+// 이 별이 화면에 찍히는 크기가 고작 12px이라 텍스처가 열 배 넘게 줄어든다 —
+// 처음에 1.3%로 그렸더니 밉맵에 먹혀 십자가 통째로 사라졌다(스크린샷에서 한
+// 개도 안 보였다). 화면 1px을 채우려면 텍스처에서 그 열 배로 그려야 한다.
+function spikeStarTexture(size = 128) {
+  const c = document.createElement('canvas'); c.width = c.height = size
   const g = c.getContext('2d')
-  const rnd = skyRng(seed)
+  const h = size / 2
   g.globalCompositeOperation = 'lighter'
-  // 중심 — 하나면 가운데, 둘이면 좌우로 벌린다(모래시계 성운)
-  const cores = []
-  for (let k = 0; k < lobes; k++) {
-    const t = lobes > 1 ? (k / (lobes - 1)) * 2 - 1 : 0
-    cores.push({ x: H + t * S * 0.13, y: H - t * S * 0.07 })
+  const grd = g.createRadialGradient(h, h, 0, h, h, h)
+  grd.addColorStop(0, 'rgba(255,255,255,1)')
+  grd.addColorStop(0.10, 'rgba(255,255,255,.92)')
+  grd.addColorStop(0.24, 'rgba(255,255,255,.36)')
+  grd.addColorStop(0.48, 'rgba(255,255,255,.10)')
+  grd.addColorStop(0.76, 'rgba(255,255,255,.02)')
+  grd.addColorStop(1, 'rgba(255,255,255,0)')
+  g.fillStyle = grd; g.fillRect(0, 0, size, size)
+  for (const [w, a] of [[0.19, 0.05], [0.10, 0.11], [0.044, 0.34]]) {
+    for (const vert of [false, true]) {
+      const gr = vert ? g.createLinearGradient(0, 0, 0, size) : g.createLinearGradient(0, 0, size, 0)
+      gr.addColorStop(0, 'rgba(255,255,255,0)')
+      gr.addColorStop(0.34, `rgba(255,255,255,${(a * 0.30).toFixed(3)})`)
+      gr.addColorStop(0.5, `rgba(255,255,255,${a.toFixed(3)})`)
+      gr.addColorStop(0.66, `rgba(255,255,255,${(a * 0.30).toFixed(3)})`)
+      gr.addColorStop(1, 'rgba(255,255,255,0)')
+      g.fillStyle = gr
+      if (vert) g.fillRect(h - size * w * 0.5, 0, size * w, size)
+      else g.fillRect(0, h - size * w * 0.5, size, size * w)
+    }
   }
-  // ── 껍데기 고리 ──
-  // 실제로 껍데기를 뿜은 성운(행성상 성운·수소 껍질)은 가운데가 비어 있고
-  // 테두리가 밝다. 반경 0.34S에서 정점을 찍는 가락으로 그 고리를 만든다.
-  if (ring > 0) {
-    const grd = g.createRadialGradient(H, H, S * 0.14, H, H, S * 0.46)
-    grd.addColorStop(0, 'rgba(255,255,255,0)')
-    grd.addColorStop(0.42, `rgba(255,255,255,${(0.16 * ring).toFixed(3)})`)
-    grd.addColorStop(0.62, `rgba(255,255,255,${(0.09 * ring).toFixed(3)})`)
-    grd.addColorStop(1, 'rgba(255,255,255,0)')
-    g.fillStyle = grd; g.fillRect(0, 0, S, S)
-  }
-  for (let i = 0; i < blobs; i++) {
-    // 중심 쪽에 몰아 둔다 — 가장자리까지 꽉 차면 사각형 경계가 드러난다
-    const core = cores[i % cores.length]
-    const a = rnd() * Math.PI * 2, d = Math.pow(rnd(), 0.7) * S * spread
-    const x = core.x + Math.cos(a) * d, y = core.y + Math.sin(a) * d
-    const r = S * (0.06 + rnd() * 0.22)
-    const alpha = 0.05 + rnd() * 0.10
-    const grd = g.createRadialGradient(x, y, 0, x, y, r)
-    grd.addColorStop(0, `rgba(255,255,255,${alpha.toFixed(3)})`)
-    grd.addColorStop(0.5, `rgba(255,255,255,${(alpha * 0.34).toFixed(3)})`)
-    grd.addColorStop(1, 'rgba(255,255,255,0)')
-    g.fillStyle = grd
-    g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill()
-  }
-  // ── 필라멘트 ──
-  // 곧은 선이 아니라 두 마디로 꺾인 가락이다. 성운의 실오라기는 자기장을 따라
-  // 휘므로, 직선을 그으면 그건 성운이 아니라 긁힌 자국으로 보인다.
-  for (let i = 0; i < wisp; i++) {
-    const core = cores[i % cores.length]
-    const a = rnd() * Math.PI * 2
-    const len = S * (0.18 + rnd() * 0.24)
-    const x0 = core.x + Math.cos(a) * S * spread * 0.5
-    const y0 = core.y + Math.sin(a) * S * spread * 0.5
-    const bend = (rnd() - 0.5) * 1.1
-    g.strokeStyle = `rgba(255,255,255,${(0.05 + rnd() * 0.07).toFixed(3)})`
-    g.lineWidth = S * (0.012 + rnd() * 0.03)
-    g.lineCap = 'round'
-    g.beginPath()
-    g.moveTo(x0, y0)
-    g.quadraticCurveTo(
-      x0 + Math.cos(a + bend) * len * 0.6, y0 + Math.sin(a + bend) * len * 0.6,
-      x0 + Math.cos(a + bend * 1.8) * len, y0 + Math.sin(a + bend * 1.8) * len)
-    g.stroke()
-  }
-  // 사각 경계를 확실히 지운다 — 큰 스프라이트에서는 이 한 겹이 전부다
-  g.globalCompositeOperation = 'destination-in'
-  const mask = g.createRadialGradient(H, H, 0, H, H, H)
-  mask.addColorStop(0, 'rgba(255,255,255,1)')
-  mask.addColorStop(0.62, 'rgba(255,255,255,.85)')
-  mask.addColorStop(1, 'rgba(255,255,255,0)')
-  g.fillStyle = mask; g.fillRect(0, 0, S, S)
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace
   return t
 }
 
-// 별빛의 색 — 온도 순서(푸른 거성 → 흰 → 노랑 → 주황 왜성)로 섞는다.
-// 실제 하늘이 그렇듯 대부분은 흐릿한 흰빛이고, 눈에 띄는 색은 소수다.
+// ─── 안개 — 왜 얼룩을 버리고 잡음으로 갔나 ──────────────────────
+// 예전에는 반투명 원 수십 개를 겹쳐 구름을 흉내 냈다. "어차피 화면에서 수천
+// px로 늘어나 흐려지므로 가장자리만 균일하지 않으면 된다"는 계산이었는데,
+// 실제로는 정반대였다: 늘어나는 건 얼룩도 마찬가지여서 원 하나가 300px짜리
+// 동그라미가 됐고, 하늘이 **점박이**로 보였다. 가장자리가 매끈한 원은 아무리
+// 옅어도 원이다 — 옅게 만들수록 흐린 원이 될 뿐 안개가 되지는 않는다.
+//
+// 안개가 안개로 보이는 이유는 **결이 배율마다 있다**는 것이다. 멀리서 보면
+// 큰 덩어리, 가까이 보면 그 안에 또 작은 결. 값잡음을 주파수를 배로 올리며
+// 네댓 겹 포개면(fbm) 그 성질이 그대로 나온다 — 어느 배율로 늘려도 그 배율에
+// 맞는 결이 남으므로, 46000 GU까지 부풀려도 무늬가 뭉개지지 않는다.
+//
+// 여기에 좌표를 잡음으로 한 번 더 밀어 준다(도메인 워프). 이게 없으면 fbm은
+// "고르게 울퉁불퉁한 판"이라 어딘가 규칙적으로 보인다. 좌표를 휘어 놓으면
+// 결이 흘러가듯 늘어져서 비로소 **떠 있는 구름**이 된다.
+//
+// 값은 CPU에서 굽는다. 판마다 세 장이고 한 번 구우면 캐시에 남으므로
+// (fogTexOf) 판이 끝없이 이어져도 다시 굽지 않는다 — 그래도 판이 넘어가는
+// **그 프레임**에 걸리는 값이라 재 봤다: 256²·5겹에서 판당 67~117ms(계측),
+// 막이 내려가 있어도 일곱 프레임이 멎는다. 192²·4겹으로 내려 절반으로 줄였다.
+// 어차피 스프라이트가 3~5만 GU로 늘어나 텍셀 하나가 화면 수십 px이 되므로,
+// 마지막 한 겹(주파수 17)은 텍셀보다 잘아서 어차피 보이지 않는다.
+
+// 32비트 정수 해시. **Math.imul이라야 한다** — 그냥 곱하면 2^53을 넘는 순간
+// 하위 비트가 반올림에 먹혀서, 잡음에 격자 무늬가 비친다(부동소수 곱의 하위
+// 비트는 0으로 채워진다).
+function hash2(x, y, seed) {
+  let n = Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(seed, 1442695041)
+  n = Math.imul(n ^ (n >>> 13), 1274126177)
+  return ((n ^ (n >>> 16)) >>> 0) / 4294967296
+}
+
+// 값잡음 한 겹 — 격자 네 점을 뽑아 5차 곡선으로 섞는다. 3차(smoothstep)로
+// 섞으면 격자선에서 기울기가 꺾여 바둑판이 비친다. 배경처럼 크게 늘리는
+// 텍스처에서는 그 꺾임이 그대로 눈에 보인다.
+function vnoise(x, y, seed) {
+  const xi = Math.floor(x), yi = Math.floor(y)
+  const fx = x - xi, fy = y - yi
+  const u = fx * fx * fx * (fx * (fx * 6 - 15) + 10)
+  const v = fy * fy * fy * (fy * (fy * 6 - 15) + 10)
+  const a = hash2(xi, yi, seed), b = hash2(xi + 1, yi, seed)
+  const c = hash2(xi, yi + 1, seed), d = hash2(xi + 1, yi + 1, seed)
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v
+}
+
+// 주파수를 배로 올리며 겹쳐 쌓기. 배율이 딱 2가 아니라 2.03인 건 일부러다 —
+// 정확히 두 배면 겹끼리 격자점이 포개져 무늬가 반복된다.
+function fbm(x, y, seed, oct) {
+  let amp = 0.5, f = 1, s = 0, n = 0
+  for (let i = 0; i < oct; i++) {
+    s += amp * vnoise(x * f, y * f, seed + i * 1013)
+    n += amp; amp *= 0.5; f *= 2.03
+  }
+  return s / n
+}
+
+const sstep = (a, b, x) => {
+  const t = Math.min(1, Math.max(0, (x - a) / (b - a)))
+  return t * t * (3 - 2 * t)
+}
+
+// ── 무늬를 파라미터로 뺀 이유 ──────────────────────────────────
+// 판마다 다른 하늘을 주려면 색만 갈아서는 부족하다. 색만 바꾸면 "같은 구름에
+// 조명을 바꿔 끼웠다"로 읽히고, 실제로 판이 바뀐 줄은 알기 어렵다.
+// 그래서 실제 성운의 **생김새**를 흉내 낸다:
+//   scale/warp — 결의 굵기와 휘어진 정도
+//   spread     — 안개가 퍼진 반경 (1 = 텍스처 가장자리)
+//   edge       — 문턱. 높을수록 성기고 갈기갈기 갈라진 안개가 된다
+//   lobes      — 중심이 하나냐 둘이냐 (용골자리의 모래시계)
+//   ring       — 껍데기 고리 (나선 성운의 눈)
+//   wisp       — 길고 가는 필라멘트 (창조의 기둥)
+function fogTexture(seed = 1, shape = {}, res = 192) {
+  const {
+    scale = 3.0, warp = 0.95, spread = 0.80, edge = 0.42,
+    lobes = 1, ring = 0, wisp = 0,
+  } = shape
+  const S = res
+  const c = document.createElement('canvas'); c.width = c.height = S
+  const g = c.getContext('2d')
+  const img = g.createImageData(S, S)
+  const px = img.data
+  // 중심 — 하나면 가운데, 둘이면 어긋나게 벌린다(모래시계 성운)
+  const cores = []
+  for (let k = 0; k < lobes; k++) {
+    const t = lobes > 1 ? (k / (lobes - 1)) * 2 - 1 : 0
+    cores.push([t * 0.32, -t * 0.19])
+  }
+  for (let j = 0; j < S; j++) {
+    const ny = (j / (S - 1)) * 2 - 1
+    for (let i = 0; i < S; i++) {
+      const nx = (i / (S - 1)) * 2 - 1
+      // ① 좌표를 밀어 결을 휘게 한다
+      const wx = fbm(nx * 1.7 + 5.2, ny * 1.7 + 1.3, seed + 71, 2) - 0.5
+      const wy = fbm(nx * 1.7 - 3.1, ny * 1.7 + 6.4, seed + 137, 2) - 0.5
+      const sx = nx * scale + wx * warp * scale
+      const sy = ny * scale + wy * warp * scale
+      // ② 본체
+      let v = fbm(sx, sy, seed, 4)
+      // ③ 필라멘트 — 마루만 남기면(1-|2v-1|) 실오라기가 선다
+      if (wisp > 0) {
+        const r = 1 - Math.abs(fbm(sx * 1.85 + 17.7, sy * 1.85 - 9.3, seed + 311, 3) * 2 - 1)
+        v = v * (1 - wisp * 0.55) + r * r * wisp * 0.95
+      }
+      // ④ 자리 — 중심에서 얼마나 먼가. 중심이 둘이면 가까운 쪽을 쓴다
+      let d = 4
+      for (const [cx, cy] of cores) {
+        const dx = nx - cx, dy = ny - cy
+        d = Math.min(d, Math.sqrt(dx * dx + dy * dy))
+      }
+      let prox = Math.min(1, d / spread)
+      // ⑤ 껍데기 고리 — 가운데가 비고 테두리가 밝은 성운(행성상 성운)
+      if (ring > 0) prox = prox * (1 - ring) + Math.min(1, Math.abs(d - 0.50) / 0.40) * ring
+      // ⑥ **문턱을 거리로 올린다.** 여기가 이 텍스처의 핵심이다. 알파를 거리로
+      //    낮추면(옛 방식) 무늬는 그대로인 채 통째로 옅어져서 결국 "둥근 얼룩"이
+      //    된다. 문턱을 올리면 바깥으로 갈수록 잡음의 **마루만** 남아 안개가
+      //    올올이 풀리며 사라진다 — 원의 윤곽이 생기지 않는 유일한 방법이다.
+      const th = edge + (1 - edge) * Math.pow(prox, 1.6) * 0.70
+      // 문턱의 **폭**이 결정적이다. 좁게 자르면(0.26) 잡음이 등고선처럼 끊겨
+      // 안개가 아니라 찢어진 종이가 된다 — 텍스처를 1:1로 뽑아 보고서야 보였다.
+      // 넓게 넘기면 같은 잡음이 뭉게구름의 명암이 된다.
+      let a = sstep(th, th + 0.46, v) * (0.38 + 0.62 * v)
+      // 모서리는 확실히 지운다 — 스프라이트는 네모다
+      a *= 1 - sstep(0.88, 1.32, d)
+      const o = (j * S + i) * 4
+      px[o] = px[o + 1] = px[o + 2] = 255
+      px[o + 3] = a * 255
+    }
+  }
+  g.putImageData(img, 0, 0)
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace
+  return t
+}
+
+// 별빛의 색 — 온도 순서(푸른 거성 → 흰 → 노랑 → 주황 → 붉은 왜성)로 섞는다.
+// 분광형 O/B → A/F → G → K → M을 그대로 옮긴 것이고, 흰빛이 제일 많은 것도
+// 실제 하늘 그대로다.
+//
+// 채도를 올렸다(0.55 → 0.78 …). 예전 값은 "실제 육안 하늘"에 가까웠는데, 이
+// 게임의 별은 2~6px짜리 점이라 그 채도로는 화면에서 **전부 흰 점**이 된다
+// (스크린샷으로 확인 — 색이 있는 별을 한 개도 셀 수 없었다). 점이 작을수록
+// 색은 과장해야 색으로 남는다. 흰빛 무리만 그대로 둬서, 색이 도는 별이
+// 소수라는 인상은 지킨다.
+//
+// **채도만 올리면 안 된다.** 한 번은 0.85까지 밀어 봤는데 별이 빨간 전구가
+// 됐다 — 채도가 높은 색을 중간 밝기로 찍으면 그건 빛이 아니라 물감이다.
+// 별빛은 밝은 흰빛에 색이 **얹힌** 것이므로, 밝기를 같이 올려서(buildStarLayers의
+// bright 0.60~1.0) 색이 옅게 도는 흰 점이 되게 한다.
 function starHue(u) {
-  if (u < 0.10) return [0.60, 0.55]        // 청백 거성 — 드물고 밝다
-  if (u < 0.30) return [0.56, 0.28]
-  if (u < 0.62) return [0.14, 0.10]        // 흰빛 — 대다수
-  if (u < 0.86) return [0.11, 0.42]        // 노랑
-  return [0.045, 0.60]                     // 주황 왜성
+  if (u < 0.14) return [0.60, 0.78]        // 청백 거성 — 드물고 밝다
+  if (u < 0.32) return [0.56, 0.48]        // 푸른 흰빛
+  if (u < 0.48) return [0.14, 0.10]        // 흰빛 — 대다수
+  if (u < 0.68) return [0.115, 0.55]       // 노랑
+  if (u < 0.87) return [0.055, 0.66]       // 주황
+  return [0.015, 0.62]                     // 붉은 왜성
 }
 
 export class SceneView {
@@ -1007,28 +1147,48 @@ export class SceneView {
   // ─── 하늘 ─────────────────────────────────────────────────────
   // 예전에는 같은 반경(11000)에 뿌린 점 세 층이 전부였다. z가 -2200~-7000으로
   // 붙어 있어 시차가 2배 남짓밖에 안 났고, 그래서 "어두운 데 별이 박혀 있다"
-  // 이상으로는 안 읽혔다. 지금은 여섯 켜다:
+  // 이상으로는 안 읽혔다. 지금은 여덟 켜다:
   //
-  //   -900   가까운 먼지 — 카메라를 조금만 움직여도 성큼성큼 흐른다
+  //   -320   코앞 — 굵고 성기다. 카메라가 조금만 움직여도 성큼성큼 흐른다
+  //   -900   가까운 먼지
   //   -2400  ┐
   //   -5200  ┤ 앞·중간·뒤 별밭. 층마다 다른 속도로 흘러 깊이가 생긴다
-  //   -9800  ┘
-  //   -15000 성간 구름(성운) — 색이 여기서 나온다
-  //   -34000 은하 원반 — 나선팔·중심 팽대부. 거의 붙박여 있다
+  //   -9800  ┤
+  //   -17000 ┘ 제일 뒤 — 거의 안 움직인다. 하늘의 바탕이 된다
+  //   -15000 성간 안개 — 색이 여기서 나온다(별과 같은 켜에 섞여 있다)
+  //   -34000 은하 원반 — 나선팔·중심 팽대부. 붙박여 있다
   //
-  // 시차는 원근 그 자체다. 카메라(z ≈ +1600~4800)에서 가까운 먼지까지는
-  // 2500, 은하까지는 36000 — 13배가 넘게 벌어져 있으니 같은 팬에도 앞은
-  // 크게, 뒤는 거의 안 움직인다. 화면 좌표로 손대는 데는 한 군데도 없다.
+  // 시차는 원근 그 자체다. 카메라에서 코앞 층까지는 2000 남짓, 은하까지는
+  // 36000 — 열여덟 배가 벌어져 있으니 같은 팬에도 앞은 성큼, 뒤는 거의 안
+  // 움직인다. 화면 좌표로 손대는 데는 한 군데도 없다.
   //
   // 판을 가리지 않는 것이 조건이다. 은하는 원반을 기울여 화면 **한쪽 구석**을
-  // 지나가게 두고(중심 팽대부는 판 밖), 성운은 불투명도를 0.2 아래로 눌러
-  // 놓았다. 배경이 눈에 띄는 순간 그건 배경이 아니다.
+  // 지나가게 두고(중심 팽대부는 판 밖), 안개는 조각 하나가 0.06을 못 넘게
+  // 눌러 놓았다. 배경이 눈에 띄는 순간 그건 배경이 아니다 — 눈에 띄어야 하는
+  // 쪽은 별이다.
   buildSky() {
     this.sky = []
     this.skyT = 0
     this.nebSets = []          // 판마다 한 벌. 갈아탈 때만 둘이 겹친다(stepNebula)
+    this.fogTex = new Map()    // 판 색인 → 안개 텍스처 석 장 (한 번 구우면 남는다)
     this.dotTex = softDotTexture()
+    this.spikeTex = spikeStarTexture()
+    // 별 재질이 함께 쓰는 유니폼. **한 덩이를 모두가 공유한다** — 층이 여덟
+    // 개인데 층마다 따로 들고 있으면 판이 바뀔 때 여덟 군데를 같은 값으로
+    // 밀어야 하고, 한 군데만 빠뜨려도 그 층만 옛 판 색으로 남는다.
+    this.starU = {
+      uTime: { value: 0 },
+      uTint: { value: new THREE.Color(1, 1, 1) },   // 이번 판의 별빛
+      uMix: { value: 0 },                           // 얼마나 물들었나
+      uGain: { value: 1 },                          // 이번 판의 밝기 배율
+      // 화면 px 하한/상한. 하한이 없으면 줌아웃에서 뒤 층이 통째로 사라지고,
+      // 상한이 없으면 줌인에서 코앞 층이 20px짜리 솜뭉치가 된다(계측: 최대 줌
+      // 에서 z=-320 층이 21px, 스크린샷에서 붉은 구슬로 보였다).
+      // resize가 화면 배율을 곱해 다시 잡는다.
+      uPx: { value: new THREE.Vector2(1.3, 12) },
+    }
     this.buildStarLayers()
+    this.applyStarTone(1)      // 지금 판의 별빛을 페이드 없이 세운다
     this.stepNebula(99)        // 지금 판의 하늘을 페이드 없이 세운다
     this.buildGalaxy()
   }
@@ -1037,37 +1197,66 @@ export class SceneView {
   //
   // size는 **월드 단위**다(sizeAttenuation). 화면 px = size × scale ÷ 거리 이므로
   // 층이 멀수록 같은 굵기를 내려면 size를 그만큼 키워야 한다 — 뒤 층에 40을
-  // 주면 1px로 뭉개져 사라진다. 아래 값은 층마다 보통 별이 2~3px, 밝은 별이
-  // 5~6px로 찍히도록 거리에 비례해 잡은 것이다.
+  // 주면 1px로 뭉개져 사라진다. 아래 값은 층마다 보통 별이 3px 안팎, 밝은 별이
+  // 상한(12px)까지 차도록 거리에 비례해 잡은 것이다(기준 거리 dist≈13500, 높이 800px).
+  //
+  // 수를 2580개에서 9050개로 늘렸다. 반경도 같이 넓혔지만 **넓힌 것보다 더 많이**
+  // 늘려서 화면당 밀도가 오른다 — 예전 하늘은 별 사이가 너무 비어서 "점 몇 개
+  // 박힌 검은 판"이었다(계측: 같은 구역에서 별 229개 → 881개).
   buildStarLayers() {
     const layers = [
-      { n: 110, z: -900, r: 3000, size: 22, op: 0.55, tw: 0.30 },   // 가까운 먼지
-      { n: 700, z: -2400, r: 7000, size: 38, op: 1.0, tw: 0.16 },
-      { n: 820, z: -5200, r: 13000, size: 58, op: 0.88, tw: 0.11 },
-      { n: 950, z: -9800, r: 24000, size: 96, op: 0.72, tw: 0.07 },
+      { n: 300, z: -320, r: 5200, size: 66 },     // 코앞 — 시차가 제일 크다
+      { n: 400, z: -900, r: 8000, size: 78 },
+      { n: 1600, z: -2400, r: 12000, size: 100 },
+      { n: 1950, z: -5200, r: 20000, size: 126 },
+      { n: 2300, z: -9800, r: 32000, size: 166 },
+      { n: 2500, z: -17000, r: 52000, size: 224 },
     ]
     const c = new THREE.Color()
     let seed = 7
     for (const L of layers) {
       const rnd = skyRng(seed++)
-      const pos = new Float32Array(L.n * 3), col = new Float32Array(L.n * 3)
-      const siz = new Float32Array(L.n)
+      // 밝은 별은 **다른 점구름**으로 뺀다 — 회절 십자 텍스처를 써야 하는데
+      // 텍스처는 재질당 한 장뿐이라 같은 구름에 섞을 수가 없다.
+      const dim = { pos: [], col: [], siz: [], twk: [] }
+      const lit = { pos: [], col: [], siz: [], twk: [] }
       for (let i = 0; i < L.n; i++) {
         // sqrt 샘플링 = 원반 면적 균일. 중심(성계 위)에도 별이 깔린다
         const a = rnd() * Math.PI * 2
         const r = Math.sqrt(rnd()) * L.r
-        pos[i * 3] = Math.cos(a) * r; pos[i * 3 + 1] = Math.sin(a) * r
-        pos[i * 3 + 2] = L.z - rnd() * L.r * 0.06
         // 밝기는 멱분포에 가깝게 — 아주 밝은 몇 개가 하늘의 인상을 만든다
         const u = rnd()
-        const bright = u < 0.05 ? 1.0 : u < 0.20 ? 0.74 : 0.40 + rnd() * 0.30
+        const top = u < 0.045                       // 십자가 붙는 위 4.5%
+        const bright = top ? 1.0 : u < 0.28 ? 0.92 : 0.66 + rnd() * 0.26
         const [hue, sat] = starHue(rnd())
         c.setHSL(hue, sat, bright)
-        col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b
-        siz[i] = L.size * (0.6 + rnd() * (u < 0.05 ? 1.6 : 0.7))
+        // 반짝임 — **별 하나하나가 제 속도로** 뛴다. 예전에는 층 전체의
+        // 불투명도를 한꺼번에 흔들었는데(하늘이 통째로 숨 쉰다) 그건 화면에서
+        // 거의 안 읽혔다. 별마다 위상과 주기가 다르면 어디를 보고 있어도
+        // 시야 안 몇 개가 늘 뛰고 있다.
+        //   .x 위상   — 겹치지 않게 흩는다
+        //   .y 각속도 — 0.35~2.4 rad/s. 느린 별과 까부는 별이 섞인다
+        //   .z 진폭   — 밝은 별을 더 크게 흔든다(눈이 거기로 가므로)
+        const t = [rnd() * 6.283, 0.35 + rnd() * 2.05, (top ? 0.30 : 0.16) + rnd() * 0.34]
+        const g = top ? lit : dim
+        g.pos.push(Math.cos(a) * r, Math.sin(a) * r, L.z - rnd() * L.r * 0.06)
+        g.col.push(c.r, c.g, c.b)
+        g.siz.push(L.size * (top ? 1.7 + rnd() * 1.5 : 0.55 + rnd() * 0.85))
+        g.twk.push(t[0], t[1], t[2])
       }
-      this.addPoints(pos, col, siz, L.op, -12, L.tw)
+      this.addPoints(dim, 1, -12, this.dotTex)
+      this.addPoints(lit, 1, -11, this.spikeTex)
     }
+  }
+
+  // 판의 별빛 — 성운과 같은 시계로 민다(SKY_FADE). k는 이번 프레임에 밀 몫이고,
+  // 1을 주면 그 자리에 세운다(첫 프레임·런 이어받기).
+  applyStarTone(k) {
+    const S = SKY[this.skyIndex()].star
+    const u = this.starU
+    u.uTint.value.lerp(_c2.set(S.tint), k)
+    u.uMix.value += (S.mix - u.uMix.value) * k
+    u.uGain.value += (S.gain - u.uGain.value) * k
   }
 
   // ─── 성간 구름 — 판의 눈금 ──────────────────────────────────
@@ -1078,66 +1267,89 @@ export class SceneView {
   // 조명을 바꿔 끼웠다"로 읽히고, 그러면 판이 바뀐 줄을 모른다. 무늬·색·배치를
   // 한꺼번에 갈아야 다른 하늘이 된다.
   //
-  // 옛 겹은 페이드가 끝나면 텍스처까지 버린다(disposeNebulaSet) — 판이 끝없이
-  // 이어지는 게임이라 안 버리면 스프라이트와 캔버스가 판마다 아홉 장씩 쌓인다.
+  // 옛 겹은 페이드가 끝나면 스프라이트를 걷는다(disposeNebulaSet). 텍스처는
+  // 남긴다 — 굽는 데 판마다 60ms가 드는데(잡음을 CPU에서 돌린다) 판 색인은
+  // SKY.length에서 잘리므로 아무리 오래 굴려도 다섯 벌 열다섯 장이 전부다.
   skyIndex() {
     // 5판부터는 전부 마지막 한 벌이다. 1-기반 판 번호 → 0-기반 표 색인.
     return Math.min(Math.max(1, this.game?.stage ?? 1), SKY.length) - 1
   }
 
+  fogTexOf(idx) {
+    let t = this.fogTex.get(idx)
+    if (!t) {
+      const S = SKY[idx].shape
+      t = [fogTexture(3 + idx * 31, S), fogTexture(11 + idx * 31, S), fogTexture(29 + idx * 31, S)]
+      this.fogTex.set(idx, t)
+    }
+    return t
+  }
+
   buildNebulaSet(idx) {
     const S = SKY[idx]
-    // 배치와 무늬의 씨앗을 판마다 다르게 — 같은 판이면 언제나 같은 하늘이다.
+    // 배치의 씨앗을 판마다 다르게 — 같은 판이면 언제나 같은 하늘이다.
     const rnd = skyRng(41 + idx * 977)
-    const tex = [
-      nebulaTexture(3 + idx * 31, S.shape),
-      nebulaTexture(11 + idx * 31, S.shape),
-      nebulaTexture(29 + idx * 31, S.shape),
-    ]
+    const tex = this.fogTexOf(idx)
     const sprites = []
-    const add = (s, base, ph) => {
+    // spin — 아주 느린 회전(±0.004 rad/s). 안개는 **가만히 있으면 안 된다**:
+    // 별이 반짝이고 태양이 끓는 화면에서 배경만 정지해 있으면 그 판이 그림으로
+    // 보인다. 한 바퀴에 25분이니 프레임 사이로는 안 보이고, 한참 보고 있으면
+    // 결이 흘러간 것만 남는다.
+    const add = (s, base, ph, spin) => {
       s.renderOrder = -20
       this.scene.add(s)
-      sprites.push({ obj: s, base, ph })
+      sprites.push({ obj: s, base, ph, spin, rot: s.material.rotation })
     }
-    // ── 광역 물감 한 장 ──
-    // 조각 아홉 장은 프레임 **구석**에 색을 놓는다(중심에서 6000~19000 GU
-    // 떨어진 자리에 뿌려지므로). 그것만으로는 판이 바뀐 줄을 모른다: 정작 눈이
-    // 머무는 화면 가운데는 늘 검다. 그래서 성계 뒤를 통째로 덮는 한 장을 깐다 —
-    // 아주 흐리게, 아주 크게. 이 한 장이 "이번 판의 하늘색"을 정한다.
-    add(new THREE.Sprite(new THREE.SpriteMaterial({
-      map: tex[0], color: S.tone[0],
-      transparent: true, opacity: 0,
-      depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending,
-    })).translateZ(-21000), S.wash * S.gain, rnd() * 6.283)
-    sprites[0].obj.scale.setScalar(46000)
-    for (let i = 0; i < SKY_SETS; i++) {
-      const a = rnd() * Math.PI * 2
-      const d = (0.35 + rnd() * 0.8) * 17000
+    const piece = (i, base, scale, x, y, z) => {
       const s = new THREE.Sprite(new THREE.SpriteMaterial({
         map: tex[i % tex.length], color: S.tone[i % S.tone.length],
         transparent: true, opacity: 0,      // stepNebula가 가중치로 올린다
         depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending,
       }))
-      s.position.set(Math.cos(a) * d, Math.sin(a) * d * 0.72, -15000 - rnd() * 5000)
-      s.scale.setScalar(9000 + rnd() * 13000)
-      add(s, (S.op[0] + rnd() * S.op[1]) * S.gain, rnd() * 6.283)
+      // 텍스처는 석 장뿐인데 조각은 스물다섯이다. 돌리고 **늘려서** 쓰지
+      // 않으면 같은 무늬가 화면에 여러 번 찍힌 게 그대로 보인다 — 잡음 무늬는
+      // 얼룩과 달리 생김새가 뚜렷해서, 두 번째로 보이는 순간 "아까 그것"이
+      // 된다(스크린샷에서 같은 실뭉치가 셋 보였다). 회전에 가로세로 비를
+      // 얹으면 같은 장이 매번 다른 구름이 된다.
+      s.material.rotation = rnd() * 6.283
+      const ar = 0.68 + rnd() * 0.72
+      s.scale.set(scale * ar, scale / ar, 1)
+      s.position.set(x, y, z)
+      add(s, base, rnd() * 6.283, (rnd() - 0.5) * 0.008)
     }
-    return { idx, w: 0, sprites, tex, bg: S.bg }
+    // ── 광역 물감 — 한 장이 아니라 석 장 ──
+    // 조각들은 프레임 **구석**에 색을 놓는다(중심에서 6000~19000 GU 떨어진
+    // 자리에 뿌려지므로). 그것만으로는 판이 바뀐 줄을 모른다: 정작 눈이 머무는
+    // 화면 가운데가 늘 검다. 그래서 성계 뒤를 통째로 덮는 겹을 깐다.
+    //
+    // 예전에는 이게 46000짜리 **한 장**이었는데, 화면보다 큰 원 한 장은
+    // "하늘색"이 아니라 화면을 덮은 커다란 동그라미로 보였다(5판 스크린샷에서
+    // 붉은 공 한 덩이). 석 장을 어긋나게 겹치면 서로의 윤곽을 지운다.
+    for (let i = 0; i < 3; i++) {
+      const a = rnd() * Math.PI * 2, d = (0.3 + rnd()) * 9000
+      piece(i, S.wash * S.gain, 34000 + rnd() * 16000,
+        Math.cos(a) * d, Math.sin(a) * d * 0.7, -21000 - i * 900)
+    }
+    for (let i = 0; i < SKY_SETS; i++) {
+      const a = rnd() * Math.PI * 2
+      const d = (0.25 + rnd() * 0.95) * 19000
+      piece(i + 1, (S.op[0] + rnd() * S.op[1]) * S.gain, 8000 + rnd() * 15000,
+        Math.cos(a) * d, Math.sin(a) * d * 0.72, -15000 - rnd() * 5000)
+    }
+    return { idx, w: 0, sprites, bg: S.bg }
   }
 
   disposeNebulaSet(set) {
     for (const sp of set.sprites) { this.scene.remove(sp.obj); sp.obj.material.dispose() }
-    for (const t of set.tex) t.dispose()
   }
 
   // **실시간으로 민다.** 판이 넘어가는 그 순간은 막이 내려가 있어 게임 시계가
   // 멈춰 있거나 배속이 걸려 있는데(warpCurtain), 하늘이 그 시계를 타면
   // 8배속에서 0.4초에 끝나거나 조준 모드에서 영영 안 끝난다.
   //
-  // 반짝임도 여기서 준다(stepSky가 아니라). 저쪽은 base를 고정으로 보는데
-  // 이쪽의 base에는 교차 페이드 가중치가 곱해져 있어서, 두 군데가 같은
-  // 불투명도를 서로 덮어쓰게 된다.
+  // 안개의 숨(맥동)과 흐름(회전)도 여기서 준다. 조각의 불투명도에는 교차
+  // 페이드 가중치가 이미 곱해져 있으므로, 다른 데서 같은 값을 또 만지면 두
+  // 군데가 서로 덮어쓴다 — 이 하나가 그 값의 주인이다.
   stepNebula(dt) {
     const want = this.skyIndex()
     const sets = this.nebSets
@@ -1169,7 +1381,10 @@ export class SceneView {
     for (const s of sets) {
       const w = s.w * k
       for (const sp of s.sprites) {
-        sp.obj.material.opacity = sp.base * w * (1 + Math.sin(this.skyT * 0.55 + sp.ph) * 0.05)
+        sp.obj.material.opacity = sp.base * w * (1 + Math.sin(this.skyT * 0.55 + sp.ph) * 0.14)
+        // 아주 느린 회전 — 조각마다 방향과 속도가 다르므로 겹친 자리의 무늬가
+        // 계속 어긋나며 바뀐다. 한 장씩 보면 도는 건데 겹쳐 놓으면 **흐른다.**
+        sp.obj.material.rotation = sp.rot + this.skyT * sp.spin
       }
       // 씬 배경(가장 뒤의 검정)도 하늘의 일부다 — 같은 가중치로 섞는다.
       this.scene.background.add(_c2.set(s.bg).multiplyScalar(w))
@@ -1212,8 +1427,15 @@ export class SceneView {
     const rnd = skyRng(97)
     const ARMS = 4, SWEEP = Math.PI * 2.05, R0 = 2600, R1 = 34000
     const N = 5200
-    const pos = new Float32Array(N * 3), col = new Float32Array(N * 3)
-    const siz = new Float32Array(N)
+    // 은하는 **판의 눈금에서 빠진다.** 붙박인 지형이라 판마다 색이 갈리면
+    // 정말로 "여기가 어디였지"가 사라진다 — 그래서 물들이는 몫을 0으로 못박은
+    // 유니폼을 따로 쥐여 준다. 반짝임(uTime)만 별밭과 같이 쓴다: 은하의 별도
+    // 별이므로 저기만 멎어 있으면 그게 더 이상하다.
+    const gu = {
+      uTime: this.starU.uTime, uTint: this.starU.uTint,
+      uMix: { value: 0 }, uGain: { value: 1 }, uPx: this.starU.uPx,
+    }
+    const disc = { pos: [], col: [], siz: [], twk: [] }
     const c = new THREE.Color()
     for (let i = 0; i < N; i++) {
       const arm = i % ARMS
@@ -1227,53 +1449,60 @@ export class SceneView {
       const jr = (rnd() + rnd() - 1) * r * 0.16
       const a = th + jt
       const rr = r + jr
-      pos[i * 3] = Math.cos(a) * rr
-      pos[i * 3 + 1] = Math.sin(a) * rr
-      pos[i * 3 + 2] = (rnd() + rnd() - 1) * 900                 // 원반 두께
       // 안쪽은 늙어서 노랗고 바깥 팔은 젊어서 푸르다
       const u = rnd()
-      const [hue, sat] = t < 0.28 ? [0.10, 0.45] : starHue(u * 0.7)
+      const [hue, sat] = t < 0.28 ? [0.10, 0.52] : starHue(u * 0.7)
       c.setHSL(hue, sat, u < 0.05 ? 0.92 : 0.34 + rnd() * 0.28)
-      col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b
+      disc.pos.push(Math.cos(a) * rr, Math.sin(a) * rr, (rnd() + rnd() - 1) * 900)  // 원반 두께
+      disc.col.push(c.r, c.g, c.b)
       // 36000쯤 떨어져 있으므로 화면에서 1.5~3px이 되려면 이 정도가 필요하다
-      siz[i] = 150 + rnd() * (u < 0.05 ? 420 : 170)
+      disc.siz.push(150 + rnd() * (u < 0.05 ? 420 : 170))
+      // 은하의 별은 아주 얕게만 뛴다 — 3만 6천 밖의 점이 화면에서 껌뻑이면
+      // 그건 별이 아니라 잡티로 보인다.
+      disc.twk.push(rnd() * 6.283, 0.25 + rnd() * 1.1, 0.08 + rnd() * 0.16)
     }
-    g.add(this.makePoints(pos, col, siz, 0.78, -24))
+    g.add(this.makePoints(disc, 0.82, -24, this.dotTex, gu))
 
     // 헐로 — 원반 밖에 흩뿌려진 늙은 별. 원반의 경계를 흐려 준다.
-    const H = 1100
-    const hp = new Float32Array(H * 3), hc = new Float32Array(H * 3), hs = new Float32Array(H)
-    for (let i = 0; i < H; i++) {
+    const halo = { pos: [], col: [], siz: [], twk: [] }
+    for (let i = 0; i < 1100; i++) {
       const a = rnd() * Math.PI * 2
       const r = Math.pow(rnd(), 0.5) * R1 * 1.25
-      hp[i * 3] = Math.cos(a) * r
-      hp[i * 3 + 1] = Math.sin(a) * r
-      hp[i * 3 + 2] = (rnd() + rnd() - 1) * R1 * 0.22
-      c.setHSL(0.09, 0.35, 0.22 + rnd() * 0.20)
-      hc[i * 3] = c.r; hc[i * 3 + 1] = c.g; hc[i * 3 + 2] = c.b
-      hs[i] = 140 + rnd() * 170
+      c.setHSL(0.09, 0.42, 0.22 + rnd() * 0.20)
+      halo.pos.push(Math.cos(a) * r, Math.sin(a) * r, (rnd() + rnd() - 1) * R1 * 0.22)
+      halo.col.push(c.r, c.g, c.b)
+      halo.siz.push(140 + rnd() * 170)
+      halo.twk.push(rnd() * 6.283, 0.2 + rnd() * 0.9, 0.08 + rnd() * 0.14)
     }
-    g.add(this.makePoints(hp, hc, hs, 0.5, -25))
+    g.add(this.makePoints(halo, 0.52, -25, this.dotTex, gu))
 
     // 팔의 성간 먼지 — 은하를 은하로 읽히게 하는 건 사실 **점 사이의 빛**이다.
     // 점만 찍으면 아무리 나선을 잘 그려도 흩뿌린 모래로 보인다. 팔을 따라
     // 흐린 얼룩을 앉혀 점들 사이를 메워 준다.
     // 팔의 먼지는 **판과 무관하다.** 은하는 붙박인 지형이라 판마다 갈리면
-    // "여기가 어디였지"가 사라진다 — 그래서 기본 무늬(shape 없음)를 쓴다.
-    const haze = [nebulaTexture(5), nebulaTexture(17)]
-    for (let i = 0; i < 16; i++) {
+    // "여기가 어디였지"가 사라진다 — 그래서 판의 무늬가 아닌 제 무늬를 쓴다.
+    // 해상도는 절반이면 된다(128). 어차피 팔을 따라 문지르는 흐린 겹이라
+    // 결이 필요 없고, 굽는 값이 넷으로 준다.
+    // 결은 거의 없다시피 잡는다(wisp 0.10, scale 1.6). 팔의 먼지에 생김새가
+    // 생기면 그게 화면 구석에서 **알아볼 수 있는 무늬**가 되고, 같은 장이 팔
+    // 넷에 스물두 번 찍히므로 그 순간 배경이 벽지가 된다.
+    const HAZE = { scale: 1.6, warp: 1.2, spread: 1.0, edge: 0.30, wisp: 0.10 }
+    const haze = [fogTexture(5, HAZE, 128), fogTexture(17, HAZE, 128)]
+    for (let i = 0; i < 22; i++) {
       const arm = i % ARMS
-      const t = 0.12 + (i / 16) * 0.88
+      const t = 0.12 + (i / 22) * 0.88
       const th = t * SWEEP + arm * (Math.PI * 2 / ARMS) + (rnd() - 0.5) * 0.16
       const r = R0 + t * (R1 - R0)
       const s = new THREE.Sprite(new THREE.SpriteMaterial({
         map: haze[i % haze.length],
         color: t < 0.3 ? 0xffc27a : (i % 3 ? 0x6f9bdd : 0x8d6fd0),
-        transparent: true, opacity: 0.13 + rnd() * 0.07,
+        transparent: true, opacity: 0.10 + rnd() * 0.06,
         depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending,
       }))
+      s.material.rotation = rnd() * 6.283
       s.position.set(Math.cos(th) * r, Math.sin(th) * r, 0)
-      s.scale.setScalar(7000 + t * 15000)
+      const sc = 7000 + t * 15000, ar = 0.7 + rnd() * 0.7
+      s.scale.set(sc * ar, sc / ar, 1)
       s.renderOrder = -25
       g.add(s)
     }
@@ -1299,23 +1528,72 @@ export class SceneView {
     this.galaxy = g
   }
 
-  // 점구름 하나 만들기 — 별마다 크기가 다르므로 셰이더를 한 줄 손본다
-  // (PointsMaterial은 size가 재질 전체에 하나뿐이다).
-  makePoints(pos, col, siz, opacity, order) {
+  // ─── 점구름 한 벌 ───────────────────────────────────────────
+  // PointsMaterial은 size도 색도 재질 전체에 하나씩뿐이라, 별마다 다르게 하려면
+  // 셰이더를 손봐야 한다. **전용 ShaderMaterial을 새로 쓰지 않고** 기성 재질에
+  // 끼워 넣는 이유는 톤매핑·색공간 때문이다: 렌더러가 ACES + sRGB로 굴고 있는데
+  // 날 셰이더를 쓰면 그 두 겹이 빠져서 별만 다른 감마로 그려진다.
+  //
+  // 끼워 넣는 것은 넷이다.
+  //   aSize — 별 하나의 굵기(월드 단위)
+  //   aTwk  — 반짝임 (위상, 각속도, 진폭)
+  //   uTint/uMix/uGain — 이번 판의 별빛 (SKY.star)
+  //   uPx   — 화면 px 하한·상한
+  makePoints(g, opacity, order, map, uni) {
     const geo = new THREE.BufferGeometry()
-    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3))
-    geo.setAttribute('color', new THREE.BufferAttribute(col, 3))
-    geo.setAttribute('aSize', new THREE.BufferAttribute(siz, 1))
+    geo.setAttribute('position', new THREE.BufferAttribute(Float32Array.from(g.pos), 3))
+    geo.setAttribute('color', new THREE.BufferAttribute(Float32Array.from(g.col), 3))
+    geo.setAttribute('aSize', new THREE.BufferAttribute(Float32Array.from(g.siz), 1))
+    geo.setAttribute('aTwk', new THREE.BufferAttribute(Float32Array.from(g.twk), 3))
     geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e6)
     const mat = new THREE.PointsMaterial({
-      size: 1, sizeAttenuation: true, vertexColors: true, map: this.dotTex,
+      size: 1, sizeAttenuation: true, vertexColors: true, map,
       transparent: true, opacity, depthWrite: false, depthTest: false,
       blending: THREE.AdditiveBlending,
     })
+    const u = uni || this.starU
     mat.onBeforeCompile = (sh) => {
+      sh.uniforms.uTime = u.uTime
+      sh.uniforms.uTint = u.uTint
+      sh.uniforms.uMix = u.uMix
+      sh.uniforms.uGain = u.uGain
+      sh.uniforms.uPx = u.uPx
       sh.vertexShader = sh.vertexShader
-        .replace('void main() {', 'attribute float aSize;\nvoid main() {')
-        .replace('gl_PointSize = size;', 'gl_PointSize = aSize;')
+        .replace('void main() {', `
+attribute float aSize;
+attribute vec3 aTwk;
+uniform float uTime;
+uniform vec3 uTint;
+uniform float uMix;
+uniform float uGain;
+uniform vec2 uPx;
+void main() {
+  // 주기가 서로 안 맞는 두 사인을 겹친다. 하나만 쓰면 아무리 위상을 흩어도
+  // 오래 보고 있으면 박자가 읽힌다 — 별이 아니라 표시등으로 보인다.
+  float w = sin(uTime * aTwk.y + aTwk.x) * 0.66
+          + sin(uTime * aTwk.y * 0.37 + aTwk.x * 1.7) * 0.34;
+  float twk = 1.0 + w * aTwk.z;`)
+        .replace('#include <color_vertex>', `#include <color_vertex>
+  {
+    // 판의 색으로 물들이되 **밝기는 지킨다.** 그냥 섞으면(mix) 어두운 판
+    // 색에 밝은 별이 끌려 내려가 하늘이 통째로 어두워진다. 제 밝기를 뽑아
+    // 물든 색에 도로 실어 주면 색만 갈리고 밝기 분포는 그대로 남는다.
+    vec3 L = vec3(0.2126, 0.7152, 0.0722);
+    vec3 tinted = uTint * (dot(vColor, L) / max(0.04, dot(uTint, L)));
+    // **제 색이 뚜렷한 별은 덜 물든다.** 모두 똑같이 물들였더니 붉은 별과
+    // 푸른 판이 섞여 잿빛이 됐다(계측: 색 있는 픽셀 비율 36% → 9%). 판의
+    // 색은 어차피 수가 많은 흰 별들이 지면 되고, 색이 있는 소수는 그 색으로
+    // 남아야 한다 — 이 하늘에서 눈에 띄어야 하는 것이 그쪽이므로.
+    float mx = max(vColor.r, max(vColor.g, vColor.b));
+    float mn = min(vColor.r, min(vColor.g, vColor.b));
+    float sat = mx > 0.001 ? (mx - mn) / mx : 0.0;
+    vColor = mix(vColor, tinted, uMix * (1.0 - sat * 0.8)) * uGain * (0.62 + 0.38 * twk);
+  }`)
+        // 굵기도 같이 뛴다. 밝기만 흔들면 점이 켜졌다 꺼지고, 굵기까지 얹으면
+        // 부풀었다 오므라든다 — 뒤쪽이 별처럼 보인다.
+        .replace('gl_PointSize = size;', 'gl_PointSize = aSize * (0.80 + 0.20 * twk);')
+        .replace('#include <logdepthbuf_vertex>',
+          'gl_PointSize = clamp(gl_PointSize, uPx.x, uPx.y);\n\t#include <logdepthbuf_vertex>')
     }
     const pts = new THREE.Points(geo, mat)
     pts.frustumCulled = false
@@ -1323,21 +1601,26 @@ export class SceneView {
     return pts
   }
 
-  addPoints(pos, col, siz, opacity, order, tw) {
-    const pts = this.makePoints(pos, col, siz, opacity, order)
+  addPoints(g, opacity, order, map) {
+    if (!g.pos.length) return
+    const pts = this.makePoints(g, opacity, order, map)
     this.scene.add(pts)
-    this.sky.push({ obj: pts, base: opacity, tw, ph: Math.random() * 6.283 })
+    this.sky.push(pts)      // 별밭 등록부 — 지금은 세워 두는 것이 전부다
   }
 
-  // 반짝임 — 층마다 위상이 다른 아주 느린 맥동. 별 하나하나가 깜빡이는 게
-  // 아니라 하늘 전체가 미세하게 숨 쉰다. 층이 어긋나 있어서 규칙이 안 읽힌다.
+  // 반짝임은 이제 셰이더가 별마다 따로 준다(makePoints). 여기서는 그 시계만
+  // 밀고, 판이 바뀌었으면 별빛을 그쪽으로 당긴다.
+  //
+  // **실시간이다.** 판이 넘어가는 순간은 막이 내려가 게임 시계가 멈춰 있거나
+  // 배속이 걸려 있는데(warpCurtain), 하늘이 그 시계를 타면 8배속에서 0.4초에
+  // 끝나거나 조준 모드에서 영영 안 끝난다 — stepNebula와 같은 이유다.
   stepSky(dt) {
     if (!this.sky) return
     this.skyT = (this.skyT ?? 0) + dt
-    for (const s of this.sky) {
-      if (!s.tw) continue
-      s.obj.material.opacity = s.base * (1 + Math.sin(this.skyT * 0.55 + s.ph) * s.tw)
-    }
+    this.starU.uTime.value = this.skyT
+    // 지수 수렴. SKY_FADE만큼 지나면 95%가 넘어가 있고, dt가 아무리 커도
+    // (탭을 다시 켠 프레임) 지나치지 않는다.
+    this.applyStarTone(1 - Math.pow(0.05, dt / SKY_FADE))
   }
 
   // 태양 — 네 겹. 각각이 하는 일은 sunTexture 주석에 있다.
@@ -1403,6 +1686,12 @@ export class SceneView {
   resize() {
     this.renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1))
     this.renderer.setSize(innerWidth, innerHeight)
+    // gl_PointSize는 **장치 픽셀**이다 — 하한·상한을 CSS px로 두면 레티나에서
+    // 별이 절반 크기로 잘린다. 여기서 화면 배율을 곱해 둔다.
+    if (this.starU) {
+      const pr = this.renderer.getPixelRatio()
+      this.starU.uPx.value.set(1.3 * pr, 12 * pr)
+    }
     this.rig.update(0)
   }
 
