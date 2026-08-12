@@ -623,16 +623,98 @@ const SUN_TONE = {
   glowCalm: 0xffc270, glowEmber: 0xff5324,   // 코로나
   lightCalm: 0xffe6b0, lightEmber: 0xff9060,  // 실제 광원
 }
-// 하늘 뒤편 — 청록·남보라·자홍(평시)에서 **검붉은 피색**(5판부터)으로.
-// 성운은 원래 판의 색과 부딪히지 않게 눌러 놓은 물건인데(buildNebulae),
-// 5판부터는 반대로 **눈에 띄어야** 한다. 그래서 색만 바꾸는 게 아니라
-// 불투명도도 같이 올린다(EMBER_NEB_GAIN) — 위험해 보이는 것은 색이 아니라
-// "배경이 앞으로 나왔다"는 사실이다.
-const NEB_CALM = [0x2a4a8f, 0x175c6b, 0x4a2a6e, 0x1f3f7a, 0x5c2a55]
-const NEB_EMBER = [0xb01c1c, 0x7a0a1e, 0xd4381a, 0x8f1230, 0xe0512a]
-const EMBER_NEB_GAIN = 2.05                 // 5판의 성운 불투명도 배율
-const SKY_CALM = 0x03060f, SKY_EMBER = 0x100307   // 씬 배경(가장 뒤)
 const AMB_CALM = 0x8fb4ff, AMB_EMBER = 0xd08a86  // 환경광 — 살짝만 민다
+
+// ─── 판마다 다른 하늘 ───────────────────────────────────────────
+// 성운을 **판의 눈금**으로 쓴다. 판 번호는 패널 구석의 칩 하나로만 뜨는데
+// (ui.stage) 관측 모드에서는 그 패널이 사라지므로, 지금 몇 판인지가 화면에서
+// 통째로 없어진다. 하늘이 판마다 다르면 그 답이 배경에 늘 적혀 있다.
+//
+// **실제 성운을 본뜬다.** 색을 아무렇게나 다섯 벌 뽑을 수도 있지만, 실제
+// 성운은 이미 "차가운 것 → 뜨거운 것"의 순서를 갖고 있다(전리된 산소의 청록에서
+// 수소 알파의 붉음까지). 그 순서를 그대로 판 순서로 쓰면 색이 저절로 압력의
+// 눈금이 된다 — 1판의 하늘과 5판의 하늘을 나란히 두면 무엇이 더 위험한
+// 판인지가 설명 없이 읽힌다. 게다가 아는 사람에게는 이름까지 읽힌다.
+//
+// 무늬도 같이 간다(nebulaTexture의 shape). 색만 갈면 "같은 구름에 조명만
+// 바꿔 끼웠다"로 보이므로, 그 성운이 실제로 어떤 모양인지까지 흉내 낸다.
+//
+// 5판부터는 **전부 같은 하늘**이다. 판에 끝이 없으므로(엔들리스) 계속 갈면
+// 색이 한 바퀴 돌아 6판이 1판보다 평온해 보인다 — 압력의 눈금이 거꾸로 간다.
+// 마지막 한 벌에서 멎는 것이 STAGE_CAP과 같은 이유다.
+// ── 순서는 **색온도**가 정한다 ──
+// 파랑 → 청록 → 금빛 → 주황 → 진홍. 실제 성운을 다섯 골라 그 순서에 꽂은
+// 것이지, 순서를 성운에 맞춘 게 아니다. 이유는 하나다: 두 하늘을 나란히 놓고
+// 어느 쪽이 더 나중 판인지 **설명 없이** 알 수 있어야 한다. 색상환을 왔다
+// 갔다 하면(파랑 → 금빛 → 청록) 이름은 맞아도 눈금이 되지 않는다.
+const SKY = [
+  {
+    // 1판 — **오리온 대성운 M42.** 육안으로 보이는 유일한 성운이고 아마추어
+    // 사진에서 제일 먼저 찍는 대상이다. 규칙을 배우는 판의 하늘로 맞다.
+    // 색은 그 사진의 인상 그대로 남보라와 파랑이고, 무늬는 그냥 부푼 구름이다
+    // (특징이 없는 것이 1판의 특징이다 — 다음 넷과 견줄 기준선이 필요하다).
+    name: 'Orion M42',
+    tone: [0x2f62d0, 0x2478c4, 0x4838c8, 0x2a56b4, 0x6248c8],
+    bg: 0x03060f,
+    op: [0.15, 0.11], wash: 0.20, gain: 1,
+    shape: { blobs: 52, spread: 0.32, lobes: 1, ring: 0, wisp: 0 },
+  },
+  {
+    // 2판 — **나선 성운 NGC 7293, 「신의 눈」.** 바깥 요새가 처음 오는 판이고,
+    // 그 하늘에 눈이 하나 떠 있다. 가운데가 비고 테두리가 밝은 껍데기(ring)가
+    // 그 눈이다 — 실제로 이 성운은 죽은 별이 뿜어낸 껍질이라 그렇게 생겼다.
+    // 청록 껍질에 붉은 테가 도는 것도 실제 색이다.
+    name: 'Helix NGC 7293',
+    tone: [0x18b09a, 0xc4602a, 0x22c0a8, 0x9a4a2a, 0x2aa890],
+    bg: 0x021009,
+    op: [0.15, 0.11], wash: 0.20, gain: 1.1,
+    shape: { blobs: 26, spread: 0.20, lobes: 1, ring: 1, wisp: 4 },
+  },
+  {
+    // 3판 — **독수리 성운 M16, 창조의 기둥.** 특이점과 회피 추진기가 나오는
+    // 판. 허블 팔레트의 그 금빛 기둥과 뒤의 청록을 쓰고, 무늬는 필라멘트를
+    // 열 가닥 세워 기둥이 서 있는 느낌을 만든다.
+    name: 'Eagle M16',
+    tone: [0xd09a3a, 0x2b8f9c, 0xe0b046, 0xa87a38, 0xc08a44],
+    bg: 0x0a0904,
+    op: [0.15, 0.11], wash: 0.21, gain: 1.2,
+    shape: { blobs: 32, spread: 0.26, lobes: 1, ring: 0, wisp: 10 },
+  },
+  {
+    // 4판 — **용골자리 성운 NGC 3372.** 모함이 오는 판. 에타 카리나가 뿜어낸
+    // 모래시계(lobes 2)와 주황·자홍이 이 성운의 인상이고, 하늘이 여기서
+    // 확실히 **뜨거운 쪽으로** 넘어간다 — 다음이 붉음이라는 예고다.
+    name: 'Carina NGC 3372',
+    // 색이 어두운 쪽으로 몰려 있어서(주황 + 자홍) 배율을 그대로 두면 3판(금빛)
+    // 보다 하늘이 어두워 보인다 — 눈금이 한 칸 거꾸로 간다. 여기만 배율을
+    // 한 단 더 올려 밝기가 판 순서대로 오르게 맞춘다.
+    tone: [0xd8722e, 0xb84268, 0xe88a38, 0x8f3574, 0xc85c32],
+    bg: 0x0d0609,
+    op: [0.15, 0.11], wash: 0.23, gain: 1.58,
+    shape: { blobs: 44, spread: 0.34, lobes: 2, ring: 0, wisp: 7 },
+  },
+  {
+    // 5판부터 — **하트 성운 IC 1805.** 수소 알파 한 색으로 타는 성운이라
+    // 사진이 통째로 진홍이다. 초엘리트가 서고 태양이 주홍으로 넘어가는 그
+    // 판의 하늘이고, 이 뒤로는 안 바뀐다.
+    //
+    // 여기만 배율을 두 배 가까이 올린다(gain). 성운은 원래 판의 색과 부딪히지
+    // 않게 눌러 두는 물건인데 이 판부터는 반대로 **눈에 띄어야** 한다 —
+    // 위험해 보이는 것은 색이 아니라 "배경이 앞으로 나왔다"는 사실이다.
+    name: 'Heart IC 1805',
+    tone: [0xc41c1c, 0x8a0a22, 0xe0381a, 0x9f1234, 0xf0512a],
+    bg: 0x120306,
+    op: [0.15, 0.10], wash: 0.24, gain: 1.85,
+    shape: { blobs: 58, spread: 0.30, lobes: 1, ring: 0.55, wisp: 5 },
+  },
+]
+// op   — 조각 하나의 불투명도 [기준, 흔들 폭]
+// wash — 성계 뒤를 통째로 덮는 광역 한 장의 불투명도(buildNebulaSet 주석)
+// gain — 그 판의 전체 배율. 판이 거듭될수록 하늘이 조금씩 앞으로 나온다.
+const SKY_SETS = 9                          // 한 하늘에 깔리는 성운 조각 수 (광역 한 장은 별도)
+// 하늘이 갈리는 데 걸리는 시간(실시간 초). 판이 열리는 막이 그보다 길어서
+// (openHold: 스폰 + 뜸) 조작이 넘어올 때는 이미 다 갈려 있다.
+const SKY_FADE = 3.4
 // 넘어가는 데 걸리는 시간(실시간 초). 판이 열리는 막이 그보다 길어서
 // (openHold: 스폰 + 뜸) 조작이 넘어올 때는 이미 다 넘어가 있다.
 const EMBER_FADE = 3.4
@@ -646,8 +728,13 @@ const _c2 = new THREE.Color()
 // 아니다. 층을 z로 크게 벌려 두는 것(-900 ~ -34000)이 시차의 전부다:
 // 가까운 먼지는 성큼성큼 흐르고, 은하 원반은 거의 붙박여 있는다.
 //
-// 하늘은 매번 같아야 한다(시드 고정). 판은 날마다 달라지지만 하늘까지 흔들리면
-// 스크린샷끼리 비교가 안 되고, 무엇보다 "여기가 어디였지"가 사라진다.
+// 하늘은 **시드로 흔들지 않는다.** 판은 날마다 달라지지만 하늘까지 무작위로
+// 흔들리면 스크린샷끼리 비교가 안 되고, 무엇보다 "여기가 어디였지"가 사라진다.
+//
+// 다만 **판 번호에 따라서는 바뀐다**(SKY 표). 무작위가 아니라 눈금이므로 위의
+// 이유와 부딪히지 않는다 — 같은 판이면 언제나 같은 하늘이고, 하늘이 다르면
+// 판이 다르다. 별밭과 은하는 그 눈금에서 빠진다: 그 둘은 붙박인 지형이라
+// 판마다 갈리면 정말로 "여기가 어디였지"가 사라진다.
 const skyRng = (seed) => {
   let s = (seed * 2654435761 + 1013904223) >>> 0
   return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296)
@@ -674,16 +761,46 @@ function softDotTexture(size = 64) {
 // 성운 한 조각 — 부드러운 얼룩을 여러 겹 겹쳐 뭉게구름을 만든다.
 // 값비싼 노이즈 대신 반투명 원 수십 개면 충분하다: 어차피 화면에서 수천 px로
 // 늘어나 흐려지므로, 필요한 건 "가장자리가 균일하지 않다"는 것뿐이다.
-function nebulaTexture(seed = 1) {
-  const S = 256
+//
+// ── 무늬를 파라미터로 뺀 이유 ──────────────────────────────────
+// 판마다 다른 하늘을 주려면 색만 갈아서는 부족하다. 색만 바꾸면 "같은 구름에
+// 조명을 바꿔 끼웠다"로 읽히고, 실제로 판이 바뀐 줄은 알기 어렵다(계측 대신
+// 눈으로 확인한 것이다 — 5판 전환에서 검붉게만 바뀐 화면이 그랬다).
+// 그래서 실제 성운의 **생김새**를 넷으로 갈라 흉내 낸다:
+//   blobs/spread — 뭉게뭉게한 정도와 퍼진 반경 (오리온처럼 부푼 구름)
+//   lobes        — 중심이 하나냐 둘이냐 (용골자리의 모래시계)
+//   ring         — 껍데기 고리 (나선 성운의 눈, 하트 성운의 외곽)
+//   wisp         — 길고 가는 필라멘트 (창조의 기둥, 베일 성운의 실오라기)
+// 넷을 섞으면 SKY 표의 다섯 하늘이 나온다.
+function nebulaTexture(seed = 1, shape = {}) {
+  const { blobs = 46, spread = 0.30, lobes = 1, ring = 0, wisp = 0 } = shape
+  const S = 256, H = S / 2
   const c = document.createElement('canvas'); c.width = c.height = S
   const g = c.getContext('2d')
   const rnd = skyRng(seed)
   g.globalCompositeOperation = 'lighter'
-  for (let i = 0; i < 46; i++) {
+  // 중심 — 하나면 가운데, 둘이면 좌우로 벌린다(모래시계 성운)
+  const cores = []
+  for (let k = 0; k < lobes; k++) {
+    const t = lobes > 1 ? (k / (lobes - 1)) * 2 - 1 : 0
+    cores.push({ x: H + t * S * 0.13, y: H - t * S * 0.07 })
+  }
+  // ── 껍데기 고리 ──
+  // 실제로 껍데기를 뿜은 성운(행성상 성운·수소 껍질)은 가운데가 비어 있고
+  // 테두리가 밝다. 반경 0.34S에서 정점을 찍는 가락으로 그 고리를 만든다.
+  if (ring > 0) {
+    const grd = g.createRadialGradient(H, H, S * 0.14, H, H, S * 0.46)
+    grd.addColorStop(0, 'rgba(255,255,255,0)')
+    grd.addColorStop(0.42, `rgba(255,255,255,${(0.16 * ring).toFixed(3)})`)
+    grd.addColorStop(0.62, `rgba(255,255,255,${(0.09 * ring).toFixed(3)})`)
+    grd.addColorStop(1, 'rgba(255,255,255,0)')
+    g.fillStyle = grd; g.fillRect(0, 0, S, S)
+  }
+  for (let i = 0; i < blobs; i++) {
     // 중심 쪽에 몰아 둔다 — 가장자리까지 꽉 차면 사각형 경계가 드러난다
-    const a = rnd() * Math.PI * 2, d = Math.pow(rnd(), 0.7) * S * 0.3
-    const x = S / 2 + Math.cos(a) * d, y = S / 2 + Math.sin(a) * d
+    const core = cores[i % cores.length]
+    const a = rnd() * Math.PI * 2, d = Math.pow(rnd(), 0.7) * S * spread
+    const x = core.x + Math.cos(a) * d, y = core.y + Math.sin(a) * d
     const r = S * (0.06 + rnd() * 0.22)
     const alpha = 0.05 + rnd() * 0.10
     const grd = g.createRadialGradient(x, y, 0, x, y, r)
@@ -693,9 +810,29 @@ function nebulaTexture(seed = 1) {
     g.fillStyle = grd
     g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill()
   }
+  // ── 필라멘트 ──
+  // 곧은 선이 아니라 두 마디로 꺾인 가락이다. 성운의 실오라기는 자기장을 따라
+  // 휘므로, 직선을 그으면 그건 성운이 아니라 긁힌 자국으로 보인다.
+  for (let i = 0; i < wisp; i++) {
+    const core = cores[i % cores.length]
+    const a = rnd() * Math.PI * 2
+    const len = S * (0.18 + rnd() * 0.24)
+    const x0 = core.x + Math.cos(a) * S * spread * 0.5
+    const y0 = core.y + Math.sin(a) * S * spread * 0.5
+    const bend = (rnd() - 0.5) * 1.1
+    g.strokeStyle = `rgba(255,255,255,${(0.05 + rnd() * 0.07).toFixed(3)})`
+    g.lineWidth = S * (0.012 + rnd() * 0.03)
+    g.lineCap = 'round'
+    g.beginPath()
+    g.moveTo(x0, y0)
+    g.quadraticCurveTo(
+      x0 + Math.cos(a + bend) * len * 0.6, y0 + Math.sin(a + bend) * len * 0.6,
+      x0 + Math.cos(a + bend * 1.8) * len, y0 + Math.sin(a + bend * 1.8) * len)
+    g.stroke()
+  }
   // 사각 경계를 확실히 지운다 — 큰 스프라이트에서는 이 한 겹이 전부다
   g.globalCompositeOperation = 'destination-in'
-  const mask = g.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2)
+  const mask = g.createRadialGradient(H, H, 0, H, H, H)
   mask.addColorStop(0, 'rgba(255,255,255,1)')
   mask.addColorStop(0.62, 'rgba(255,255,255,.85)')
   mask.addColorStop(1, 'rgba(255,255,255,0)')
@@ -757,10 +894,9 @@ export class SceneView {
     this.texCache = new Map()
     this.circuitCache = new Map()   // 요새 표면의 회로 불빛 (팔레트 번호별)
 
-    // 5스테이지의 검붉은 하늘 — 0이 평시, 1이 다 넘어간 상태.
+    // 5스테이지의 주홍 태양 — 0이 평시, 1이 다 넘어간 상태.
     // 첫 프레임에 한 번 적용해 두고(applyEmber) 그 뒤로는 바뀔 때만 민다.
     this.ember = -1
-    this.emberWant = 0
 
     this.buildSky()
     this.buildSun()
@@ -872,9 +1008,11 @@ export class SceneView {
   // 놓았다. 배경이 눈에 띄는 순간 그건 배경이 아니다.
   buildSky() {
     this.sky = []
+    this.skyT = 0
+    this.nebSets = []          // 판마다 한 벌. 갈아탈 때만 둘이 겹친다(stepNebula)
     this.dotTex = softDotTexture()
     this.buildStarLayers()
-    this.buildNebulae()
+    this.stepNebula(99)        // 지금 판의 하늘을 페이드 없이 세운다
     this.buildGalaxy()
   }
 
@@ -915,46 +1053,120 @@ export class SceneView {
     }
   }
 
-  // 성간 구름 — 하늘에 색을 넣는 유일한 물건. 청록·남보라·자홍 셋만 쓴다
-  // (판의 색과 부딪히지 않는 범위다). 크게, 흐리게, 드문드문.
-  buildNebulae() {
-    const rnd = skyRng(41)
-    const tex = [nebulaTexture(3), nebulaTexture(11), nebulaTexture(29)]
-    // 성운은 5스테이지에 검붉게 넘어간다(stepEmber). 그래서 색을 재질에만
-    // 두지 않고 **평시색과 5판색을 짝으로** 들고 있는다 — 물들이는 쪽이 그
-    // 둘 사이를 섞는다. 여기서 색을 한 벌만 굽고 나중에 곱하면, 청록에 붉음을
-    // 곱해 탁한 갈색이 나온다.
-    this.nebulae = []
-    for (let i = 0; i < 9; i++) {
+  // ─── 성간 구름 — 판의 눈금 ──────────────────────────────────
+  // 하늘에 색을 넣는 유일한 물건이고, 이제 **판마다 다른 성운**이다(SKY 표).
+  //
+  // 갈아타는 방식이 이 구조의 전부다: 색만 섞지 않고 **겹을 통째로 새로
+  // 만들어 교차 페이드한다.** 색만 섞으면 무늬가 그대로 남아서 "같은 구름에
+  // 조명을 바꿔 끼웠다"로 읽히고, 그러면 판이 바뀐 줄을 모른다. 무늬·색·배치를
+  // 한꺼번에 갈아야 다른 하늘이 된다.
+  //
+  // 옛 겹은 페이드가 끝나면 텍스처까지 버린다(disposeNebulaSet) — 판이 끝없이
+  // 이어지는 게임이라 안 버리면 스프라이트와 캔버스가 판마다 아홉 장씩 쌓인다.
+  skyIndex() {
+    // 5판부터는 전부 마지막 한 벌이다. 1-기반 판 번호 → 0-기반 표 색인.
+    return Math.min(Math.max(1, this.game?.stage ?? 1), SKY.length) - 1
+  }
+
+  buildNebulaSet(idx) {
+    const S = SKY[idx]
+    // 배치와 무늬의 씨앗을 판마다 다르게 — 같은 판이면 언제나 같은 하늘이다.
+    const rnd = skyRng(41 + idx * 977)
+    const tex = [
+      nebulaTexture(3 + idx * 31, S.shape),
+      nebulaTexture(11 + idx * 31, S.shape),
+      nebulaTexture(29 + idx * 31, S.shape),
+    ]
+    const sprites = []
+    const add = (s, base, ph) => {
+      s.renderOrder = -20
+      this.scene.add(s)
+      sprites.push({ obj: s, base, ph })
+    }
+    // ── 광역 물감 한 장 ──
+    // 조각 아홉 장은 프레임 **구석**에 색을 놓는다(중심에서 6000~19000 GU
+    // 떨어진 자리에 뿌려지므로). 그것만으로는 판이 바뀐 줄을 모른다: 정작 눈이
+    // 머무는 화면 가운데는 늘 검다. 그래서 성계 뒤를 통째로 덮는 한 장을 깐다 —
+    // 아주 흐리게, 아주 크게. 이 한 장이 "이번 판의 하늘색"을 정한다.
+    add(new THREE.Sprite(new THREE.SpriteMaterial({
+      map: tex[0], color: S.tone[0],
+      transparent: true, opacity: 0,
+      depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending,
+    })).translateZ(-21000), S.wash * S.gain, rnd() * 6.283)
+    sprites[0].obj.scale.setScalar(46000)
+    for (let i = 0; i < SKY_SETS; i++) {
       const a = rnd() * Math.PI * 2
       const d = (0.35 + rnd() * 0.8) * 17000
-      const k = i % NEB_CALM.length
       const s = new THREE.Sprite(new THREE.SpriteMaterial({
-        map: tex[i % tex.length], color: NEB_CALM[k],
-        transparent: true, opacity: 0.10 + rnd() * 0.09,
+        map: tex[i % tex.length], color: S.tone[i % S.tone.length],
+        transparent: true, opacity: 0,      // stepNebula가 가중치로 올린다
         depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending,
       }))
       s.position.set(Math.cos(a) * d, Math.sin(a) * d * 0.72, -15000 - rnd() * 5000)
       s.scale.setScalar(9000 + rnd() * 13000)
-      s.renderOrder = -20
-      this.scene.add(s)
-      // 반짝임(stepSky)은 base를 기준으로 도는데, 5판에서는 그 base 자체가
-      // 올라간다 — 그래서 stepEmber가 entry.base를 다시 쓴다.
-      const entry = { obj: s, base: s.material.opacity, tw: 0.05, ph: rnd() * 6.283 }
-      this.sky.push(entry)
-      this.nebulae.push({ entry, calm: NEB_CALM[k], ember: NEB_EMBER[k], op: s.material.opacity })
+      add(s, (S.op[0] + rnd() * S.op[1]) * S.gain, rnd() * 6.283)
+    }
+    return { idx, w: 0, sprites, tex, bg: S.bg }
+  }
+
+  disposeNebulaSet(set) {
+    for (const sp of set.sprites) { this.scene.remove(sp.obj); sp.obj.material.dispose() }
+    for (const t of set.tex) t.dispose()
+  }
+
+  // **실시간으로 민다.** 판이 넘어가는 그 순간은 막이 내려가 있어 게임 시계가
+  // 멈춰 있거나 배속이 걸려 있는데(warpCurtain), 하늘이 그 시계를 타면
+  // 8배속에서 0.4초에 끝나거나 조준 모드에서 영영 안 끝난다.
+  //
+  // 반짝임도 여기서 준다(stepSky가 아니라). 저쪽은 base를 고정으로 보는데
+  // 이쪽의 base에는 교차 페이드 가중치가 곱해져 있어서, 두 군데가 같은
+  // 불투명도를 서로 덮어쓰게 된다.
+  stepNebula(dt) {
+    const want = this.skyIndex()
+    const sets = this.nebSets
+    const top = sets[sets.length - 1]
+    if (!top || top.idx !== want) {
+      const next = this.buildNebulaSet(want)
+      // 첫 하늘은 페이드 없이 그 자리에 선다 — 시작 화면이 검게 뜨면 안 된다.
+      if (!top) next.w = 1
+      sets.push(next)
+    }
+    const head = sets[sets.length - 1]
+    const step = dt / SKY_FADE
+    // ① 가중치를 먼저 굴리고 다 죽은 겹을 걷는다
+    let total = 0
+    for (let i = sets.length - 1; i >= 0; i--) {
+      const s = sets[i]
+      s.w = s === head ? Math.min(1, s.w + step) : Math.max(0, s.w - step)
+      if (s !== head && s.w <= 0) { this.disposeNebulaSet(s); sets.splice(i, 1); continue }
+      total += s.w
+    }
+    // ② 가중치의 **합으로 나눈다.** 두 겹이 오가는 보통의 교차에서는 합이
+    //    언제나 1이라(나가는 1-t + 들어오는 t) 이 나눗셈이 아무 일도 안 한다.
+    //    합이 흐트러지는 경우가 하나 있는데, 페이드가 끝나기 전에 판이 또
+    //    바뀌어 겹이 셋 이상 겹칠 때다 — 그때 정규화가 없으면 하늘이 그만큼
+    //    옅어졌다 도로 진해진다. 프레임이 느린 기기에서 실제로 보이는 자리다
+    //    (계측: 소프트웨어 렌더러에서 겹 넷이 합 0.37로 겹쳤다).
+    const k = total > 0.001 ? 1 / total : 0
+    this.scene.background.setRGB(0, 0, 0)
+    for (const s of sets) {
+      const w = s.w * k
+      for (const sp of s.sprites) {
+        sp.obj.material.opacity = sp.base * w * (1 + Math.sin(this.skyT * 0.55 + sp.ph) * 0.05)
+      }
+      // 씬 배경(가장 뒤의 검정)도 하늘의 일부다 — 같은 가중치로 섞는다.
+      this.scene.background.add(_c2.set(s.bg).multiplyScalar(w))
     }
   }
 
-  // ─── 5스테이지의 하늘 ───────────────────────────────────────
-  // **실시간으로 민다.** 판이 넘어가는 그 순간은 막이 내려가 있어 게임 시계가
-  // 멈춰 있거나 배속이 걸려 있는데(warpCurtain), 색이 그 시계를 타면 8배속에서
-  // 0.4초에 끝나거나 조준 모드에서 영영 안 끝난다.
+  // ─── 5스테이지의 태양 ───────────────────────────────────────
+  // 하늘(성운·배경)은 판마다 갈리지만 **태양과 광원은 5판 하나에서만** 넘어간다.
+  // 성운은 판의 눈금이고, 태양은 "규칙이 바뀌었다"는 신호라 하는 말이 다르다.
   stepEmber(dt) {
     const want = (this.game?.stage ?? 1) >= CFG.SIEGE_STAGE ? 1 : 0
     if (this.ember < 0) { this.ember = want; this.applyEmber(); return }   // 첫 프레임
     if (this.ember === want) return
-    const step = dt / EMBER_FADE
+    const step = dt / SKY_FADE
     this.ember = want > this.ember
       ? Math.min(want, this.ember + step)
       : Math.max(want, this.ember - step)
@@ -970,13 +1182,7 @@ export class SceneView {
     mix(SUN_TONE.coreCalm, SUN_TONE.coreEmber, this.sunCore.material.color)
     mix(SUN_TONE.glowCalm, SUN_TONE.glowEmber, this.sunGlow.material.color)
     mix(SUN_TONE.lightCalm, SUN_TONE.lightEmber, this.sunLight.color)
-    // 하늘 뒤편
-    mix(SKY_CALM, SKY_EMBER, this.scene.background)
     mix(AMB_CALM, AMB_EMBER, this.ambient.color)
-    for (const n of this.nebulae ?? []) {
-      mix(n.calm, n.ember, n.entry.obj.material.color)
-      n.entry.base = n.op * (1 + (EMBER_NEB_GAIN - 1) * u)
-    }
   }
 
   // 은하 원반 — 로그 나선 네 팔 + 중심 팽대부 + 헐로.
@@ -1035,6 +1241,8 @@ export class SceneView {
     // 팔의 성간 먼지 — 은하를 은하로 읽히게 하는 건 사실 **점 사이의 빛**이다.
     // 점만 찍으면 아무리 나선을 잘 그려도 흩뿌린 모래로 보인다. 팔을 따라
     // 흐린 얼룩을 앉혀 점들 사이를 메워 준다.
+    // 팔의 먼지는 **판과 무관하다.** 은하는 붙박인 지형이라 판마다 갈리면
+    // "여기가 어디였지"가 사라진다 — 그래서 기본 무늬(shape 없음)를 쓴다.
     const haze = [nebulaTexture(5), nebulaTexture(17)]
     for (let i = 0; i < 16; i++) {
       const arm = i % ARMS
@@ -1189,6 +1397,7 @@ export class SceneView {
     if (this.lastBodies !== this.game.bodies) this.resetStage()
     this.rig.update(dt)
     this.stepSky(dt)
+    this.stepNebula(dt)
     this.stepSun(dt)
     this.stepEmber(dt)
     this.boom.drain(this.game)
