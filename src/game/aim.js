@@ -2,7 +2,7 @@ import { fromAngle } from '../core/vector.js'
 import { wrapPi } from '../core/angle.js'
 import { CFG, beltRadius, blastRadius, hitRadiusOf } from './config.js'
 import { buildBodyTrack, cloneBodies, makeStepCache, segCircleEntry, segHitsCircle, stepBodies, stepMissile, trackFrame } from './physics.js'
-import { effDv, volatileRadius } from './roles.js'
+import { SHARD_N, effDv, shardCone, shardReach, volatileRadius } from './roles.js'
 import { msg } from '../i18n/index.js'
 
 // ─── 조준 보조 — game.js에서 떼어낸 순수 계산부 ───────────────────
@@ -221,11 +221,14 @@ function impactInfo(game, o, point, simEarth) {
   if (o.type === 'debris') outcome = 'debris'
   else if (o.isEarth) outcome = 'earth'
   else if (o.role === 'volatile') outcome = 'volatile'
+  else if (o.role === 'unstable') outcome = 'unstable'
   else if (isT) outcome = 'target'
   let dx = o.pos.x - point.x, dy = o.pos.y - point.y
   const d = Math.hypot(dx, dy) || 1
   dx /= d; dy /= d
-  const dv = o.type === 'debris' || o.isEarth || o.role === 'volatile'
+  // 터지거나 쪼개지는 공은 **밀리지 않는다** — 그 자리에서 없어진다.
+  // Δv를 0으로 두면 임펄스·진로 화살표가 통째로 꺼진다(AimHelper.push).
+  const dv = o.type === 'debris' || o.isEarth || o.role === 'volatile' || o.role === 'unstable'
     ? 0 : effDv(o, game.yieldMt)
   const R = blastRadius(game.yieldMt)
   // 큰 탄두는 폭풍이 지구까지 닿는다 — 쏘기 전에 그것만은 알려준다
@@ -235,6 +238,25 @@ function impactInfo(game, o, point, simEarth) {
   // 큐의 세기에 대한 정보지 판의 결말이 아니다. 작약량을 고르는 유일한 근거.
   const vAfter = Math.hypot(o.vel.x + dx * dv, o.vel.y + dy * dv)
   const vEsc = Math.sqrt(2 * CFG.MU_STAR / Math.max(1, Math.hypot(o.pos.x, o.pos.y)))
+  // ── 산탄이 나갈 방향 ──
+  // 불안정 행성의 총구는 임펄스와 같은 벡터다(dx, dy) — 즉 **이 한 발이 이미
+  // 정한 값**이라 추측이 한 톨도 안 들어간다. 그래서 쏘기 전에 그려 줘도
+  // 이 게임의 규칙("결과가 아니라 접촉까지만 말한다")을 안 어긴다: 부채꼴은
+  // 결과가 아니라 총구의 방향이다. 그 안에서 무엇이 맞는지는 말하지 않는다.
+  const shard = o.role === 'unstable'
+  // 지구가 그 부채꼴 안에 서 있는가 — 이것만은 말해 준다. 판을 통째로 잃는
+  // 사고이고, 조준 한 번으로 피할 수 있으며, 계산으로 확정되는 사실이다.
+  let earthInCone = false
+  if (shard && simEarth && !o.isEarth) {
+    const ex = simEarth.pos.x - o.pos.x, ey = simEarth.pos.y - o.pos.y
+    const dist = Math.hypot(ex, ey)
+    if (dist < shardReach()) {
+      // 부채꼴 반각 + 지구 판정 원이 그 거리에서 벌리는 각만큼 여유를 둔다
+      const half = shardCone() + Math.atan2(hitRadiusOf(simEarth), Math.max(1, dist))
+      const off = Math.abs(wrapPi(Math.atan2(ey, ex) - Math.atan2(dy, dx)))
+      earthInCone = off <= half
+    }
+  }
   return {
     name: o.name, nameKey: o.nameKey, isEarth: o.isEarth, isTarget: isT, type: o.type, id: o.id,
     outcome, x: o.pos.x, y: o.pos.y, r: hitRadiusOf(o),
@@ -244,6 +266,11 @@ function impactInfo(game, o, point, simEarth) {
     blast: R, earthInBlast, vAfter, vEsc, willEject: dv > 0 && vAfter > vEsc,
     role: o.role ?? null,
     volatileR: o.role === 'volatile' ? volatileRadius(o) : 0,
+    // 샷건 — 갈래 수 / 부채꼴 반각(rad) / 그리는 사거리. 0이면 이 공은 안 쏜다.
+    shards: shard ? SHARD_N : 0,
+    shardCone: shard ? shardCone() : 0,
+    shardReach: shard ? shardReach() : 0,
+    earthInCone,
     // 체력 — 이 한 방으로는 안 부서진다. 몇 번 더 처박아야 하는지가 정보다.
     hp: o.hp ?? CFG.PLANET_HP, hpMax: o.hpMax ?? CFG.PLANET_HP,
     // 아직 안 쓴 회피 분사가 남아 있는가. 예측은 "이 탄이 어디에 닿는가"까지만

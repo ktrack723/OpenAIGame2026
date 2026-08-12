@@ -65,6 +65,11 @@ export function stepBodies(bodies, dt, cache) {
     b.pos.x += b.vel.x * dt; b.pos.y += b.vel.y * dt
     b.hitFlash = Math.max(0, b.hitFlash - dt); b.trailFlash = Math.max(0, (b.trailFlash || 0) - dt)
     b.bumpFlash = Math.max(0, (b.bumpFlash || 0) - dt)
+    // 수명이 있는 천체(= 산탄. body.ttl)는 여기서 꺼진다. **예측도 같은 함수를
+    // 쓰기 때문에** 여기여야 한다: bodyBounds에 두면 라이브 판에서만 사라져,
+    // 조준 예측이 이미 없어졌을 파편을 "여기서 조기 격발한다"라고 말하게 된다.
+    // 예측선이 거짓말을 안 하려면 시간에 대한 규칙도 한 군데에 있어야 한다.
+    if (b.ttl > 0 && (b.ttl -= dt) <= 0) { b.alive = false; continue }
     if (b.trail && _frame % 8 === 0 && b.trail.push(clone(b.pos)) > 300) b.trail.shift()
   }
   accelAll(bodies, ax, ay)
@@ -236,6 +241,38 @@ export function shatter(b, bodies, rnd) {
   }
 }
 
+// ─── 샷건 (불안정 행성) ─────────────────────────────────────────
+// 파편을 **한 방향으로** 뿌린다. 이게 shatter와 다른 전부다: shatter는 공이
+// 부서져 사방으로 흩어지는 것(원)이고, 이건 쏘는 것(부채꼴)이다.
+//
+// 총구 방향 (dirX, dirY)은 부르는 쪽이 준다. 핵이면 폭심 → 행성 중심,
+// 충돌이면 때린 공 → 맞은 공 — 둘 다 **핵 임펄스와 같은 벡터**다.
+// 그래서 "어느 살을 치면 어디로 밀리나"를 이미 아는 플레이어는 이 총의
+// 조준법을 따로 안 배운다. 밀리는 방향이 곧 쏘는 방향이다.
+//
+// 갈래는 부채꼴을 **고르게 나눠** 앉히고 각자 조금씩만 흔든다. 전부 난수로
+// 뽑으면 일곱 발이 한쪽에 뭉치는 판이 나오는데, 그러면 같은 태그가 판마다
+// 다른 물건이 된다 — 산탄의 값은 "넓게, 고르게"에 있다.
+export function shardBurst(b, bodies, rnd, dirX, dirY) {
+  b.alive = false
+  const n = CFG.UNSTABLE_SHARDS, cone = CFG.UNSTABLE_CONE
+  const muF = Math.max(6, CFG.UNSTABLE_MASS * b.mu / n)
+  const rF = Math.max(2.5 * R_SCALE, radiusOf(muF))
+  const base = Math.atan2(dirY, dirX)   // (0,0)이면 0 — 폭심이 정중앙인 극단은 +x로 쏜다
+  for (let k = 0; k < n; k++) {
+    const spread = n === 1 ? 0 : (k / (n - 1) - 0.5) * 2 * cone
+    const ang = base + spread + (rnd() - 0.5) * cone * 0.3
+    const sp = CFG.UNSTABLE_SPEED * (1 + (rnd() - 0.5) * CFG.UNSTABLE_SPEED_VAR)
+    bodies.push(makeBody({
+      id: `${b.id}s${bodies.length}`, nameKey: 'planet.debris', mu: muF, radius: rF,
+      // 껍데기가 있던 자리에서 출발한다 — 중심에서 뿜으면 공 속에서 태어난 것처럼 보인다
+      pos: { x: b.pos.x + Math.cos(ang) * b.radius * 1.15, y: b.pos.y + Math.sin(ang) * b.radius * 1.15 },
+      vel: { x: b.vel.x + Math.cos(ang) * sp, y: b.vel.y + Math.sin(ang) * sp },
+      type: 'debris', hp: 1, shard: 1, ttl: CFG.SHARD_TTL,
+    }))
+  }
+}
+
 // ─── 당구 충돌 — 운동량 보존 탄성 반사 ──────────────────────────
 // 두 공은 서로를 부수지 않는다. 접촉면 법선 방향의 성분만 교환하고 튕긴다
 // (반발계수 1 = 속력·운동량·에너지 전부 보존). 부수는 건 체력이 다 닳았을
@@ -302,8 +339,14 @@ export function resolveBodyPairs(bodies, game) {
     // 제곱 비교 — n=34면 스텝마다 561쌍이라 임시 벡터·hypot이 그대로 GC 압력이다
     const dx = b.pos.x - a.pos.x, dy = b.pos.y - a.pos.y, cd = contactDist(a, b)
     if (dx * dx + dy * dy >= cd * cd) continue
-    if (aD || bD) {   // 파편은 행성 대기권에서 소멸 — 미사일 해저드일 뿐이다
-      (aD ? a : b).alive = false
+    if (aD || bD) {
+      // 파편은 행성 대기권에서 소멸한다 — **닿는 순간 그 자리에서 끝난다.**
+      // 튕겨 나가게 두면 이미 부서진 공의 부스러기가 판을 영영 굴러다닌다.
+      const frag = aD ? a : b, hit = aD ? b : a
+      frag.alive = false
+      // 산탄만 때린다(body.shard 주석). 무엇에 얼마나 꽂혔는지는 게임이 정한다 —
+      // 여기서는 "닿았다"까지만 말하고, 배열이 바뀌었으면 그 스텝을 끝낸다.
+      if (frag.shard && game.onShardHit(frag, hit) === 'destroyed') return
       continue
     }
     // 파괴가 일어나면 파편 생성으로 배열이 변한다 — 그 스텝은 거기서 끝낸다

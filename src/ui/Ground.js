@@ -72,7 +72,17 @@ const SAY = {
   // 요새 격파는 fx가 아니라 **명단을 대조해** 잡는다. destroy 이벤트는 광선이
   // 우리 행성을 녹일 때도 똑같이 나가서, 그걸로는 승패를 구분할 수 없다.
   fortDown: 6,
-  laserHit: 4, nuke: 4, volatile: 4,
+  // 초엘리트 격파는 요새 격파보다 위다. 요새 하나가 사라지는 것은 순번 하나가
+  // 빠지는 일이지만, 이놈이 사라지는 것은 **지구로 공이 굴러오는 일 자체가
+  // 그치는** 것이다.
+  siegeDown: 7,
+  // 파열(shatter)은 유폭과 같은 층이다. 산탄 한 갈래(shard)는 여기 없다 —
+  // 한 번의 파열에서 일곱 번까지 오는 사건이라 관제가 그때마다 입을 열면
+  // 정작 그 산탄이 무엇을 부쉈는지(fortDown)가 제 목소리에 묻힌다.
+  laserHit: 4, nuke: 4, volatile: 4, shatter: 4, siegeNuke: 4,
+  // 잠금은 경보다 — 광선 충전(3)보다 위에 둔다. 광선은 선이라 화면에 이미
+  // 그려져 있지만, "저 공이 지구로 온다"는 말은 이 한 줄밖에 하지 않는다.
+  siegeLock: 5,
   // 벨트 기폭은 명중이 아니다 — 판 밖으로 나간 발이라 할 말이 다르다.
   beltBlast: 3,
   // 혜성 도착 — 굴릴 공이 하나 더 왔다. 판에 몇 안 되는 좋은 소식이라
@@ -146,13 +156,20 @@ export class Ground {
 
   raise(kind, prio) { if (!this.queued || prio > this.queued.prio) this.queued = { kind, prio } }
 
-  // 이번 프레임에 부서진 조르그 요새 — 지난 프레임의 명단과 대조해 찾는다.
+  // 이번 프레임에 부서진 것 — 지난 프레임의 명단과 대조해 찾는다.
+  // 요새와 초엘리트를 **따로** 센다: 둘은 사라졌을 때 하는 말이 다르고
+  // (요새는 순번 하나, 초엘리트는 위협 하나가 통째로), 그 말이 섞이면
+  // 관제가 초엘리트를 "요새"라고 부른다.
   reaped() {
-    const now = new Set(this.game.bodies.filter(b => b.alive && b.role === 'battery').map(b => b.id))
-    let gone = false
-    for (const id of this.forts ?? []) if (!now.has(id)) { gone = true; break }
-    this.forts = now
-    return gone
+    const live = this.game.bodies.filter(b => b.alive)
+    const out = {}
+    for (const [key, role] of [['forts', 'battery'], ['sieges', 'siege']]) {
+      const now = new Set(live.filter(b => b.role === role).map(b => b.id))
+      out[key] = false
+      for (const id of this[key] ?? []) if (!now.has(id)) { out[key] = true; break }
+      this[key] = now
+    }
+    return out
   }
 
   // ── 대본 한 줄 ──
@@ -256,7 +273,8 @@ export class Ground {
     // 예고편에서는 이 보고를 안 한다. 요새가 부서지는 순간의 소리는 저쪽의
     // 단말마(zorg.death, Comms) 하나로 정해 둔 장면이다(Attract.launch 주석
     // 참고) — 관제가 "요새 소멸 확인"을 얹으면 그 마지막 소리가 둘로 갈린다.
-    if (down && !g.trailer) this.raise('fortDown', SAY.fortDown)
+    if (down.forts && !g.trailer) this.raise('fortDown', SAY.fortDown)
+    if (down.sieges && !g.trailer) this.raise('siegeDown', SAY.siegeDown)
     const q = this.queued
     // ── 한 줄은 최소한 읽을 수 있어야 한다 ──
     // 예전에는 더 센 사건이 오면 **즉시** 앞의 말을 지웠다. 판이 빨리 감기고

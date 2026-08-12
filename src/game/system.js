@@ -266,12 +266,13 @@ function warpBody(rng, bodies, aMax, spec) {
   return b
 }
 
-// 조르그 요새로 쓸 종류 — 가스(터짐)는 제외한다. 가스 요새는 핵 한 방에
-// 제 유폭으로 죽어 표적 구실을 못 한다.
+// 조르그 요새로 쓸 종류 — 가스(터짐)·불안정(쪼개짐)은 제외한다.
+// 둘 다 핵 한 방에 제 사건으로 죽어 표적 구실을 못 한다.
 const FORT_TYPES = ['rock', 'rock', 'iron']   // 요새는 암석이 기본, 가끔 금속(안 밀리는 표적)
-// 큐볼로 굴러오는 중립 천체 종류. 태그 셋(금속·가스·얼음)이 여기서 나오고,
-// 요새·모함은 증원 경로에서만, 혜성은 벨트 밖에서만 온다(comet.js).
-const NEUTRAL_TYPES = ['rock', 'ice', 'ice', 'iron', 'gas']
+// 큐볼로 굴러오는 중립 천체 종류 — 태그 넷(금속·가스·얼음·불안정)이 여기서
+// 나온다. 요새·모함·초엘리트는 증원 경로에서만 붙고, 혜성은 벨트 밖에서만
+// 들어온다(comet.js).
+const NEUTRAL_TYPES = ['rock', 'ice', 'ice', 'iron', 'gas', 'shard']
 
 // ── 배역서 ──────────────────────────────────────────────────────
 // 요새 한 기와 중립 한 기를 만드는 규칙. 판이 열릴 때(reinforce)와 모함이
@@ -325,10 +326,16 @@ function fortSpec(rng, earth, stage, tag, heavy, outer = false) {
   }
 }
 
-function neutralSpec(rng, stage, tag) {
-  const type = NEUTRAL_TYPES[rng.int(0, NEUTRAL_TYPES.length - 1)]
+// forceType — 그 판에 **반드시 보여 줘야 하는** 종류(아래 forcedType). 추첨에만
+// 맡기면 태그 하나를 끝까지 못 보고 런이 끝난다. 못 박는 판은 config에 있다:
+// UNSTABLE_STAGE.
+function neutralSpec(rng, stage, tag, forceType = null) {
+  const type = forceType ?? NEUTRAL_TYPES[rng.int(0, NEUTRAL_TYPES.length - 1)]
   return { mu: muFor(rng, stage), name: `${zorgName(rng, tag)}`, type }
 }
+// 이 판이 못 박고 보여 주는 종류(없으면 null). 두 판이 겹치지 않으므로
+// 순서만 정해 두면 된다 — 겹치면 앞의 것이 이긴다.
+const forcedType = (stage) => (stage === CFG.UNSTABLE_STAGE ? 'shard' : null)
 
 // 만들어 놓고 붙일 것 — 금속 요새는 장갑 태그를 겹쳐 얹는다.
 const dressFort = (b) => { if (b && b.type === 'iron') b.mods = ['armor']; return b }
@@ -396,6 +403,41 @@ function makeHive(rng, bodies, aMax, earth) {
   return b
 }
 
+// ── 초엘리트 조르그 행성 ────────────────────────────────────────
+// 모함과 정반대 자리에 앉는다. 모함은 궤도 **바깥**의 좁은 대역에 서서
+// "멀리 있는 두 번째 목표"였지만, 이놈은 **안쪽**이다 — 큐볼을 골라 지구로
+// 처박는 것이 하는 일 전부이므로(siege.js) 굴릴 공이 널린 지구 궤도
+// 언저리에 있어야 그 수 자체가 성립한다.
+//
+// 그래서 옆자리 요구가 여기서는 연출이 아니라 **기능**이다. 요새는 옆에
+// 밀 공이 없어도 그냥 표적으로 서 있을 수 있지만(플레이어가 못 치는 게
+// 문제일 뿐), 이놈은 밀 공이 없으면 아무 일도 안 하는 큰 돌덩이가 된다.
+const siegeBand = (earth) => {
+  const rE = Math.hypot(earth.pos.x, earth.pos.y)
+  return [rE * CFG.SIEGE_BAND[0], rE * CFG.SIEGE_BAND[1]]
+}
+
+function makeSiege(rng, bodies, aMax, earth) {
+  const band = siegeBand(earth)
+  // 제약을 하나씩 푼다 — 모함과 같은 순서이고 마지막 폴백도 같다(대역이 아니라
+  // 이웃 간격을 푼다). 자리가 없으면 이번 판에는 안 온다(다음 판에 다시 시도).
+  const orb = freeOrbit(rng, bodies, aMax, CFG.SIEGE_R, CFG.SIEGE_NEAR_BAND, band)
+    ?? freeOrbit(rng, bodies, aMax, CFG.SIEGE_R, 0, band)
+    ?? freeOrbit(rng, bodies, aMax, CFG.SIEGE_R, 0, [band[0] * 0.85, band[1] * 1.2])
+    ?? freeOrbit(rng, bodies, aMax, CFG.SIEGE_R * 0.35, 0, [band[0] * 0.85, band[1] * 1.2])
+  if (!orb) return null
+  // 이름 — 요새는 `Zorg Krath-5b`처럼 판 번호를 꼬리에 달지만 이놈은 한 판에
+  // 한 기뿐이라 번호가 의미가 없다. 계급을 붙인다.
+  const b = makeBody({
+    id: nextId(), name: `Zorg ${ZORG_NAMES[rng.int(0, ZORG_NAMES.length - 1)]} Ultima`,
+    type: 'siege', mu: CFG.SIEGE_MU, radius: CFG.SIEGE_R,
+    pos: orb.pos, vel: orb.vel, hp: CFG.SIEGE_HP,
+    zorg: true, warp: 1,
+  })
+  b.role = 'siege'; b.isTarget = true
+  return b
+}
+
 // 모함이 한 기 보낸다 — 판이 열릴 때와 같은 규칙으로 만들고, 자리도 같은
 // 제약(밀 수 있는 공 옆자리·지구에서 닿는 자리)으로 찾는다.
 export function summonFort(rng, bodies, earth, stage, tag) {
@@ -443,10 +485,14 @@ export function reinforce(rng, bodies, earth, stage) {
   // 이제 기준은 하나다: **굴릴 공이 모자란가.** 모함이 보충을 결정할 때
   // (stepHive) 그리고 혜성이 주기를 당길 때(comet.js) 쓰는 것과 같은 문턱
   // (HIVE_KEEP_CUE)이라, 성계를 채우는 **세 경로가 같은 질문을 한다.**
+  // 태그 구경은 **못 박은 한 판**(UNSTABLE_STAGE)으로 충분하다 — 그 판만은
+  // 굴릴 공이 넉넉해도 한 기를 세운다(정원이 남아 있는 한).
   const cueBalls = live.filter(b => !b.isEarth && !b.zorg).length
   let neutral = cueBalls < CFG.HIVE_KEEP_CUE
     ? Math.min(CFG.REINF_NEUTRAL, cueBalls < 2 ? 2 : 1)
     : 0
+  const forced = forcedType(stage)
+  if (forced) neutral = Math.max(neutral, 1)
   neutral = Math.min(neutral, Math.max(0, room - fort))
 
   const added = []
@@ -466,6 +512,17 @@ export function reinforce(rng, bodies, earth, stage) {
   if (stage >= CFG.HIVE_STAGE && !live.some(b => b.role === 'hive')) {
     const h = makeHive(rng, bodies, aMax, earth)
     if (h) added.push(h)
+  }
+
+  // ── 초엘리트 ── 모함 다음, 요새보다 먼저.
+  // 순서가 규칙인 이유는 모함과 같다. 초엘리트 대역(0.85~1.65 rE)은 안쪽 요새
+  // 대역(0.55~1.6 rE)에 거의 통째로 덮여 있는데, 판정 원이 92.8 GU나 되는
+  // 덩치라 요새 예닐곱 기가 먼저 앉은 뒤에는 들어갈 틈이 남지 않는다.
+  // 물러설 자리가 넷인 요새와 달리 이놈에게는 제 대역 하나뿐이므로,
+  // 제약이 심한 쪽이 먼저 앉는다.
+  if (stage >= CFG.SIEGE_STAGE && !live.some(b => b.role === 'siege')) {
+    const s = makeSiege(rng, bodies.concat(added), aMax, earth)
+    if (s) added.push(s)
   }
 
   // ── 난이도 ──
@@ -490,7 +547,7 @@ export function reinforce(rng, bodies, earth, stage) {
     if (b) added.push(b)
   }
   for (let i = 0; i < neutral; i++) {
-    const spec = neutralSpec(rng, stage, `${stage}x${i}`)
+    const spec = neutralSpec(rng, stage, `${stage}x${i}`, i === 0 ? forced : null)
     const b = warpBody(rng, bodies.concat(added), aMax, spec)
     if (b) { b.zorg = false; added.push(b) }   // 중립으로 굴러온 잔챙이 — 큐볼로 쓴다
   }
@@ -499,6 +556,7 @@ export function reinforce(rng, bodies, earth, stage) {
     added,
     fortresses: added.filter(b => b.role === 'battery'),
     hives: added.filter(b => b.role === 'hive'),
+    sieges: added.filter(b => b.role === 'siege'),
     aMax,
   }
 }

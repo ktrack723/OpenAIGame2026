@@ -13,7 +13,7 @@ import { VIS } from '../game/config.js'
 // **규칙이 없는 분류는 없앴다.** 예전엔 용암·해양·독성·생명이 따로 있었는데
 // 넷 다 색만 다르고 게임에 아무 영향이 없었다 — 플레이어가 외워야 할 이름만
 // 늘리고 판단은 하나도 안 바뀌는 분류는 노이즈다. 전부 암석으로 합쳤다.
-// 남은 다섯 중 넷은 저마다 **한 줄짜리 메카닉**이 있다(암석만 규칙이 없다).
+// 남은 여섯 중 다섯은 저마다 **한 줄짜리 메카닉**이 있다(암석만 규칙이 없다).
 // 아이콘도 상징 기호(⚙·☣)가 아니라 그 물건 자체를 그린 것으로 바꿨다 —
 // 보면 무엇인지 알아야 한다.
 // 아이콘과 색만 여기 둔다. 이름·메카닉 한 줄은 언어 표(cat.*)에 있고,
@@ -23,10 +23,12 @@ const CAT_STYLE = {
   ice: { icon: '🧊', color: '#a5f3fc' },
   iron: { icon: '🔩', color: '#e2e8f0' },
   gas: { icon: '🪐', color: '#fcd34d' },
+  shard: { icon: '💥', color: '#bef264' },
   comet: { icon: '☄', color: '#bae6fd' },
   earth: { icon: '🌍', color: '#93c5fd' },
   zorg: { icon: '👁', color: '#e879f9' },
   hive: { icon: '🛸', color: '#e879f9' },
+  siege: { icon: '🚀', color: '#ff8a6a' },
   debris: { icon: '·', color: '#94a3b8' },
 }
 export const CATEGORY = Object.fromEntries(Object.entries(CAT_STYLE).map(([k, v]) => [k, {
@@ -38,7 +40,12 @@ export const HOSTILE = { icon: '☠', color: '#ff5c6a', get label() { return t('
 // 모함도 반드시 부숴야 하는 물건이지만 **다른 물건**이다. 해골 대신 제 표식을
 // 달고 색도 자주다 — 화면에서 "저건 요새가 아니다"가 한눈에 갈린다.
 export const HIVE_MARK = { icon: '◎', color: '#e879f9', get label() { return t('cat.hive') } }
-export const hostileMark = (b) => (b.role === 'hive' ? HIVE_MARK : HOSTILE)
+// 초엘리트도 반드시 부숴야 하지만 요새도 모함도 아니다. 표식이 셋으로 갈려야
+// "저기서 뭐가 날아오는가"를 화면만 보고 답할 수 있다 — 해골은 광선, 자주
+// 겹눈고리는 증원, 이 붉은 별표는 **날아오는 공**이다.
+export const SIEGE_MARK = { icon: '✷', color: '#ff5a2b', get label() { return t('cat.siege') } }
+export const hostileMark = (b) =>
+  b.role === 'hive' ? HIVE_MARK : b.role === 'siege' ? SIEGE_MARK : HOSTILE
 
 export const categoryOf = (type) => CATEGORY[type] ?? CATEGORY.rock
 
@@ -85,7 +92,7 @@ export class Icons {
 
   // 이 공이 "반드시 부숴야 하는" 표적인가 — 해골이 붙는 조건.
   // 규칙은 game.isTarget과 같아야 한다(요새 = 반격하는 조르그 천체).
-  static isHostile(b) { return b.role === 'battery' || b.role === 'hive' }
+  static isHostile(b) { return b.role === 'battery' || b.role === 'hive' || b.role === 'siege' }
 
   update(game, rig, dt, renderRadius) {
     this.t += dt

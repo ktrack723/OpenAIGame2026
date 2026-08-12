@@ -492,7 +492,8 @@ function castOf(g) {
   const swing = big(solar.filter(b => b.role === 'volatile')) ?? big(solar)
   // 큐볼의 Δv는 **중간**이어야 한다. 가벼운 얼음은 300~480 GU/s로 튕겨 나가
   // 화면 밖으로 사라지고, 무거운 금속은 40 아래라 굴러가질 않는다.
-  const cue = solar.filter(b => b !== swing && b.role !== 'volatile' && b.hpMax >= 2)
+  // 큐볼은 **밀려서 굴러가야** 한다 — 맞는 순간 없어지는 것(가스·불안정)은 배역이 안 된다.
+  const cue = solar.filter(b => b !== swing && b.role !== 'volatile' && b.role !== 'unstable' && b.hpMax >= 2)
     .map(b => ({ b, dv: effDv(b, CFG.YIELD_MAX) }))
     .sort((p, q) => Math.abs(p.dv - 70) - Math.abs(q.dv - 70))[0]?.b
   const fort = g.bodies.find(b => b.alive && b.role === 'battery')
@@ -569,7 +570,8 @@ function pickInterceptor(g, cast) {
   const keep = [cast.earth, cast.fort, cast.swing, cast.cue]
   return g.bodies
     .filter(b => b.alive && b.type !== 'debris' && !keep.includes(b) && !b.comet
-      && b.role !== 'volatile' && b.role !== 'battery' && b.role !== 'hive')
+      && b.role !== 'volatile' && b.role !== 'unstable'
+      && b.role !== 'battery' && b.role !== 'hive')
     .sort((a, b) => a.radius - b.radius)[0] ?? null
 }
 

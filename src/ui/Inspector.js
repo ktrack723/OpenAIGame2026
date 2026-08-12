@@ -1,5 +1,5 @@
 import { CFG, hitRadiusOf } from '../game/config.js'
-import { ROLES, effDv, massClass, modsOf, roleBrief, roleLabel, volatileRadius } from '../game/roles.js'
+import { ROLES, SHARD_N, effDv, massClass, modsOf, roleBrief, roleLabel, shardCone, volatileRadius } from '../game/roles.js'
 import { t, nameOf } from '../i18n/index.js'
 import { categoryOf, hostileMark } from '../render/Icons.js'
 
@@ -124,6 +124,8 @@ export class Inspector {
       }
     }
     if (b.role === 'volatile') out.push(`<div class="irow"><span>${t('insp.volatileR')}</span><b>${fmt(volatileRadius(b))} GU</b></div>`)
+    // 샷건의 제원 — 갈래 수와 부채꼴. 유폭 반경이 있는 자리에 같은 층으로 선다.
+    if (b.role === 'unstable') out.push(`<div class="irow"><span>${t('insp.shards')}</span><b>${SHARD_N} × ${(shardCone() * 2 * 180 / Math.PI).toFixed(0)}°</b></div>`)
     out.push(`<div class="ifoot">${b.isEarth
       ? t('insp.foot.earth')
       : hostile ? t('insp.foot.foe', { hp: hpMax }) : t('insp.foot.cue', { hint: mc.hint })}</div>`)
