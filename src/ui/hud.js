@@ -292,6 +292,15 @@ export function makeHud(game, view) {
 
   addEventListener('keydown', (e) => {
     if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return
+    // ── 자동반복은 발사가 아니다 ──
+    // 키를 누르고 있으면 브라우저가 33ms마다 keydown을 다시 보낸다. 예전에는
+    // 그래도 아무 일이 없었다 — 둘째 발부터는 "비행 중"으로 막혔기 때문이다.
+    // 자리가 둘이 되면서 그 잠금이 풀렸고, **SPACE를 누르고 있으면 두 발이
+    // 통째로 나간다**(계측: 3초 홀드에 3발). 그 두 발은 총구 앞에서 만나 서로를
+    // 부순다 — 누른 사람은 한 발을 쐈다고 생각하는데 판에서는 두 발이 사라진다.
+    // 발사는 **누른 횟수**여야 한다. 나머지 키는 눌러 두는 게 자연스러우므로
+    // (각도 스테퍼·시간 진행) 여기서만 걸러 낸다.
+    if (e.repeat && e.code === 'Space') { e.preventDefault(); return }
     // 개막 중에는 키도 같이 잠근다. 화면에서 패널을 걷고 버튼을 disabled로
     // 만들어도 키보드는 그대로 살아 있어서, 막 뒤에서 SPACE로 발사하거나
     // SHIFT로 시간을 흘려보낼 수 있었다 — 막이 있으나 마나였다.
@@ -702,9 +711,11 @@ export function updateHud(el, game) {
     // 막히는 것은 "탄이 날고 있을 때"가 아니라 **자리가 다 찼을 때**다
     // (game.salvoFull). 한 발이 날고 있어도 다음 한 발은 쏠 수 있고,
     // 그 두 번째 발로 첫 발을 치는 것이 이 게임의 새 수다.
-    fireBtn.disabled = game.salvoFull || veil
-    fireBtn.querySelector('.ftext').textContent = game.salvoFull ? t('ui.fire.reload', { max: CFG.MAX_INFLIGHT })
-      : p.outcome === 'earth' ? t('ui.fire.abort') : t('ui.fire')
+    // 시한이 지나면 새 발은 없다 — 이미 나간 발이 마지막이다(game.pastDeadline).
+    fireBtn.disabled = game.salvoFull || game.pastDeadline || veil
+    fireBtn.querySelector('.ftext').textContent = game.pastDeadline ? t('ui.fire.deadline')
+      : game.salvoFull ? t('ui.fire.reload', { max: CFG.MAX_INFLIGHT })
+        : p.outcome === 'earth' ? t('ui.fire.abort') : t('ui.fire')
   } else {
     lcd.className = 'lcd off'
     el.querySelector('#lcdTag').textContent = t(game.runOver ? 'lcd.dead' : 'lcd.hold')

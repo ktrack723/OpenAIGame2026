@@ -158,8 +158,14 @@ export function sweepMeet(a0, a1, b0, b1, r) {
 // 미는 것은 부르는 쪽이 한다(vel += dx*dv). 예측은 **밀지 않고 값만** 읽어
 // 화살표를 그리기 때문이다 — 둘이 같은 함수를 봐야 조준이 거짓말을 안 한다.
 export function missilePush(blastX, blastY, atX, atY, yld) {
-  let dx = atX - blastX, dy = atY - blastY
-  const d = Math.hypot(dx, dy) || 1   // 정확히 겹치는 일은 없다(판정 반경이 24 GU다)
+  const dx = atX - blastX, dy = atY - blastY
+  const d = Math.hypot(dx, dy)
+  // 정확히 겹쳐 있으면 **미는 방향이 없다.** 같은 프레임에 같은 각·같은 힘으로
+  // 쏜 두 발은 궤적이 비트 단위로 같아서 실제로 이 자리에 온다(계측). 그때
+  // 폭심은 상대의 한가운데이고, 한가운데서 터진 폭발은 어느 쪽으로도 안 민다 —
+  // 방향을 아무거나 지어내면 그게 거짓말이다. 크기까지 0으로 돌려주어야
+  // 부르는 쪽이 "밀었다"고 보고하지 않는다(game.relay).
+  if (d < 1e-9) return { dx: 0, dy: 0, dv: 0 }
   return { dx: dx / d, dy: dy / d, dv: nukeDv(yld, CFG.MISSILE_MU) }
 }
 

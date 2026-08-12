@@ -10,6 +10,7 @@ export const ko = {
   'ui.findPrev': '◀ 접촉각', 'ui.findNext': '접촉각 ▶',
   'ui.findPrev.tip': '닿는 각도를 반시계로', 'ui.findNext.tip': '닿는 각도를 시계로',
   'ui.fire': 'FIRE', 'ui.fire.key': 'SPACE',
+  'ui.fire.deadline': '시한 종료 — 마지막 발 비행 중', 
   'ui.fire.reload': '재장전 대기 — {max}발 비행 중', 'ui.fire.abort': 'ABORT — 지구 직격',
   'ui.wait': '시간 진행 ▶▶', 'ui.wait.tip': '누르고 있는 동안만 시간이 흐른다',
   'ui.toObs': '관측 ▶', 'ui.toObs.tip': '관측 모드 — UI가 사라지고 판이 흐른다',
@@ -181,6 +182,7 @@ export const ko = {
   'msg.nuke.debris': '파편에 격발 — 탄두 조기 폭발',
   'msg.nuke.hit': '{name} 타격 — Δv {dv} · 방위 {dir}°{tail}',
   'msg.nuke.relay': '탄두로 탄두를 쳤다 — {yield}Mt · Δv {dv} · 방위 {dir}°. 저 탄의 진로가 바뀌었다',
+  'msg.nuke.relay.center': '{yield}Mt 탄두가 다른 탄두 한가운데서 터졌다 — 미는 방향이 없다',
   'msg.nuke.armor': ' (장갑에 막혀 거의 안 밀렸다)',
   'msg.volatile': '{name} 유폭! — 반경 {r} GU 안이 전부 밀렸다',
   'msg.unstable': '{name} 파열! — 방위 {dir}°로 산탄 {n}갈래',
@@ -207,8 +209,10 @@ export const ko = {
   'msg.miss.timing': '타이밍 — 공이 지나갔다',
 
   // ── 토스트 ────────────────────────────────────────────────────
+  'toast.deadline': '작전 시한 종료 — 이미 나간 발이 마지막이다',
   'toast.salvoFull': '탄두 {n}발이 다 나가 있다 — 하나가 결판나야 다음 발',
   'toast.relay': '탄두 유도 — 날아가던 탄이 밀렸다',
+  'toast.relay.center': '탄두끼리 정면으로 겹쳤다 — 아무 데로도 안 밀렸다',
   'toast.slow': '발사 속도 부족 — 지구 탈출속도 {v} 초과 필요',
   'toast.capture': '포획됨 — 너무 느렸다 (강제 추락)',
   'toast.noAngle': '이 발사 속도로는 닿는 각도가 없다 — 속도를 바꿔라',

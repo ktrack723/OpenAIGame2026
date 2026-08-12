@@ -229,6 +229,14 @@ export class Game {
   get aliveHives() { return this.bodies.filter(b => b.alive && b.role === 'hive').length }
   get aliveSieges() { return this.bodies.filter(b => b.alive && b.role === 'siege').length }
   get aliveThreats() { return this.aliveFortresses + this.aliveHives + this.aliveSieges }
+  // 아직 도착 안 한 표적 — 워프 중이라 화면에도 없고 alive도 아니지만, 목표
+  // 숫자에는 이미 들어가 있다(loadStage의 targets · stepHive의 goal.total).
+  // 승리 판정은 이것까지 봐야 한다(win).
+  get warpingThreats() {
+    let n = 0
+    for (const b of this.bodies) if (!b.alive && (b.warpIn ?? 0) > 0 && this.isTarget(b)) n++
+    return n
+  }
   // id로 비교한다 — 예측선은 cloneBodies()가 만든 복제본을 넘기므로
   // 참조 비교를 쓰면 "예측에서는 목표가 목표가 아닌" 사고가 난다.
   // 표적 = 조르그 요새. 규칙이 하나로 통일됐으므로 id 목록이 아니라
@@ -254,12 +262,30 @@ export class Game {
   get inFlight() { return this.flying > 0 }
   get salvoFull() { return this.flying >= CFG.MAX_INFLIGHT }
 
+  // ─── 시한이 끝난 뒤 ─────────────────────────────────────────
+  // 시한을 넘겨도 **날고 있는 마지막 한 발은 끝까지 보내준다**(checkEnd). 그 유예는
+  // "탄이 하나도 안 남았을 때 모성을 부른다"로 적혀 있는데, 자리가 둘이 되면서
+  // 거기가 구멍이 됐다: 한 발이 죽기 전에 다음 발을 쏘면 **0이 되는 순간이 영영
+  // 안 온다.** 계측에서 아무렇게나 여덟 발을 쏘아 152초를 벌었고, 한 판은 시한을
+  // 110초 넘겨서 클리어됐다 — 시계가 판정에서 통째로 빠진 것이다.
+  //
+  // 그래서 시한이 지나면 **발사가 닫힌다.** 유예는 이미 나간 발의 것이지 새 발의
+  // 것이 아니다. 모성이 와 있는 동안(doom)은 예외다 — 저것을 부수는 유일한 길이
+  // 공을 던지는 것이라, 거기서 발사를 막으면 마지막 길이 닫힌다.
+  get pastDeadline() {
+    return !this.doom && !this.won && !this.lost && this.time >= this.stageTime
+  }
+
   fire() {
     // 모성이 와 있어도 쏜다 — 저것을 부수는 유일한 길이 공을 던지는 것이다.
     if (this.won || this.lost || !this.earth.alive) return
     if (this.warpCurtain) return   // 개막 중 — 아직 내 차례가 아니다
     if (this.salvoFull) {
       this.setToast(msg('toast.salvoFull', { n: CFG.MAX_INFLIGHT }))
+      return
+    }
+    if (this.pastDeadline) {
+      this.setToast(msg('toast.deadline'))
       return
     }
     if (this.power <= this.launchEscape) {
@@ -724,13 +750,22 @@ export class Game {
     // 추진기 달린 요새가 하나도 없으면 물어볼 것도 없다. 한 번의 판정이
     // 1.5ms짜리라 이 두 줄이 곧 "2스테이지까지는 공짜"를 만든다.
     if (!this.bodies.some(b => b.boost && b.alive && b.role === 'battery')) return
-    const threatened = new Set()
+    // ── 명단부터 짠다: 요새 하나당 **제일 먼저 닿는 탄** 하나 ──
+    // 예전에는 탄을 돌며 곧바로 경계를 깎았다. 탄이 한 번에 한 발일 때는 그게
+    // 같은 말이었는데, 자리가 둘이 되면서 **같은 요새를 두 발이 물면 경계가 한
+    // 틱에 두 번 깎인다** — 반응 시간이 절반이 되어 두 발을 겨눌수록 저쪽이 더
+    // 빨리 비켜서는, 아무도 의도한 적 없는 규칙이 생겼다. 경계는 요새의 성질이지
+    // 탄의 개수가 아니다. 비켜서는 방향만은 **먼저 닿는 탄** 기준으로 잡는다.
+    const threatened = new Map()
     for (const m of this.missiles) {
       if (!m.alive) continue
       const hit = Aim.firstImpact(this, m, CFG.FORT_DODGE_LEAD)
       const b = hit?.body
       if (!b || !b.boost || !b.alive || b.role !== 'battery') continue
-      threatened.add(b)
+      const cur = threatened.get(b)
+      if (!cur || hit.t < cur.t) threatened.set(b, hit)
+    }
+    for (const [b, hit] of threatened) {
       // 반응 시간은 요새마다 다르다. 처음 위협받는 순간에 뽑고, 그 뒤로는
       // 계속 물려 있는 동안만 깎인다.
       if (b.alert == null) {
@@ -1244,6 +1279,9 @@ export class Game {
       for (let j = i + 1; j < live.length; j++) {
         const a = live[i], b = live[j]
         if (!a.alive || !b.alive) continue     // 이 스텝에 이미 큐로 쓰인 탄
+        // 총구를 막 떠난 탄은 아직 무장 전이다 — 그 자리에서 붙는 건 오발이다
+        // (CFG.MISSILE_ARM). 예측도 같은 문턱을 본다(aim.predictPath).
+        if (a.age < CFG.MISSILE_ARM || b.age < CFG.MISSILE_ARM) continue
         const u = sweepMeet(a.prev, a.pos, b.prev, b.pos, CFG.MISSILE_HIT_R)
         if (u < 0) continue
         // 빠른 쪽이 큐다 — 플레이어가 고른 발사 속도가 그대로 역할이 된다
@@ -1267,15 +1305,28 @@ export class Game {
     const push = missilePush(c.x, c.y, p.x, p.y, cue.yld)
     ball.vel.x += push.dx * push.dv; ball.vel.y += push.dy * push.dv
     ball.relayed++
+    // 인카운터 기록은 여기서 접는다. 스윙바이는 **중력이 꺾은 각**을 재는 것인데
+    // (진입 속도 vIn 과 이탈 속도의 사잇각), 그 사이에 핵으로 한 번 밀면 그 각에
+    // 임펄스가 섞여 들어간다 — 행성 곁에서 릴레이한 발이 "스윙바이 40°"로 보고되고
+    // 정치자금까지 붙는 셈이다. 밀린 뒤부터 다시 센다: 그 뒤로 중력이 마저 꺾는
+    // 만큼은 여전히 진짜 스윙바이다.
+    ball.enc.clear()
     const wave = blastWave(this.bodies, c.x, c.y, cue.yld, null)
     this.addFx({
       kind: 'nuke', x: c.x, y: c.y, yld: cue.yld, r: CFG.MISSILE_HIT_R,
       px: push.dx, py: push.dy, wave: wave.radius, cue: true,
     })
-    this.message = msg('msg.nuke.relay', {
-      yield: cue.yld, dv: push.dv.toFixed(1), dir: bearing(push.dx, push.dy).toFixed(0),
-    })
-    this.setToast(msg('toast.relay'))
+    // 한가운데서 터지면 미는 방향이 없다(missilePush) — 그때는 "밀었다"고 하면
+    // 안 된다. 탄 하나가 값 없이 사라진 것이고, 판은 그 사실을 그대로 말한다.
+    if (push.dv > 0) {
+      this.message = msg('msg.nuke.relay', {
+        yield: cue.yld, dv: push.dv.toFixed(1), dir: bearing(push.dx, push.dy).toFixed(0),
+      })
+      this.setToast(msg('toast.relay'))
+    } else {
+      this.message = msg('msg.nuke.relay.center', { yield: cue.yld })
+      this.setToast(msg('toast.relay.center'))
+    }
     if (wave.pushed.some(q => q.body.isEarth)) this.setToast(msg('toast.blastEarth'))
   }
 
@@ -1577,11 +1628,25 @@ export class Game {
     if (this.aliveThreats === 0) this.win()
   }
 
-  win() {
+  // force = **모성을 부숴서 판을 되찾은 승리**(doomBroken). 그 한 수는 남은
+  // 요새와 무관하게 판을 가져간다 — 시한이 끝난 뒤의 마지막 창에서 저것을
+  // 처박았다는 사실 자체가 이 판의 결말이다("모성 격파 — 판을 되찾았다").
+  win(force = false) {
     // 모성이 오는 중에는 절대 이기지 않는다. 예전엔 난사가 마지막 요새를
     // 태우는 순간 recordKill → win()이 그대로 걸려서, 성계가 쓸려나가는 와중에
     // 축하 화면이 떴다(그리고 won=true가 되면 시계가 멈춰 연출까지 얼어붙었다).
     if (this.won || this.lost || this.doom) return
+    // **워프해 들어오는 중인 표적이 있으면 아직 안 끝났다.** 모함이 보낸 요새는
+    // 0.5초(WARP_LEAD) 동안 alive=false로 대기하는데, aliveThreats는 살아 있는
+    // 것만 세므로 그 창 안에서 마지막 요새를 부수면 위협 0으로 읽혀 클리어가 난다.
+    // 그리고 won이 서면 checkEnd가 더 안 보므로, 그 뒤에 도착한 요새는 **클리어된
+    // 판 위에 그대로 선다** — 목표는 5/5인데 판에는 조르그가 살아 있는 상태로
+    // 시계까지 멎는다(계측: 여섯 시드 전부 재현).
+    // 목표 숫자에는 이미 들어가 있는 놈이다(stepHive가 보내면서 goal.total을
+    // 올린다) — 그러니 도착할 때까지 기다렸다가 마저 부수는 게 규칙에 맞다.
+    // (모성을 부순 승리는 예외다 — 아래 force. 거기서 막으면 그 판은 이기지도
+    //  지지도 못한 채 시한 뒤로 흘러 모성이 **한 번 더** 강림한다.)
+    if (!force && this.warpingThreats > 0) return
     this.won = true
     this.message = msg('msg.win')
     this.setToast(msg('toast.win'))
@@ -1774,7 +1839,7 @@ export class Game {
     this.timeWarn = 3                      // 시한 경고는 이미 다 울렸다
     this.setToast(msg('toast.doomDown'))
     this.message = msg('msg.doomDown')
-    this.win()
+    this.win(true)
   }
 
   fail(reason, msg) {
