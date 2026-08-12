@@ -75,6 +75,9 @@ const SAY = {
   laserHit: 4, nuke: 4, volatile: 4,
   // 벨트 기폭은 명중이 아니다 — 판 밖으로 나간 발이라 할 말이 다르다.
   beltBlast: 3,
+  // 혜성 도착 — 굴릴 공이 하나 더 왔다. 판에 몇 안 되는 좋은 소식이라
+  // 스윙바이(3)보다 위에 둔다. 대신 판마다 두어 번뿐이라 시끄럽지 않다.
+  comet: 4,
   boost: 5,
   swing: 3, laserCharge: 3, laserMiss: 3,
   launch: 2,

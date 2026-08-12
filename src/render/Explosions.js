@@ -27,9 +27,10 @@ export class Explosions {
       else if (e.kind === 'laserHit') this.laserHit(e)
       else if (e.kind === 'laserMiss') this.laserMiss(e)
       else if (e.kind === 'volatile') this.volatile(e)
-      else if (e.kind === 'absorb') this.absorb(e)
       else if (e.kind === 'nuke') this.nuke(e)
-      else if (e.kind === 'destroy') this.destroy(e)
+      else if (e.kind === 'zorgCharge') this.zorgCharge(e)
+      else if (e.kind === 'destroy') (e.zorg ? this.destroyZorg(e) : this.destroy(e))
+      else if (e.kind === 'comet') this.comet(e)
       else if (e.kind === 'swing') {
         this.parts.shock(e.x, e.y, Math.max(24, (e.r ?? 10) * CFG.SWING_ZONE * 0.5), 0x67e8f9, 0.6)
         this.parts.burst(e.x, e.y, { n: 26, color: 0x67e8f9, speed: 110, size: 8, ttl: 0.7 })
@@ -363,40 +364,95 @@ export class Explosions {
     this.rig.focus(e.x, e.y, R * 1.2)
   }
 
-  // ─── 특이점 흡수 — 밖에서 안으로 빨려 들어간다 ────────────────
-  absorb(e) {
-    const P = this.parts, R = Math.max(30, (e.r ?? 20) * (e.small ? 1.4 : 2.6))
-    // 바깥에서 안으로 조여드는 링 (from > to)
-    P.shock(e.x, e.y, R, 0xc084fc, 0.7, { thin: true, from: 2.6, to: 0.05, alpha: 0.95 })
-    P.shock(e.x, e.y, R, 0x7e22ce, 1.0, { from: 3.4, to: 0.1, alpha: 0.6, delay: 0.1 })
-    P.puff(e.x, e.y, { r0: R * 1.6, r1: R * 0.05, ttl: 0.8, color: 0xa855f7, alpha: 0.9 })
-    // 파티클도 바깥 링에서 중심으로 — spawn 위치를 원주에 두고 안쪽 속도를 준다
-    for (let i = 0; i < (e.small ? 40 : 140); i++) {
-      const a = Math.random() * Math.PI * 2, d = R * (1.2 + Math.random() * 1.6)
-      const sp = 120 + Math.random() * 220
+  // ─── 혜성 도착 — 벨트를 뚫고 들어온다 ────────────────────────
+  // 워프가 아니다. 저건 조르그가 보낸 게 아니라 **원래 지나가던 것**이라
+  // 도착에도 폭발이 없다: 얼음 벽을 스치고 지나간 파문 한 겹과, 진행 방향으로
+  // 길게 끌리는 얼음 가루뿐이다. 화면은 "뭔가 들어왔다"만 말하면 된다.
+  comet(e) {
+    const P = this.parts, R = Math.max(70, (e.r ?? 30) * 2.4)
+    P.shock(e.x, e.y, R, 0xe0f2fe, 0.9, { thin: true, from: 0.2, to: 3.4, alpha: 0.8 })
+    P.puff(e.x, e.y, { r0: R * 0.2, r1: R * 1.3, ttl: 0.9, color: 0xbae6fd, alpha: 0.55 })
+    P.burst(e.x, e.y, { n: 120, color: 0xdffbff, speed: 240, size: 12, ttl: 1.6, spread: 1.1, dir: e.a })
+    P.burst(e.x, e.y, { n: 60, color: 0xffffff, speed: 420, size: 8, ttl: 0.8, spread: 0.6, dir: e.a })
+    this.rig.hit(7)
+    this.flash(0.12, '#e8f7ff')
+  }
+
+  // ─── 조르그의 마지막 0.45초 — 빛기둥 ─────────────────────────
+  // **아직 안 터졌다.** 그게 이 연출의 전부다: 몸통이 하얗게 달아오르고
+  // (Scene.drawDying), 중심에서 사방으로 빛기둥이 뻗고, 링이 안으로 조여든다.
+  // 폭발의 문법(밖으로 퍼지는 화구·충격파)을 여기서는 하나도 안 쓴다 —
+  // 써 버리면 0.45초 뒤의 진짜 폭발이 두 번째 폭발로 읽힌다.
+  //
+  // 색은 조르그의 것이다: 요새는 장미(제 회로 불빛과 같은 색), 모함·모성은 자주.
+  zorgCharge(e) {
+    const P = this.parts, C = e.hive ? 0xe879f9 : 0xff2b3f
+    const R = Math.max(60, (e.r ?? 30) * 1.6)
+    // ① 안으로 조여드는 링 둘 — 힘이 모인다(from > to = 수축)
+    P.shock(e.x, e.y, R, 0xffffff, 0.40, { thin: true, from: 3.0, to: 0.12, alpha: 1 })
+    P.shock(e.x, e.y, R, C, 0.44, { from: 4.2, to: 0.2, alpha: 0.7, delay: 0.06 })
+    // ② 빛기둥 — 가는 흰빛이 먼저, 굵은 제 색이 뒤따른다
+    P.beams(e.x, e.y, { n: 10, color: 0xffffff, len: R * 5.5, w: R * 0.10, ttl: 0.42, alpha: 0.95 })
+    P.beams(e.x, e.y, { n: 12, color: C, len: R * 8.0, w: R * 0.18, ttl: 0.40, delay: 0.09, roll: 0.26 })
+    // ③ 코어가 하얗게 달아오른다
+    P.puff(e.x, e.y, { r0: R * 0.10, r1: R * 0.78, ttl: 0.45, color: 0xffffff, alpha: 1 })
+    // ④ 안으로 빨려드는 가루 — 밖으로 뿜는 게 아니다
+    for (let i = 0; i < 60; i++) {
+      const a = Math.random() * Math.PI * 2, d = R * (1.3 + Math.random() * 1.8)
+      const sp = 220 + Math.random() * 300
       P.spawn(e.x + Math.cos(a) * d, e.y + Math.sin(a) * d, -Math.cos(a) * sp, -Math.sin(a) * sp,
-        _pc.setHex(Math.random() < 0.3 ? 0xffffff : 0xa855f7), 7 + Math.random() * 7, 0.7 + Math.random() * 0.6, 0.2)
+        _pc.setHex(Math.random() < 0.4 ? 0xffffff : C), 6 + Math.random() * 6, 0.38, 0.2)
     }
-    this.rig.hit(e.small ? 5 : 18)
-    if (!e.small) { this.flash(0.3, '#f5e6ff'); this.rig.focus(e.x, e.y, R * 3) }
+    this.rig.focus(e.x, e.y, R * 3.4, 1.4)
+    this.flash(0.12, e.hive ? '#ffe6ff' : '#ffdfe6')
+  }
+
+  // ─── 조르그 폭파 — 빛기둥이 판을 가른다 ──────────────────────
+  // 일반 행성의 폭발(destroy)과 **의도적으로 다른 문법**을 쓴다:
+  //   기둥이 있다 / 색이 장미·자주다 / 파편 대신 금속 조각이 곧게 날아간다.
+  // 화면 구석에서 터져도 "저건 조르그였다"가 형태와 색으로 읽혀야 한다.
+  destroyZorg(e) {
+    const P = this.parts, C = e.hive ? 0xe879f9 : 0xff2b3f
+    const R = Math.max(80, (e.r ?? 30) * 3.6)
+    this.flash(0.9, e.hive ? '#ffe6ff' : '#ffe0e8')
+    // ① 흰 코어가 터진다
+    P.puff(e.x, e.y, { r0: R * 0.28, r1: R * 1.35, ttl: 0.24, color: 0xffffff, alpha: 1 })
+    P.puff(e.x, e.y, { r0: R * 0.15, r1: R * 2.3, ttl: 1.2, color: C, alpha: 0.95, delay: 0.05 })
+    P.puff(e.x, e.y, { r0: R * 0.30, r1: R * 3.6, ttl: 2.6, color: 0x4c1d95, alpha: 0.5, delay: 0.18, drift: 14 })
+    // ② 빛기둥 — 사방으로 한 다발, 그리고 십자로 네 갈래가 훨씬 길게
+    P.beams(e.x, e.y, { n: 14, color: 0xffffff, len: R * 6.5, w: R * 0.16, ttl: 0.55 })
+    P.beams(e.x, e.y, { n: 4, color: C, len: R * 13, w: R * 0.30, ttl: 0.85, delay: 0.04, roll: 0.4 })
+    // ③ 충격파 — 흰 링이 먼저, 제 색 링이 크게 뒤따른다
+    P.shock(e.x, e.y, R, 0xffffff, 0.5, { thin: true, from: 0.08, to: 4.6, alpha: 1 })
+    P.shock(e.x, e.y, R, C, 1.15, { from: 0.12, to: 3.2, delay: 0.07 })
+    P.shock(e.x, e.y, R, 0xa855f7, 1.7, { thin: true, from: 0.1, to: 6.0, delay: 0.22, alpha: 0.45 })
+    // ④ 파편 — 흙먼지가 아니라 **곧게 날아가는 조각**이다(속도↑ 크기↓ 항력↓)
+    P.spikes(e.x, e.y, { n: 40, color: 0xffffff, speed: 2200, size: 11, ttl: 0.9 })
+    P.burst(e.x, e.y, { n: 380, color: C, speed: 780, size: 15, ttl: 2.4, drag: 0.5 })
+    P.burst(e.x, e.y, { n: 160, color: 0xffffff, speed: 1400, size: 9, ttl: 1.0 })
+    this.rig.hit(VIS.SHAKE_MAX)
+    this.rig.focus(e.x, e.y, R * 2.6)
   }
 
   // ─── 행성 폭파 — 핵으로는 절대 볼 수 없는 그림 ───────────────
+  // 조르그(destroyZorg)와 갈리는 쪽이다: **흙먼지와 화구.** 기둥도 없고
+  // 색도 주황·호박·적갈이다. 그래서 판 위에서 둘은 절대 안 헷갈린다.
+  // 흔들림과 섬광을 조금 낮춘 것도 같은 이유다 — 이건 배경 사건이고,
+  // 화면을 통째로 태우는 것은 조르그가 부서질 때다.
   destroy(e) {
     const R = Math.max(70, (e.r ?? 30) * 3.6)
     const P = this.parts
-    this.flash(e.earth ? 1 : 0.55, e.earth ? '#ffe4e6' : '#fff1d6')
+    this.flash(e.earth ? 1 : 0.38, e.earth ? '#ffe4e6' : '#fff1d6')
     P.puff(e.x, e.y, { r0: R * 0.3, r1: R * 1.2, ttl: 0.22, color: 0xffffff, alpha: 1 })
     P.puff(e.x, e.y, { r0: R * 0.15, r1: R * 2.2, ttl: 1.3, color: e.earth ? 0x60a5fa : 0xffb347, alpha: 0.95, delay: 0.04 })
     P.puff(e.x, e.y, { r0: R * 0.30, r1: R * 3.4, ttl: 2.6, color: 0x7c2d12, alpha: 0.55, delay: 0.16, drift: 16 })
-    P.spikes(e.x, e.y, { n: 36, color: 0xffffff, speed: 1900, size: 12, ttl: 0.8 })
+    P.spikes(e.x, e.y, { n: 24, color: 0xffe6b8, speed: 1500, size: 12, ttl: 0.8 })
     P.shock(e.x, e.y, R, 0xffffff, 0.5, { thin: true, from: 0.08, to: 4.2, alpha: 1 })
     P.shock(e.x, e.y, R, 0xfde68a, 1.1, { from: 0.12, to: 3.0, delay: 0.08 })
-    P.shock(e.x, e.y, R, 0xf97316, 1.6, { thin: true, from: 0.1, to: 5.5, delay: 0.2, alpha: 0.5 })
-    P.burst(e.x, e.y, { n: 520, color: e.earth ? 0x93c5fd : 0xffb347, speed: 620, size: 26, ttl: 3.0 })
-    P.burst(e.x, e.y, { n: 180, color: 0xffffff, speed: 1250, size: 12, ttl: 1.0 })
+    P.burst(e.x, e.y, { n: 460, color: e.earth ? 0x93c5fd : 0xffb347, speed: 560, size: 26, ttl: 3.0, drag: 1.3 })
+    P.burst(e.x, e.y, { n: 140, color: 0xffffff, speed: 1100, size: 12, ttl: 1.0 })
     P.burst(e.x, e.y, { n: 140, color: 0xff4d2b, speed: 140, size: 30, ttl: 4.2, drag: 0.4 })
-    this.rig.hit(VIS.SHAKE_MAX)
+    this.rig.hit(e.earth ? VIS.SHAKE_MAX : VIS.SHAKE_MAX * 0.62)
     this.rig.focus(e.x, e.y, R * 2.5)   // 화면 밖에서 터져도 보이게 붙잡는다
   }
 }

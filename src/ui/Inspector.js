@@ -104,7 +104,7 @@ export class Inspector {
     out.push(`<div class="irow"><span>${t('insp.orbit')}</span><b>${fmt(r)} GU</b></div>`)
     out.push(`<div class="irow"><span>${t('insp.speed')}</span><b>${fmt(v, 1)} GU/s</b></div>`)
     // 이 공을 지금 작약량으로 치면 얼마나 밀리는가 — 조준의 유일한 근거.
-    // **반드시 effDv를 쓴다.** 식을 다시 쓰면 태그 감쇠(금속 ×0.5 · 특이점 ×0)가
+    // **반드시 effDv를 쓴다.** 식을 다시 쓰면 태그 감쇠(금속 ×0.5)가
     // 빠져서, 같은 창 세 줄 아래의 role.armor.brief("임펄스가 50%만 먹는다")와
     // role.void.brief("핵도 안 통하고")를 이 숫자가 부정하게 된다.
     // 예측선(aim.js)·실제 임펄스(physics.js)도 같은 함수를 쓴다.

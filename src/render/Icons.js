@@ -23,7 +23,7 @@ const CAT_STYLE = {
   ice: { icon: '🧊', color: '#a5f3fc' },
   iron: { icon: '🔩', color: '#e2e8f0' },
   gas: { icon: '🪐', color: '#fcd34d' },
-  void: { icon: '🕳', color: '#c084fc' },
+  comet: { icon: '☄', color: '#bae6fd' },
   earth: { icon: '🌍', color: '#93c5fd' },
   zorg: { icon: '👁', color: '#e879f9' },
   hive: { icon: '🛸', color: '#e879f9' },

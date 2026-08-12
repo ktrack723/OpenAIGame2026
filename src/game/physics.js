@@ -194,7 +194,7 @@ export function applyNuke(b, blastX, blastY, yld) {
   let dx = b.pos.x - blastX, dy = b.pos.y - blastY
   const d = Math.hypot(dx, dy) || 1
   dx /= d; dy /= d
-  const dv = effDv(b, yld)   // 장갑은 깎이고 특이점은 0 (roles.js)
+  const dv = effDv(b, yld)   // 장갑은 절반으로 깎인다 (roles.js)
   b.vel.x += dx * dv; b.vel.y += dy * dv
   b.hitFlash = 0.9; b.trailFlash = 2.0
   b.scorch = Math.min(3, (b.scorch || 0) + 1)   // 핵 맞은 자국이 표면에 남는다

@@ -13,14 +13,15 @@ import { Icons } from './Icons.js'
 // 분류별 재질 — 분류가 다섯으로 줄었으므로 재질도 다섯이다.
 // (용암·해양·독성·생명은 게임 규칙이 없어 없앴다 — Icons.CATEGORY 주석 참고.)
 // 색은 곧 규칙이다: 회색 암석 = 규칙 없음, 하늘색 얼음 = 가벼움,
-// 흰 금속 = 무거움, 노란 가스 = 터짐, 검은 특이점 = 삼킴.
+// 흰 금속 = 무거움, 노란 가스 = 터짐, 창백한 혜성 = 지나감.
 // 표면 성질(거칠기·금속성·자체발광)은 종류가 정하고, **색만** 팔레트가 흔든다.
 const MATS = {
   rock: { rough: 0.95, metal: 0.05, emis: 0.00 },
   ice: { rough: 0.25, metal: 0.05, emis: 0.06 },
   iron: { rough: 0.30, metal: 0.95, emis: 0.00 },
   gas: { rough: 0.85, metal: 0.00, emis: 0.08 },
-  void: { rough: 1.00, metal: 0.00, emis: 0.00 },
+  // 혜성 — 얼음보다 더 매끈하고 스스로 옅게 빛난다(코마)
+  comet: { rough: 0.18, metal: 0.02, emis: 0.30 },
   earth: { rough: 0.55, metal: 0.10, emis: 0.08 },
   zorg: { rough: 0.45, metal: 0.65, emis: 0.30 },   // 조르그 모성
   hive: { rough: 0.40, metal: 0.75, emis: 0.10 },   // 조르그 모함 — 회로가 대신 빛난다
@@ -42,7 +43,8 @@ const PALETTE = {
   ice: [0x8be9ff, 0xa8f0e4, 0xd6fbff, 0x7fd4cc, 0xbdf3e8],
   iron: [0xcbd5e1, 0xb6bfcb, 0xd8d0be, 0xa4aeba, 0xe0e4ea],
   gas: [0xffd166, 0xf2a65a, 0xe9c9a0, 0xffb59b, 0xf5e3ae, 0xd9a441],
-  void: [0x120a1e],
+  // 혜성 — 얼음 계열보다 더 창백하게. 지구 파랑(217°)과는 여전히 멀다.
+  comet: [0xdffbff, 0xc7f4ff, 0xeafcff],
   earth: [0x3b82f6],       // 이 파랑은 지구 전용이다
   zorg: [0x4a1240],
   hive: [0x3c1030],
@@ -744,8 +746,6 @@ export class SceneView {
         for (const m of fx.role.grp.children) { m.geometry.dispose(); m.material.dispose() }
         this.scene.remove(fx.role.grp)
       }
-      const acc = fx.role.accretion
-      if (acc) { this.scene.remove(acc); acc.geometry.dispose(); acc.material.dispose() }
     }
     if (fx.fort) {
       // 지오메트리는 fortGeo가 공유한다 — 여기서 버리는 건 재질 셋뿐이다
@@ -931,7 +931,6 @@ export class SceneView {
   // 판 위에 정보가 아니라 무늬만 남는다. 태그는 색·무늬·배지(Icons)가 이미
   // 말하고 있으므로 링은 걷어냈고, 여기 남은 둘은 **그 천체 자체의 생김새**다.
   //   가스 행성 — 위에서 내려다본 고리
-  //   특이점    — 강착원반
   // 유폭 반경 원은 조준이 그 공을 물었을 때만 켠다(syncBodies) — 늘 켜 두면
   // 가스 행성 넷이 성계에 커다란 원 넷을 상시로 그린다.
   attachRoleFx(fx, b) {
@@ -953,15 +952,24 @@ export class SceneView {
       fx.role = { grp, spin: 0.12 }
       return
     }
-    if (b.role === 'void') {   // 강착원반 느낌의 안쪽 발광 링
-      const acc = new THREE.Mesh(new THREE.RingGeometry(0.99, 1.12, 72), new THREE.MeshBasicMaterial({
-        color: 0xc084fc, transparent: true, opacity: 0.9, depthTest: false, depthWrite: false,
-        side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
-      }))
-      acc.renderOrder = 13
-      this.scene.add(acc)
-      fx.role = { grp: null, spin: 0, accretion: acc }
-    }
+  }
+
+  // ─── 터지기 직전의 조르그 ────────────────────────────────────
+  // 흰빛으로 달아오르고, 부풀고, 떤다. 0.45초짜리 정지 프레임이라
+  // (CFG.ZORG_BLAST_LEAD) 값은 전부 그 안에서 다 돌아야 한다.
+  // **실시간으로 움직인다** — 여기까지 오면 판은 이미 멈춰 있을 수 있다.
+  drawDying(fx, b, r) {
+    const u = 1 - b.dying / CFG.ZORG_BLAST_LEAD          // 0 → 1
+    const beat = Math.sin(u * 46) * 0.5 + 0.5             // 떨림
+    const j = r * 0.05 * (1 - u) * (beat * 2 - 1)
+    fx.mesh.visible = true
+    fx.mesh.position.set(b.pos.x + j, b.pos.y - j, 0)
+    fx.mesh.scale.setScalar(r * (1 + 0.28 * u * u))       // 마지막에 부푼다
+    fx.mesh.material.emissiveIntensity = 1 + 9 * u * u
+    fx.mesh.material.color.setRGB(1 + 3 * u, 1 + 3 * u, 1 + 3 * u)
+    fx.ring.visible = false
+    fx.hpArc.visible = false
+    if (fx.fort) fx.fort.grp.visible = false
   }
 
   // 성계에서 완전히 빠진 천체(잔해 정리 등)의 연출물을 걷어낸다.
@@ -1027,28 +1035,23 @@ export class SceneView {
           F.core.material.opacity = 0.16 + 0.84 * u
         }
       }
-      if (fx.role) {
+      if (fx.role?.grp) {   // 가스 행성의 고리 — 판정 반경에 맞춰 깐다
         const show = b.alive && !waiting
-        if (fx.role.grp) fx.role.grp.visible = show
-        if (fx.role.accretion) fx.role.accretion.visible = show
+        fx.role.grp.visible = show
         if (show) {
-          if (fx.role.grp) {   // 가스 행성의 고리 — 판정 반경에 맞춰 깐다
-            fx.role.grp.position.set(b.pos.x, b.pos.y, 0)
-            fx.role.grp.scale.setScalar(mr)
-            fx.role.grp.rotation.z += fx.role.spin * dt
-          }
-          if (fx.role.accretion) {
-            // 특이점은 삼킬수록 커진다. 구체 반경은 μ^(1/3)이라 완만하게만 자라니,
-            // 강착원반을 같이 부풀리고 밝혀서 "지금 얼마나 세졌는지"가 보이게 한다.
-            const grow = Math.min(1, Math.max(0, (b.mu - 900) / (CFG.VOID_MU_MAX - 900)))
-            fx.role.accretion.position.set(b.pos.x, b.pos.y, 1)
-            fx.role.accretion.scale.setScalar(r * (1 + 0.30 * grow))
-            fx.role.accretion.material.opacity = 0.55 + 0.45 * grow
-            fx.role.accretion.rotation.z -= (2.2 + 3.0 * grow) * dt
-          }
+          fx.role.grp.position.set(b.pos.x, b.pos.y, 0)
+          fx.role.grp.scale.setScalar(mr)
+          fx.role.grp.rotation.z += fx.role.spin * dt
         }
       }
-      if (!b.alive) continue
+      // ── 부서졌지만 아직 안 터진 조르그 ──
+      // 제자리에 얼어붙은 채 흰빛으로 달아오르고 떤다. 그 위로 빛기둥이
+      // 뻗는다(Explosions.zorgCharge) — 만화의 '터지기 직전' 정지 프레임이다.
+      // (죽은 천체는 stepBodies가 건너뛰므로 위치는 저절로 고정된다.)
+      if (!b.alive) {
+        if (b.dying > 0) this.drawDying(fx, b, r)
+        continue
+      }
 
       // 워프인 — 게임 시간이 멈춰 있어도 보여야 하므로 실시간 dt로 감쇠시킨다
       // 파편은 표식(ring)이 꺼져 있어 판정 반경(r) 그대로 그리면 화면에서
@@ -1072,6 +1075,24 @@ export class SceneView {
       // 공이 커지는 게 아니라 같은 자리에 다른 그림이 들어가는 것이다.
       fx.mesh.scale.setScalar(b.role === 'volatile' ? scale * GAS_CORE : scale)
       fx.mesh.rotation.y += fx.spin * dt
+
+      // ── 혜성의 코마 ──
+      // 꼬리는 **태양 반대쪽**으로 뻗는다(진행 방향이 아니다 — 실제 혜성이 그렇고,
+      // 그 그림 하나로 "저건 궤도를 도는 공이 아니다"가 읽힌다).
+      // 트레일(궤적선)과 다른 물건이다: 저건 지나온 길이고 이건 지금 타는 얼음이다.
+      if (b.comet) {
+        const rr = Math.hypot(b.pos.x, b.pos.y) || 1
+        const away = Math.atan2(b.pos.y, b.pos.x)
+        // 꼬리 — 태양 반대쪽으로 길게. 항력을 낮게 줘서 멀리까지 흐른다.
+        this.parts.burst(b.pos.x, b.pos.y, {
+          n: 3, color: 0xbae6fd, speed: 70, size: 15, ttl: 2.4, drag: 0.22,
+          spread: 0.55, dir: away,
+        })
+        // 코마 — 머리를 감싸는 옅은 빛. 꼬리보다 짧고 넓게 퍼진다.
+        this.parts.burst(b.pos.x + b.pos.x / rr * scale * 0.6, b.pos.y + b.pos.y / rr * scale * 0.6, {
+          n: 2, color: 0xffffff, speed: 30, size: 9, ttl: 1.0, spread: 2.2, drag: 1.4,
+        })
+      }
 
       // 핵을 맞을 때마다 그을음이 남는다(부서지진 않는다) + 히트 플래시 (§14.5)
       // 파편은 damage()가 애초에 걸러내 hitFlash·scorch가 절대 안 붙는다 — 여기서

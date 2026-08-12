@@ -35,7 +35,13 @@ export function makeBody(spec = {}) {
     isEarth: !!spec.isEarth,
     isTarget: !!spec.isTarget,
     zorg: !!spec.zorg,
-    mothership: !!spec.mothership,   // 시한 종료 시 오는 조르그 모성 — 부술 수 없다
+    mothership: !!spec.mothership,   // 시한 종료 시 오는 조르그 모성
+    // 카이퍼 벨트를 뚫고 지나가는 손님. 벨트 반사만 안 받고 나머지는 전부 같다
+    // (game.bodyBounds). 판을 넘길 때는 지나간 것으로 치고 걷는다(loadStage).
+    comet: !!spec.comet,
+    // 부서졌지만 아직 안 터진 시간(실시간 초). 조르그만 0보다 크다 —
+    // 그동안 몸통이 흰빛으로 달아오르고 사방으로 빛기둥이 뻗는다(game.stepDying).
+    dying: spec.dying ?? 0,
     role,
     mods: spec.mods ?? null,
     // 추진기를 달고 있는가. 조르그 요새에만 1로 실린다(3스테이지부터).

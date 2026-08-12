@@ -10,7 +10,8 @@ import { t } from '../i18n/index.js'
 //   🔩 금속 행성   — 무겁다. 핵으로 미는 양이 절반으로 깎인다.
 //   🪐 가스 행성   — 터진다. 핵을 맞으면 그 자리에서 유폭한다.
 //   🧊 얼음 행성   — 가볍다. 질량이 절반이라 두 배로 밀린다(최고의 큐볼).
-//   🕳 특이점      — 삼킨다. 블랙홀·태양처럼 닿는 것을 없애 버린다.
+//   ☄ 혜성        — 지나간다. 카이퍼 벨트를 뚫고 들어와 성계를 가로지르고 나간다.
+//                   벨트에 안 튕기는 유일한 천체이고, 나머지 규칙은 전부 같다.
 //
 // 태그는 **행성의 종류가 정한다**(아래 TAG_BY_TYPE). 금속 행성처럼 생긴 게
 // 금속 행성이고 가스 행성처럼 생긴 게 터진다 — 보이는 것과 규칙이 어긋나지 않는다.
@@ -25,7 +26,9 @@ export const ROLES = {
   armor: { icon: '🔩', color: 0x94a3b8, dvScale: CFG.ARMOR_DV },
   volatile: { icon: '🪐', color: 0xfb923c, dvScale: 1 },
   light: { icon: '🧊', color: 0x8be9ff, dvScale: 1 },
-  void: { icon: '🕳', color: 0xa855f7, dvScale: 0 },
+  // 혜성 — 규칙은 **빼기 하나**뿐이다: 카이퍼 벨트가 안 튕긴다(game.bodyBounds).
+  // 그래서 dvScale은 1이다. 밀리는 것도, 부서지는 것도, 광선에 녹는 것도 남과 같다.
+  comet: { icon: '☄', color: 0x7dd3fc, dvScale: 1 },
 }
 // 태그 문장 — 부르는 쪽은 이 셋만 쓴다.
 const PCT = { pct: (CFG.ARMOR_DV * 100).toFixed(0) }
@@ -34,7 +37,7 @@ export const roleBrief = (k) => t(`role.${k}.brief`, PCT)
 export const roleAim = (k) => t(`role.${k}.aim`, PCT)
 
 // 종류 → 태그. 여기 없는 종류는 전부 일반 행성이다.
-export const TAG_BY_TYPE = { iron: 'armor', gas: 'volatile', void: 'void', ice: 'light' }
+export const TAG_BY_TYPE = { iron: 'armor', gas: 'volatile', ice: 'light', comet: 'comet' }
 
 // 종류별 질량 배율 — 얼음은 **가볍다**. 이게 "얼음 행성"의 메카닉 전부다:
 // 같은 크기라도 질량이 절반이라 핵 한 방에 두 배로 밀린다(Δv = 임펄스/질량).
@@ -61,7 +64,7 @@ export const roleOf = (b) => (b && b.role) ? ROLES[b.role] : null
 export const hasRole = (b, r) => !!b && (b.role === r || (!!b.mods && b.mods.includes(r)))
 export const modsOf = (b) => (b && b.mods) ? b.mods : []
 
-// 이 공에 실제로 먹히는 Δv — 금속은 깎이고 특이점은 0이다.
+// 이 공에 실제로 먹히는 Δv — 금속은 절반으로 깎인다.
 // 겹쳐 얹은 성질(mods)까지 보고 가장 강한 감쇠를 적용한다.
 // 예측선과 실제 임펄스가 반드시 같은 함수를 써야 조준이 거짓말을 안 한다.
 function dvScaleOf(b) {
