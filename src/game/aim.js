@@ -33,7 +33,7 @@ export function predictPath(game) {
   // 시간은 0.25초 단위로 뭉갠다 — 관측 중(시계가 흐를 때) 매 프레임 다시 푸는 걸
   // 막는 장치다. 조준 중에는 시계가 멈춰 있으므로 예측은 항상 정확하고,
   // 시계가 흐르는 동안엔 초당 4번만 갱신된다(예측 1회가 15ms대라 그게 곧 프레임이다).
-  const key = `${game.aim.toFixed(5)}|${game.power}|${game.yieldMt}|${game.stageIdx}|${Math.floor(game.time * 4)}|${game.shots}|${game.bodies.length}`
+  const key = `${game.aim.toFixed(5)}|${game.power}|${game.yieldMt}|${game.stage}|${Math.floor(game.time * 4)}|${game.shots}|${game.bodies.length}`
   if (game._predKey === key) return game._pred
   const now = performance.now()
   if (game._pred && now - (game._predAt || 0) < 45) return game._pred

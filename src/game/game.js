@@ -46,7 +46,9 @@ export class Game {
   // (오프닝 예고편이 실제 게임을 굴려 보여 준 뒤 판을 되돌리는 데 쓴다.)
   resetRun(seed = this.seed) {
     this.seed = seed >>> 0
-    this.stageIdx = 0; this.runOver = false
+    // 판 번호는 **1부터**다. 이 게임에 난이도 눈금은 이것 하나뿐이다 —
+    // 예전에 있던 안테(= 1 + ⌊판/3⌋)는 없앴다(config.STAGE_CAP 주석 참고).
+    this.stage = 1; this.runOver = false
     this.rng = new Rng(this.seed ^ 0x9e3779b9)
     // ─── 런 지갑 ───
     // **여기서만 초기화한다.** loadStage()는 이 줄들을 절대 안 건드리므로 판이
@@ -81,10 +83,8 @@ export class Game {
     this.loadStage()
   }
 
-  // 카이퍼 벨트 반경 — 성계의 쿠션. aMax가 안테마다 커지므로 파생값으로 둔다.
+  // 카이퍼 벨트 반경 — 성계의 쿠션. aMax가 판마다 커지므로 파생값으로 둔다.
   get beltR() { return beltRadius(this.aMax) }
-
-  get ante() { return Math.min(8, 1 + Math.floor(this.stageIdx / 3)) }
 
   // ─── 작전 시한 (인게임 시간) ───
   // this.time은 step()에서만 누적되고, step()은 effTimeScale()>0일 때만 돈다.
@@ -94,7 +94,8 @@ export class Game {
   // (판이 열릴 때 정해 두고 안 바꾼다. 모함을 부순 순간 시계가 줄어들면
   //  "부쉈더니 손해"가 되는데, 그건 이 물건이 주려는 판단이 아니다.)
   get stageTime() {
-    return CFG.TIME_BASE + CFG.TIME_PER_ANTE * Math.min(this.ante - 1, 5) + (this.hiveHere ? CFG.HIVE_TIME : 0)
+    const grow = Math.min(this.stage - 1, CFG.STAGE_CAP - 1)
+    return CFG.TIME_BASE + CFG.TIME_PER_STAGE * grow + (this.hiveHere ? CFG.HIVE_TIME : 0)
   }
   get timeLeft() { return Math.max(0, this.stageTime - this.time) }
 
@@ -109,7 +110,7 @@ export class Game {
   }
 
   loadStage() {
-    this.aMax = aMaxOf(this.ante)
+    this.aMax = aMaxOf(this.stage)
     this.fx = []   // 렌더러가 매 프레임 비워가는 연출 이벤트 큐 (§14.5)
     // 잔해만 **제자리에서** 걷어낸다. 배열을 새로 만들면 렌더러가 성계를 통째로
     // 다시 짓고 카메라가 튀어서 판 사이에 화면이 끊긴다 — 이 게임은 성계가
@@ -120,7 +121,7 @@ export class Game {
     }
     // 조르그 증원 — 지금 성계에 남은 것을 보고 그만큼만 보낸다.
     // 한꺼번에 뿅 나타나지 않고 **순서대로** 워프해 들어온다(stepWarpIns).
-    const { added, fortresses, hives } = reinforce(this.rng, this.bodies, this.earth, this.ante, this.stageIdx)
+    const { added, fortresses, hives } = reinforce(this.rng, this.bodies, this.earth, this.stage)
     // 마릿수가 많으면 간격을 조여 도착 전체를 WARP_SPAN 안에 담는다 —
     // 막이 마지막 한 기까지 기다리므로, 간격이 고정이면 후반 개막이 10초를 넘는다.
     const gap = added.length > 1
@@ -164,7 +165,7 @@ export class Game {
     this.obsSpeed = 1   // OBS_SPEEDS 인덱스 — 기본 2×
     this.toast = null; this.toastT = 0
     this.timeWarn = 0
-    this.stage = { roles: this.presentRoles() }
+    this.stageRoles = this.presentRoles()
     // ── 규칙은 **필요할 때** 알려 준다 ──
     // 예전에는 판마다 같은 문단을 통째로 읽혔다: 체력 1 요새, 2판부터 오는
     // 대형, 3판부터 달려 오는 추진기. 1판에서는 뒤의 둘이 아직 없는데도
@@ -199,7 +200,7 @@ export class Game {
   nextStage() {
     if (!this.won || this.runOver) return
     // 정산할 것이 없다 — 정치자금은 벌 때 바로 지갑에 들어가고 판을 넘어 그대로 간다.
-    this.stageIdx++; this.loadStage()
+    this.stage++; this.loadStage()
   }
 
   // 목표 행성 — 살아 있는 요새 우선. 카메라/레티클이 물고 있을 대상이다.
@@ -341,7 +342,7 @@ export class Game {
   // 조르그도 학습한다. 1스테이지만 넉넉하게 두는 건 그 판이 규칙을 배우는
   // 자리이기 때문이고, 4스테이지부터는 하한(LASER_FIRST_MIN)에 붙는다.
   get laserFirst() {
-    return Math.max(CFG.LASER_FIRST_MIN, CFG.LASER_FIRST - CFG.LASER_FIRST_DROP * this.stageIdx)
+    return Math.max(CFG.LASER_FIRST_MIN, CFG.LASER_FIRST - CFG.LASER_FIRST_DROP * (this.stage - 1))
   }
 
   // ─── 포대 명단 ───────────────────────────────────────────────
@@ -575,7 +576,7 @@ export class Game {
   }
 
   // ─── 조르그 모함 — 판을 채운다 ───────────────────────────────
-  // 안테 5부터 궤도 바깥에 한 기 앉는다. 광선은 안 쏜다. 대신 일정 간격으로
+  // 4스테이지부터 궤도 바깥에 한 기 앉는다. 광선은 안 쏜다. 대신 일정 간격으로
   // **성계를 원래대로 되돌려 놓는다**: 요새를 부수면 요새를 워프시키고,
   // 굴릴 공이 떨어지면 중립 행성을 워프시킨다.
   //
@@ -605,10 +606,10 @@ export class Game {
     const kind = this.aliveFortresses < this.hiveKeep ? 'fort'
       : cues < CFG.HIVE_KEEP_CUE ? 'cue' : null
     if (!kind) return
-    const tag = `${this.stageIdx + 1}+${++this.hiveN}`
+    const tag = `${this.stage}+${++this.hiveN}`
     const b = kind === 'fort'
-      ? summonFort(this.rng, this.bodies, this.earth, this.ante, this.stageIdx, tag)
-      : summonCue(this.rng, this.bodies, this.earth, this.ante, this.stageIdx, tag)
+      ? summonFort(this.rng, this.bodies, this.earth, this.stage, tag)
+      : summonCue(this.rng, this.bodies, this.earth, this.stage, tag)
     if (!b) return
     this.hiveSent = true
     b.alive = false; b.warp = 1; b.warpIn = CFG.WARP_LEAD

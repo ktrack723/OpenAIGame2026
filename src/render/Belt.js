@@ -35,7 +35,7 @@ export class Belt {
     for (let i = 0; i < N; i++) {
       const a = Math.random() * Math.PI * 2
       // 단위원 위에 두께를 미리 구워 둔다(경계선 바깥쪽으로 더 두껍게).
-      // 스케일 한 번이면 어느 안테의 벨트 반경에도 그대로 맞는다.
+      // 스케일 한 번이면 어느 판의 벨트 반경에도 그대로 맞는다.
       const k = 1 + (Math.random() - 0.28) * 0.055
       pos[i * 3] = Math.cos(a) * k; pos[i * 3 + 1] = Math.sin(a) * k; pos[i * 3 + 2] = 0
       c.setHSL(0.52 + Math.random() * 0.08, 0.45, 0.55 + Math.random() * 0.35)
@@ -55,7 +55,7 @@ export class Belt {
     scene.add(this.edge, this.band, this.rocks)
   }
 
-  // 반경은 안테마다 바뀐다(aMax 증가). 스케일만 갈아끼우면 되므로 재생성은 없다.
+  // 반경은 판마다 바뀐다(aMax 증가). 스케일만 갈아끼우면 되므로 재생성은 없다.
   update(beltR, dt, worldPerPx) {
     this.t += dt
     const thick = CFG.BELT_THICK

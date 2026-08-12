@@ -123,7 +123,7 @@ export class Victory {
   open() {
     const g = this.game
     const survivors = g.bodies.filter(b => b.alive && b.type !== 'debris').length
-    this.el.querySelector('#vicTag').textContent = t('vic.tag', { stage: g.stageIdx + 1, ante: g.ante })
+    this.el.querySelector('#vicTag').textContent = t('vic.tag', { stage: g.stage })
     this.el.querySelector('#vicTitle').textContent = t('vic.title')
     this.el.querySelector('#vicBody').textContent = t('vic.body')
     this.el.querySelector('#vicGoT').textContent = t('vic.go')

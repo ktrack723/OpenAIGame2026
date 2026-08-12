@@ -41,7 +41,7 @@ h1{margin:0;color:var(--cy);letter-spacing:.34em;font-size:15px;font-weight:800;
 .modhead>span:nth-child(3){margin-left:auto;letter-spacing:.06em}
 /* 안테·판수 — 제목 옆의 작은 칩. 예전에는 목표 머리표와 SYSTEM 덤프에
    같은 숫자가 두 번 적혀 있었다. */
-.ante{margin-left:auto;padding:2px 7px;border:1px solid #1b4a5f;background:#08131d;color:var(--cy);
+.stagechip{margin-left:auto;padding:2px 7px;border:1px solid #1b4a5f;background:#08131d;color:var(--cy);
   font-size:10.5px;font-weight:800;font-family:var(--mono);letter-spacing:.06em;white-space:nowrap}
 
 /* ── 작전 줄 — 목표와 시한을 한 칸에 ──

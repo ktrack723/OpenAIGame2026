@@ -144,7 +144,7 @@ const PROBE_ANGLES = 24, PROBE_POWERS = [34, 50]
 // 오차가 3 GU 남짓이다 — 판정 반경이 18 GU 이상이라 답이 뒤집히지 않는다.
 // (예측선도 같은 수법을 쓴다: aim.js BODY_EVERY.)
 const PROBE_BODY_EVERY = 4
-// aMax는 **이번 판의 것**을 받는다. 예전에는 안테 8 기준(가장 넓은 판)의 벨트를
+// aMax는 **이번 판의 것**을 받는다. 예전에는 가장 넓은 판 기준의 벨트를
 // 썼는데, 미사일이 벨트에 닿으면 그 자리에서 터지는 지금은 그게 거짓말이 된다 —
 // 지금 판의 벽 밖으로 나가는 궤적을 "닿는 각도"로 세어 버린다.
 // 48개 프로브(2파워 × 24각도)는 전부 **같은 판** 위를 난다 — 미사일은 천체를
@@ -274,24 +274,31 @@ const NEUTRAL_TYPES = ['rock', 'ice', 'ice', 'iron', 'gas', 'void']
 // 요새 한 기와 중립 한 기를 만드는 규칙. 판이 열릴 때(reinforce)와 모함이
 // 보충으로 보낼 때(summonFort·summonCue)가 **같은 규칙**을 써야 한다 —
 // 갈라 두면 "판이 열릴 때 온 요새"와 "중간에 온 요새"가 다른 물건이 된다.
-const muFor = (rng, ante) => 120 + rng.next() * (220 + 60 * ante)
+// 질량은 판이 거듭될수록 무거워진다 — 무거우면 핵으로도 공으로도 덜 밀린다.
+// STAGE_CAP에서 멎는다: 판에 끝이 없으므로 안 멎으면 20판쯤의 "가장 무거운
+// 중립"이 목성 두 배가 되어 당구가 성립하지 않는다.
+// 기울기(60 → 48, 14 → 11)는 **끝값을 예전 그대로 두고** 거기 닿는 판만
+// 22 → 10으로 당긴 결과다: 60×8 = 48×10, 14×8 ≈ 11×10.
+const growth = (stage) => Math.min(stage, CFG.STAGE_CAP)
+const muFor = (rng, stage) => 120 + rng.next() * (220 + 48 * growth(stage))
 // 요새 질량은 따로 잡는다 — **밀리는 공이어야 한다.**
 // 예전엔 중립과 같은 대역(138~460)을 썼는데, μ=422 요새는 3Mt에 Δv가 0.6이라
 // 밀어도 제자리였고, 어쩌다 이웃에 닿아도 상대속도가 데미지 문턱(6) 아래라
 // 그냥 튕기기만 했다. 가볍게 잡으면 12Mt에서 Δv 28~57이다.
-const fortMuFor = (rng, ante) => CFG.FORT_MU_MIN + rng.next() * (CFG.FORT_MU_SPAN + 14 * ante)
+const fortMuFor = (rng, stage) =>
+  CFG.FORT_MU_MIN + rng.next() * (CFG.FORT_MU_SPAN + 11 * growth(stage))
 const zorgName = (rng, tag) => `Zorg ${ZORG_NAMES[rng.int(0, ZORG_NAMES.length - 1)]}-${tag}`
 
 // outer = 바깥 대역에 세우는가. 부르는 쪽이 정한다 — 판이 열릴 때(reinforce)는
 // **마릿수로** 섞어 안팎이 반드시 함께 오게 하고, 모함이 보충으로 보낼 때는
 // 같은 비율로 추첨한다. 규칙 자체(대역·옆자리 폭)는 여기 한 곳에만 둔다.
-const canSpawnOuter = (stageIdx) => stageIdx >= CFG.FORT_OUTER_STAGE
-function fortSpec(rng, earth, ante, stageIdx, tag, heavy, outer = false) {
+const canSpawnOuter = (stage) => stage >= CFG.FORT_OUTER_STAGE
+function fortSpec(rng, earth, stage, tag, heavy, outer = false) {
   const inner = { band: fortBand(earth), near: CFG.FORT_NEAR_BAND }
   // 바깥 대역은 **허용된 판에서만** 쓴다 — 물러설 자리로도 안 연다.
   // 1스테이지가 전부 가까이 오는 판인 것은 규칙을 배우는 자리이기 때문인데,
   // 자리를 못 찾았을 때의 도피처로 바깥을 열어 두면 그 규칙이 조용히 샌다.
-  const out = canSpawnOuter(stageIdx)
+  const out = canSpawnOuter(stage)
     ? { band: fortOuterBand(earth), near: CFG.FORT_OUTER_NEAR_BAND }
     : null
   return {
@@ -305,23 +312,23 @@ function fortSpec(rng, earth, ante, stageIdx, tag, heavy, outer = false) {
     zone: outer ? out : inner,
     alt: outer ? inner : out,
     span: out ? { band: [inner.band[0], out.band[1]], near: out.near } : null,
-    mu: fortMuFor(rng, ante) * (heavy ? CFG.FORT_HEAVY_MU : 1),
+    mu: fortMuFor(rng, stage) * (heavy ? CFG.FORT_HEAVY_MU : 1),
     hp: heavy ? CFG.FORT_HEAVY_HP : CFG.ZORG_HP,
     // 등급별 **절대** 반경 배율 — 곱하지 않는다(CFG.FORT_R 주석 참고)
     rMul: heavy ? CFG.FORT_HEAVY_R : CFG.FORT_R,
     // 회피 분사는 3스테이지부터. 요새마다 하나씩, 쓰는 횟수에는 제한이 없다
     // (연달아만 못 태운다 — CFG.FORT_DODGE_COOLDOWN).
-    boost: stageIdx >= CFG.FORT_DODGE_STAGE ? 1 : 0,
+    boost: stage >= CFG.FORT_DODGE_STAGE ? 1 : 0,
   }
 }
 
-function neutralSpec(rng, ante, stageIdx, tag, forceVoid = false) {
+function neutralSpec(rng, stage, tag, forceVoid = false) {
   // 특이점은 **3스테이지에 반드시 한 번** 등장시킨다. 추첨에만 맡기면
   // 다섯 태그 중 하나를 끝까지 못 보고 런이 끝난다(계측: 9스테이지까지 0회).
   let type = NEUTRAL_TYPES[rng.int(0, NEUTRAL_TYPES.length - 1)]
   if (forceVoid) type = 'void'
-  else if (type === 'void' && stageIdx < 2) type = 'ice'
-  return { mu: muFor(rng, ante), name: `${zorgName(rng, tag)}`, type }
+  else if (type === 'void' && stage < CFG.VOID_STAGE) type = 'ice'
+  return { mu: muFor(rng, stage), name: `${zorgName(rng, tag)}`, type }
 }
 
 // 만들어 놓고 붙일 것 — 금속 요새는 장갑 태그를 겹쳐 얹는다.
@@ -344,9 +351,9 @@ const dressFort = (b) => { if (b && b.type === 'iron') b.mods = ['armor']; retur
 // 안에서 돈다 — 거기서 검사를 다 돌리면 중앙 50ms·최대 173ms짜리 멈칫이
 // 생긴다(계측). 안쪽 자리는 원래 가까워서 검사를 통과하는 자리이므로
 // (720발 전수조사에서 0기), 여기서 아끼는 것이 잃는 것보다 크다.
-function placeFort(rng, pool, earth, aMax, ante, stageIdx, tag, heavy, wantOuter, verifyInner) {
+function placeFort(rng, pool, earth, aMax, stage, tag, heavy, wantOuter, verifyInner) {
   for (const outer of wantOuter ? [true, false] : [false]) {
-    const spec = fortSpec(rng, earth, ante, stageIdx, tag, heavy, outer)
+    const spec = fortSpec(rng, earth, stage, tag, heavy, outer)
     // 이 시도들에만 검사를 건다(나머지는 그냥 통과). 판 전환은 예산이 넉넉해
     // 바깥 세 번·안쪽 두 번을 다 보고, 프레임 안에서 도는 보충은 바깥 한 번만
     // 본다 — 한 번에 떨어지면 안쪽으로 물리면 되므로 그 한 번이면 충분하다.
@@ -368,7 +375,7 @@ const hiveBand = (earth) => {
   return [rE * CFG.HIVE_BAND[0], rE * CFG.HIVE_BAND[1]]
 }
 
-function makeHive(rng, bodies, aMax, earth, stageIdx) {
+function makeHive(rng, bodies, aMax, earth) {
   const band = hiveBand(earth)
   // 제약을 하나씩 풀며 자리를 찾되, 마지막 폴백은 **대역을 푸는 게 아니라
   // 이웃 간격을 푼다**(rNew를 작게 줘서 요구 간격을 낮춘다). 대역을 풀었더니
@@ -392,14 +399,16 @@ function makeHive(rng, bodies, aMax, earth, stageIdx) {
 
 // 모함이 한 기 보낸다 — 판이 열릴 때와 같은 규칙으로 만들고, 자리도 같은
 // 제약(밀 수 있는 공 옆자리·지구에서 닿는 자리)으로 찾는다.
-export function summonFort(rng, bodies, earth, ante, stageIdx, tag) {
+export function summonFort(rng, bodies, earth, stage, tag) {
   // 안팎 비율은 판이 열릴 때와 같다 — 다만 한 기씩 오므로 마릿수가 아니라 추첨이다.
-  const outer = canSpawnOuter(stageIdx) && rng.next() < CFG.FORT_OUTER_FRAC
+  const outer = canSpawnOuter(stage) && rng.next() < CFG.FORT_OUTER_FRAC
   // verifyInner=false — 이 경로는 판이 굴러가는 중에 프레임 안에서 돈다(위 주석)
-  return placeFort(rng, bodies, earth, aMaxOf(ante), ante, stageIdx, tag, false, outer, false)
+  return placeFort(rng, bodies, earth, aMaxOf(stage), stage, tag, false, outer, false)
 }
-export function summonCue(rng, bodies, earth, ante, stageIdx, tag) {
-  const b = warpBody(rng, bodies, aMaxOf(ante), neutralSpec(rng, ante, stageIdx, tag))
+// earth는 안 쓰지만 자리는 지킨다 — 부르는 쪽(game.stepHive)이 summonFort와
+// 이 함수를 한 삼항식에서 갈라 부르므로, 인자가 어긋나면 그 줄이 읽히지 않는다.
+export function summonCue(rng, bodies, earth, stage, tag) {
+  const b = warpBody(rng, bodies, aMaxOf(stage), neutralSpec(rng, stage, tag))
   if (b) b.zorg = false            // 굴러온 잔챙이 — 큐볼로 쓴다
   return b
 }
@@ -407,59 +416,85 @@ export function summonCue(rng, bodies, earth, ante, stageIdx, tag) {
 // ── 증원 ────────────────────────────────────────────────────────
 // 지금 성계에 뭐가 남아 있는지 보고 그만큼만 보낸다. 지난 판에서 판을
 // 깨끗이 비웠으면 많이 오고, 중립 행성이 잔뜩 남았으면 적게 온다.
-export function reinforce(rng, bodies, earth, ante, stageIdx) {
-  const aMax = aMaxOf(ante)
+export function reinforce(rng, bodies, earth, stage) {
+  const aMax = aMaxOf(stage)
   const live = bodies.filter(b => b.alive && b.type !== 'debris')
   const room = Math.max(0, CFG.SYSTEM_CAP - live.length)
 
-  let fort = Math.round(CFG.REINF_BASE + CFG.REINF_PER_ANTE * ante)
+  // 두 판에 한 기씩, 8기에서 멎는다(config.REINF_* 표 참고).
+  // 상한을 REINF_MAX로 따로 두는 이유: room(성계 정원의 빈자리)은 판을 깨끗이
+  // 비운 다음 판에서 통째로 비어 있어 아무것도 못 막는다.
+  let fort = Math.round(CFG.REINF_BASE + CFG.REINF_PER_STAGE * stage)
+  fort = Math.min(fort, CFG.REINF_MAX)
   fort = Math.max(1, Math.min(fort, Math.max(1, room)))
-  // 남은 공이 적으면 큐볼로 쓸 중립도 같이 보낸다(조르그 입장에선 소모품이다)
+  // 굴릴 공이 모자랄 때만 중립을 같이 보낸다(조르그 입장에선 소모품이다).
+  //
+  // 예전에는 **판마다 최소 한 기**를 보장했다. 이유는 태그 구경이었다 —
+  // 특이점·얼음은 중립으로만 굴러오므로 0기가 되면 다섯 태그 중 둘을 끝까지
+  // 못 본다는 것이었다. 그런데 그 보장에는 끝이 없어서 중립이 판마다 한 기씩
+  // **영영 쌓였고**, 성계 정원(SYSTEM_CAP 34)을 중립이 다 먹었다.
+  // 그 대가는 판을 만드는 것들이 치렀다(24시드 계측):
+  //   · 12판 평균 천체 30기 중 새 요새는 3.5기 — 마릿수 곡선(8기)이 room에
+  //     잘려 **후반이 오히려 쉬워졌다.**
+  //   · 모함은 제 자리(궤도 바깥 좁은 대역)를 못 찾아 4판 88% → 12판 25%로
+  //     강림률이 무너졌다. 제일 공들인 물건이 후반에 사라진 셈이다.
+  //
+  // 이제 기준은 하나다: **굴릴 공이 모자란가.** 모함이 보충을 결정할 때 쓰는
+  // 것과 같은 문턱(HIVE_KEEP_CUE)이라 성계를 채우는 두 경로가 같은 질문을 한다.
+  // 태그 구경은 3판의 특이점 보장(VOID_STAGE·forceVoid) 하나로 충분하다 —
+  // 그 판만은 굴릴 공이 넉넉해도 한 기를 세운다(정원이 남아 있는 한).
   const cueBalls = live.filter(b => !b.isEarth && !b.zorg).length
-  let neutral = Math.min(CFG.REINF_NEUTRAL, Math.max(0, room - fort), cueBalls < 2 ? 2 : 1)
-  // 중립은 최소 1기는 보장한다. 예전엔 요새로 자리가 차면 0이 됐는데,
-  // 특이점·얼음 같은 태그는 **중립으로만** 굴러오므로 그러면 다섯 태그 중
-  // 둘을 끝까지 못 보게 된다(계측: 8스테이지까지 특이점 0회 등장).
-  if (room <= fort) neutral = Math.min(1, Math.max(0, room))
-  neutral = Math.max(neutral, room > fort ? 1 : 0)
+  let neutral = cueBalls < CFG.HIVE_KEEP_CUE
+    ? Math.min(CFG.REINF_NEUTRAL, cueBalls < 2 ? 2 : 1)
+    : 0
+  if (stage === CFG.VOID_STAGE) neutral = Math.max(neutral, 1)
+  neutral = Math.min(neutral, Math.max(0, room - fort))
 
   const added = []
+
+  // ── 조르그 모함 ── **제일 먼저 세운다.**
+  // 4스테이지부터, 판에 한 기도 없으면 한 기 온다. 이놈이 살아 있는 동안에는
+  // 요새가 계속 다시 차오르므로(game.stepHive), 판을 끝내려면 결국 여기를
+  // 끊어야 한다. 자리는 요새 대역 **바깥**이라 한 발로 닿기 어렵다.
+  //
+  // 순서가 규칙이다. 모함 대역(1.65~2.15 rE)은 바깥 요새 대역(1.6~2.4 rE)에
+  // 거의 통째로 덮여 있는데, 요새를 먼저 놓으면 그 자리를 요새가 가져가고
+  // 모함은 **자리를 못 찾아 아예 안 온다.** 요새에게는 물러설 자리가 넷
+  // (제 대역 / 반대 대역 / 옆자리 없이 / 안팎 합친 대역) 있지만 모함에게는
+  // 제 대역 하나뿐이므로, 제약이 심한 쪽이 먼저 앉아야 한다.
+  // (계측 24시드: 요새를 먼저 놓으면 4판 강림률 96% · 5~12판 75~92%로 들쭉날쭉
+  //  했고, 순서를 뒤집으니 4판부터 12판까지 전 구간 100%가 됐다.)
+  if (stage >= CFG.HIVE_STAGE && !live.some(b => b.role === 'hive')) {
+    const h = makeHive(rng, bodies, aMax, earth)
+    if (h) added.push(h)
+  }
 
   // ── 난이도 ──
   // 2스테이지부터 **대형 요새**가 섞여 온다. 체력 2라 한 번 처박아서는 안
   // 부서지고 그만큼 크다. 판이 거듭될수록 그 수가 늘어, "이번 판은 지난 판보다
   // 무겁다"가 목표 카운터가 아니라 **공 하나를 더 굴려야 한다**로 나타난다.
   //   판 1: 0기 · 판 2~3: 1기 · 판 4~5: 2기 · 판 6~7: 3기 …
-  const heavies = Math.min(fort, Math.floor((stageIdx + 1) / 2))
+  const heavies = Math.min(fort, Math.floor(stage / 2))
   // ── 안팎 ──
   // 뒤쪽 몇 기는 **바깥 대역**에 선다(CFG.FORT_OUTER_*). 마릿수로 나누는 것은
   // 추첨과 달리 "이번 판에 바깥 요새가 하나도 안 왔다"가 없기 때문이고,
   // fort - 1로 자르는 것은 **가까운 표적이 언제나 하나는 남게** 하기 위해서다 —
   // 판이 열리자마자 손댈 데가 한 군데도 없으면 그건 난이도가 아니라 벽이다.
-  const outers = canSpawnOuter(stageIdx)
+  const outers = canSpawnOuter(stage)
     ? Math.min(fort - 1, Math.round(fort * CFG.FORT_OUTER_FRAC))
     : 0
 
   for (let i = 0; i < fort; i++) {
-    const tag = `${stageIdx + 1}${i ? String.fromCharCode(97 + i) : ''}`
-    const b = placeFort(rng, bodies.concat(added), earth, aMax, ante, stageIdx, tag,
+    const tag = `${stage}${i ? String.fromCharCode(97 + i) : ''}`
+    const b = placeFort(rng, bodies.concat(added), earth, aMax, stage, tag,
       i < heavies, i >= fort - outers, true)
     if (b) added.push(b)
   }
   for (let i = 0; i < neutral; i++) {
-    const spec = neutralSpec(rng, ante, stageIdx, `${stageIdx + 1}x${i}`, stageIdx === 2 && i === 0)
+    const spec = neutralSpec(rng, stage, `${stage}x${i}`, stage === CFG.VOID_STAGE && i === 0)
     const b = warpBody(rng, bodies.concat(added), aMax, spec)
     if (b) { b.zorg = false; added.push(b) }   // 중립으로 굴러온 잔챙이 — 큐볼로 쓴다
   }
-  // ── 조르그 모함 ──
-  // 안테 5부터, 판에 한 기도 없으면 한 기 온다. 이놈이 살아 있는 동안에는
-  // 요새가 계속 다시 차오르므로(game.stepHive), 판을 끝내려면 결국 여기를
-  // 끊어야 한다. 자리는 요새 대역 **바깥**이라 한 발로 닿기 어렵다.
-  if (ante >= CFG.HIVE_ANTE && !live.some(b => b.role === 'hive')) {
-    const h = makeHive(rng, bodies.concat(added), aMax, earth, stageIdx)
-    if (h) added.push(h)
-  }
-
   for (const b of added) bodies.push(b)
   return {
     added,

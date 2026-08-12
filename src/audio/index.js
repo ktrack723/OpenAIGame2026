@@ -386,7 +386,7 @@ export class AudioSystem {
     P.over = !!game.runOver
 
     // 판이 바뀌었다(다음 침공) — 눌러 둔 음악을 되돌린다.
-    if (P.stage !== game.stageIdx) { if (P.stage >= 0) this.music.unduck(); P.stage = game.stageIdx }
+    if (P.stage !== game.stage) { if (P.stage >= 0) this.music.unduck(); P.stage = game.stage }
   }
 }
 

@@ -6,7 +6,7 @@ import { cloneBodies, stepBodies } from './physics.js'
 // 성계 생성 원시함수 모음. 표적 선정·목표 배정은 system.js로 옮겼다 —
 // 성계가 판마다 새로 만들어지지 않고 계속 이어지기 때문이다.
 //
-// ※ 무작위 성계 생성기(anteParams/placeOrbits/buildBodies)는 없앴다.
+// ※ 무작위 성계 생성기(placeOrbits/buildBodies 등)는 없앴다.
 //   첫 판은 이제 **실제 태양계**로 고정이고(buildSolarSystem), 이후 판은
 //   그 성계가 그대로 이어지며 조르그 증원만 워프로 들어온다 — 즉
 //   "성계를 통째로 새로 뽑는" 경로 자체가 사라졌다.

@@ -17,7 +17,7 @@ export const zhHant = {
   'ui.new.tip': '用新種子重來', 'ui.lang.tip': '語言 / Language',
   'ui.mute.tip': '聲音 開/關 ( M )', 'ui.mute.on': '聲音開', 'ui.mute.off': '靜音',
   'ui.hint': '拖曳發射台或預測線即可瞄準 — 拖得越遠越精細 · TAB 瞄準/觀測 · SHIFT 推進時間 · S 倍速 · ← → 角度 · ↑ ↓ 速度 · [ ] 當量 · F 接觸角 · M 靜音 · 指向天體可看參數',
-  'ui.stage': 'A{ante}·第{stage}關',
+  'ui.stage': '第{stage}關',
   'ui.aim': '◎ 瞄準模式', 'ui.aim.sub': '時間靜止 · TAB / 點擊',
   'ui.speed': '倍速', 'ui.speed.tip': '觀測倍速 (S)',
   'ui.obs.run': '{scale}× 進行中 · 剩餘 {clock}',
@@ -264,7 +264,7 @@ export const zhHant = {
   'zorg.warp': '喀哈哈哈！只要沒了你，太陽系就是我們的！',
 
   'vic.earthSafe': '地球 · 無恙',
-  'vic.tag': '突破第 {stage} 關 · 底注 {ante}',
+  'vic.tag': '突破第 {stage} 關',
   'vic.title': '佐格要塞 全滅',
   'vic.body': '管制室爆出歡呼。這一次地球又挺過來了。',
   'vic.go': '前往科學研究室',
@@ -280,7 +280,7 @@ export const zhHant = {
   'lab.go': '在下次入侵前享受和平',
   'lab.goSub': '佐格還會再來 ▶',
 
-  'over.reached': '打到第{stage}關（安特{ante}）· 累計政治資金 {pol}',
+  'over.reached': '打到第{stage}關 · 累計政治資金 {pol}',
   'chip.pol': '政治資金',
   'ui.thrust': '推進器',
   'msg.earthBurn': '地球軌道修正點火 — 從走廊裡側閃開了（剩{n}具）',
