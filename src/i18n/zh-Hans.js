@@ -8,7 +8,7 @@ export const zhHans = {
   'ui.findPrev': '◀ 接触角', 'ui.findNext': '接触角 ▶',
   'ui.findPrev.tip': '逆时针寻找可命中的角度', 'ui.findNext.tip': '顺时针寻找可命中的角度',
   'ui.fire': 'FIRE', 'ui.fire.key': 'SPACE',
-  'ui.fire.deadline': '时限已到 — 最后一发飞行中', 
+  'ui.fire.deadline': '时限已到 — {n}发飞行中', 
   'ui.fire.reload': '等待再装填 — {max}发飞行中', 'ui.fire.abort': 'ABORT — 直击地球',
   'ui.wait': '推进时间 ▶▶', 'ui.wait.tip': '按住时时间才流动',
   'ui.toObs': '观测 ▶', 'ui.toObs.tip': '观测模式 — UI 消失，盘面运转',

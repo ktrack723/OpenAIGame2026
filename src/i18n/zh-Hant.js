@@ -8,7 +8,7 @@ export const zhHant = {
   'ui.findPrev': '◀ 接觸角', 'ui.findNext': '接觸角 ▶',
   'ui.findPrev.tip': '逆時針尋找可命中的角度', 'ui.findNext.tip': '順時針尋找可命中的角度',
   'ui.fire': 'FIRE', 'ui.fire.key': 'SPACE',
-  'ui.fire.deadline': '時限已到 — 最後一發飛行中', 
+  'ui.fire.deadline': '時限已到 — {n}發飛行中', 
   'ui.fire.reload': '等待再裝填 — {max}發飛行中', 'ui.fire.abort': 'ABORT — 直擊地球',
   'ui.wait': '推進時間 ▶▶', 'ui.wait.tip': '按住時時間才流動',
   'ui.toObs': '觀測 ▶', 'ui.toObs.tip': '觀測模式 — UI 消失，盤面運轉',

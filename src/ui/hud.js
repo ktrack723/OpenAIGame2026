@@ -713,7 +713,7 @@ export function updateHud(el, game) {
     // 그 두 번째 발로 첫 발을 치는 것이 이 게임의 새 수다.
     // 시한이 지나면 새 발은 없다 — 이미 나간 발이 마지막이다(game.pastDeadline).
     fireBtn.disabled = game.salvoFull || game.pastDeadline || veil
-    fireBtn.querySelector('.ftext').textContent = game.pastDeadline ? t('ui.fire.deadline')
+    fireBtn.querySelector('.ftext').textContent = game.pastDeadline ? t('ui.fire.deadline', { n: game.flying })
       : game.salvoFull ? t('ui.fire.reload', { max: CFG.MAX_INFLIGHT })
         : p.outcome === 'earth' ? t('ui.fire.abort') : t('ui.fire')
   } else {

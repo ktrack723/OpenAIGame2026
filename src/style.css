@@ -454,6 +454,11 @@ button:disabled{opacity:.32;cursor:not-allowed;box-shadow:none}
    둘 다 딱 끊지 않고 사라졌다 떠오른다. 버튼은 hud.js가 실제로 잠근다. */
 .hud,.obsbar{transition:opacity .5s ease, transform .5s ease}
 .hud.veil,.obsbar.veil{opacity:0;pointer-events:none;transform:translateY(10px)}
+/* …다만 언어·음소거만은 막 뒤에서도 살아 있다. hud.js가 이 둘만 일부러 안
+   잠그는데(그 자리 주석 참고) 여기서 패널째 pointer-events를 끄는 바람에
+   실제로는 캔버스가 클릭을 먹어 못 눌렀다 — 의도만 있고 손은 안 닿았다.
+   opacity는 그대로 0이다: 보이진 않되, 있던 자리를 누르면 눌린다. */
+.hud.veil #lang,.hud.veil #mute{pointer-events:auto}
 .aimbtn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
   padding:13px 30px;border:1px solid #2f7f9c;border-radius:0;cursor:pointer;
   background:linear-gradient(180deg,rgba(14,53,73,.94),rgba(7,32,46,.94));backdrop-filter:blur(10px);
