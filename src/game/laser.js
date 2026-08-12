@@ -69,11 +69,6 @@ export function makeLaser(rng, from, nextAt = CFG.LASER_FIRST, earth = null) {
     miss: 0,           // 광선 중심선에서 지구까지의 예상 수직거리
     safe: false,       // miss가 지구 판정 반경을 넘었나 = 지금 이대로면 사는가
     refresh: 0,        // 조준점 재계산 타이머
-    // 지구가 지금 추진기를 태우면 이 광선을 피하는가(game.dodgeWorks). 예측이
-    // 비싸서 캐시해 두는 값이고, dodgeT는 그 답을 푼 인게임 시각이다.
-    // **여기에 미리 달아 둔다** — 나중에 붙이면 광선 객체의 hidden class가
-    // 갈라진다(body.js의 makeBody가 같은 이유로 필드를 한자리에 모아 둔다).
-    dodgeT: null, dodgeOk: false,
     // 조준점을 밖에서 고정한다(오프닝 예고편이 쓴다). 참이면 ax/ay를 그대로
     // 믿고 지구 예측을 건너뛴다 — 빗나감(miss/safe) 계산은 그대로 돈다.
     lockAim: false,
@@ -84,7 +79,7 @@ export function makeLaser(rng, from, nextAt = CFG.LASER_FIRST, earth = null) {
 // 천체 하나를 태양 중력만으로 seconds초 뒤까지 굴린다. 행성 섭동은 무시 —
 // 조르그의 계산도 이 정도이고(그래서 밀면 빗나간다), 무엇보다 싸다.
 //
-// **지구의 회피 예측(game.dodgeMiss)도 이 함수를 쓴다.** 조준점을 푸는 세계와
+// **지구의 회피 예측(game.missAfter)도 이 함수를 쓴다.** 조준점을 푸는 세계와
 // "분사하면 비켜나는가"를 묻는 세계가 갈리면 두 예측이 다른 답을 내고, 그러면
 // 버튼이 거짓말을 한다 — 같은 적분기, 같은 간격(1/40)이어야 한다.
 export function propagate(state, seconds) {
@@ -165,10 +160,6 @@ export function stepLaser(L, game, dt, n = 1) {
     L.state = LASER_CHARGE; L.t = 0
     L.ox = src.pos.x; L.oy = src.pos.y
     L.head = 0; L.back = 0; L.refresh = 0
-    // 회피 판정은 히스테리시스가 걸려 있어 **직전 답에 기댄다**(game.dodgeWorks).
-    // 지난 조준이 켜진 채로 끝났으면 그 값이 새 조준의 첫 문턱을 느슨하게
-    // 만든다 — 조준이 바뀌면 답도 처음부터 다시 묻는다.
-    L.dodgeT = null; L.dodgeOk = false
     L.n = n
     L.range = game.aMax * CFG.LASER_RANGE_MUL
     // 지구의 **원래 궤도** 사본. 이제부터 진짜 지구가 이것과 벌어지는 만큼

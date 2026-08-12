@@ -21,25 +21,6 @@ import * as Aim from './aim.js'
 // 관측 모드 배속 단계 — 화면의 배속 버튼이 이 사이를 돈다
 const OBS_SPEEDS = [1, 2, 4, 8]
 
-// 추진기가 먹히는지 다시 계산하는 간격(인게임 초). laser.js의 AIM_REFRESH와
-// 같은 값이다 — 조준선을 다시 푸는 그 박자에 맞춰 답도 갱신된다.
-const DODGE_REFRESH = 0.5
-
-// ─── 켜진 버튼을 붙잡는 문턱 (판정 반경 대비) ────────────────────
-// 켜질 때는 예측이 판정 반경을 넘어야 하지만, **한 번 켜진 뒤에는 이 문턱
-// 아래로 내려가야 꺼진다.** 충전이 끝나 갈수록 예측값은 판정 반경을 향해
-// 미끄러져 내려오는데, 마진 없이 딱 한 줄로 자르면 그 경계에서 버튼이
-// 깜빡인다(계측 20시드×5스테이지: 145발 중 14발에 그런 구간이 있었고,
-// 예측이 0.9R까지 내려왔다가 다시 1.0R 위로 튀어 오르는 모양이었다).
-//
-// **낮은 쪽으로 잡은 것은 선택이다.** 이 띠 안(0.8R~1.0R)에서는 버튼이
-// 켜져 있지만 예측은 "아슬아슬하게 맞는다"라고 말한다 — 즉 헛되이 태울 수
-// 있다. 그래도 그 반대(태우면 살 수 있었는데 버튼이 꺼져 있었다)보다 낫다:
-// 헛분사는 자원 하나를 잃지만 못 누른 분사는 판을 잃는다. 그리고 애초에
-// 이 경계에서는 예측 자체가 못 믿을 자리다 — 2체 모형의 오차가 판정 반경
-// 언저리(≈10 GU)와 같은 자릿수이므로, 0.8R로 둔 띠는 그 오차의 폭이다.
-const DODGE_HOLD = 0.8
-
 // 정치자금이 안 붙는 파괴 사유. **조르그가 제 광선으로 부순 것은 내 공이 아니다** —
 // 예전 점수표에서도 laser만 0점이었고, 화폐가 바뀌어도 그 규칙은 그대로다.
 const NO_CREDIT = new Set(['laser'])
@@ -889,27 +870,30 @@ export class Game {
   // 없을 때의 분사는 기준선이 지구의 진로라 방향에 뜻이 없고 — 무엇보다
   // **세 발뿐인 자원을 아무 일도 안 일어나는 화면에서 태워 없앨 수 있었다.**
   //
-  // 조준 여부만으로는 부족하다는 것이 계측에서 나왔다(16시드 × 누른 시점):
-  // 충전 잔여 15초에 누르면 8/16, 10초면 1/16, 5초면 1/16이다. 늦게 누른
-  // 분사는 회랑을 벗어날 시간이 없다 — 그런데 그때도 버튼은 켜져 있었고,
-  // 플레이어는 세 발 중 하나를 태우고 그대로 맞았다.
+  // ── 조건은 하나다: 지금 겨눠지고 있는가 ──
+  // 예전에는 여기서 **결과를 미리 물었다**: 지금 태우면 광선이 닿는 순간 회랑을
+  // 벗어나 있는가(dodgeMiss), 그 값이 판정 반경을 넘을 때만 켰다. 세기가 고정
+  // (Δv 2.5)이던 시절에는 그게 유일하게 정직한 방법이었다 — 늦게 누른 분사는
+  // 정말로 아무것도 못 했으니까.
   //
-  // **세기로는 못 고친다.** Δv를 2.5에서 14까지(5.6배) 올려 봐도 전체 회피율은
-  // 71% → 93%에서 멎고, 일찍 누른 경우는 오히려 나빠진다(T-90: 15/16 → 13/16).
-  // 세게 밀수록 궤도 주기가 크게 바뀌어서, 95초 뒤에는 비켜난 지구가 도로
-  // 조준선 근처로 돌아오기 때문이다. 즉 이건 힘이 모자란 게 아니라 **분사한
-  // 결과를 아무도 안 물어본 것**이다.
+  // 그런데 그 게이트가 **버튼을 못 쓰는 버튼**으로 만들었다(계측 20시드 ×
+  // 반경 4단 × 충전 잔여 8지점): 충전 잔여 20초까지는 100%로 켜지지만 10초에서
+  // 0~14%, 5초에서는 전 반경 0%다. 게다가 안전장치(dodgeSafe)가 세기를 깎다가
+  // 0.17까지 내려간 표본이 있었다 — 그런 판에서는 창이 아무리 많이 남아 있어도
+  // 버튼이 영영 안 켜진다. "카이퍼 벨트 근처에서 안 먹힌다"가 그 얼굴이다.
   //
-  // 그래서 묻는다: 이 분사를 지금 태우면 광선이 닿는 그 순간 지구는 조준선에서
-  // 얼마나 비켜나 있는가(dodgeMiss). 그 값이 지구 판정 반경을 넘을 때만 켜진다.
-  // 켜져 있다는 것은 이제 **"지금 누르면 산다"**는 뜻이고, 꺼져 있으면 아직
-  // (또는 이미) 그 순간이 아니라는 뜻이다 — 재고는 그대로 남는다.
+  // 이제 게이트를 걷는다. **겨눠지고 있으면 켜진다.** 결과를 보증하는 것은
+  // 게이트가 아니라 **세기**다: 분사는 확실히 비켜날 때까지 스스로 커진다
+  // (burnDv). 그래서 이 버튼은 "지금 누르면 산다"가 아니라 **"지금 누를 수
+  // 있다"**를 뜻하게 됐고, 그건 버튼이 원래 해야 하는 말이다.
   get canThrust() {
     if (!(this.thrusters > 0
       && this.mode === 'observe' && !this.doom && !this.won && !this.lost
       && this.earth.alive && !this.warpCurtain)) return false
+    // 이미 나간 빛(TRAVEL)은 조준이 아니라 결과다 — 그때는 태울 데가 없다.
+    // 빗나가는 것으로 이미 판정된 광선(safe)도 위협이 아니다(mostUrgentBeam).
     const L = this.mostUrgentBeam()
-    return !!L && this.dodgeWorks(L)
+    return !!L && L.state === LASER_CHARGE
   }
 
   // ── 실제로 쏠 선 ──
@@ -935,24 +919,42 @@ export class Game {
     return { ox: m.x, oy: m.y, ux: dx / dist, uy: dy / dist, dist }
   }
 
-  // ── 분사 방향 ──
-  // 쏠 선에 직각(정면으로 도망가면 그대로 따라잡힌다), 두 직각 중 태양 반대쪽
-  // (안쪽으로 피하면 태양 우물로 떨어진다). 요새의 회피 분사와 같은 규칙이다.
-  // **예측과 실행이 이 함수 하나를 같이 쓴다** — 갈라 두면 "된다고 해 놓고
-  // 다른 방향으로 태우는" 버튼이 된다. 받는 것도 계산된 선(beamLine) 하나여야
-  // 한다: 광선 객체를 받아 여기서 선을 다시 그으면 그 갈라짐이 되살아난다.
-  burnDir(B) {
+  // ── 분사 방향: **태양 반대쪽** ──
+  // 예전에는 쏠 선에 직각으로 밀었다(요새의 회피 분사와 같은 규칙). 그 방향은
+  // 광선 하나에는 최적이지만 **광선마다 다르다** — 어느 쪽으로 튈지 플레이어가
+  // 미리 못 읽고, 총구가 마침 옆에 있으면 태양 쪽으로 밀리기도 했다.
+  //
+  // 이제 방향은 하나뿐이다: 태양에서 밖으로. 언제나 정의돼 있고, 언제나 같은
+  // 그림이고(불꽃이 안쪽을 향해 뿜는다), 태양 우물에서 멀어지는 쪽이다.
+  // 조준선을 가로지르는 성분은 세기가 만든다 — 반경 방향으로 민 궤도는 한
+  // 바퀴를 돌지 않아도 진행 방향으로 크게 어긋난다(그게 궤도역학이다).
+  burnDir() {
     const e = this.earth
-    let nx = -B.uy, ny = B.ux
-    if (nx * e.pos.x + ny * e.pos.y < 0) { nx = -nx; ny = -ny }
-    return { nx, ny }
+    const r = Math.hypot(e.pos.x, e.pos.y) || 1
+    return { nx: e.pos.x / r, ny: e.pos.y / r }
   }
 
-  // 실제로 실릴 세기 — 이 한 방으로 지구가 태양에 처박히면 안 되므로 통과할
-  // 때까지 한 단계씩 낮춘다(요새의 dodgeSafe와 같은 안전장치).
-  burnDv(nx, ny) {
+  // ── 세기: 확실히 벗어날 때까지 키운다 ──
+  // 예전에는 고정값(EARTH_BURN_DV)에서 시작해 안전할 때까지 **깎았다**. 그래서
+  // 궤도가 이미 빠듯한 판에서는 0.17까지 내려가 아무 일도 안 일어났고, 창이
+  // 20초 아래로 내려가면 2.5로는 회랑을 못 벗어났다.
+  //
+  // 방향을 뒤집는다: 기본 세기에서 시작해 **비켜날 때까지 키운다.** 목표는
+  // "지구 판정 반경 × EARTH_BURN_CLEAR" — 판정 원 몇 개만큼 확실히 밖이다.
+  // 안전장치는 이제 **더 키우지 못하게 막는 상한**이지, 세기를 지우는 장치가
+  // 아니다. 기본 세기 아래로는 절대 안 내려간다 — 누른 버튼은 반드시 무언가를
+  // 한다. (창이 몇 초밖에 안 남은 순간에는 상한까지 태워도 못 피할 수 있다.
+  //  그때도 궤도는 통째로 갈린다 — 다음 광선은 다른 판에서 맞는다.)
+  burnDv(L) {
+    const { nx, ny } = this.burnDir()
+    const need = hitRadiusOf(this.earth) * CFG.EARTH_BURN_CLEAR
     let dv = CFG.EARTH_BURN_DV
-    while (dv > 0.2 && !this.dodgeSafe(this.earth, nx, ny, dv)) dv *= 0.8
+    for (let i = 0; i < 16; i++) {
+      if (this.missAfter(L, nx, ny, dv) >= need) break
+      const next = dv * CFG.EARTH_BURN_STEP
+      if (next > CFG.EARTH_BURN_MAX || !this.dodgeSafe(this.earth, nx, ny, next)) break
+      dv = next
+    }
     return dv
   }
 
@@ -974,11 +976,9 @@ export class Game {
   // 지구도 **혼자** 굴린다(propagate). 요새를 같은 sim에 넣으면 둘이 서로
   // 끌어당겨서, 조준점을 푸는 세계(solveAim의 propagate — 태양 중력만)와
   // 다른 세계를 보게 된다.
-  dodgeMiss(L) {
-    if (L.state !== LASER_CHARGE) return 0
+  missAfter(L, nx, ny, dv) {
+    if (!L || L.state !== LASER_CHARGE) return 0
     const B = this.beamLine(L)
-    const { nx, ny } = this.burnDir(B)
-    const dv = this.burnDv(nx, ny)
     const e = cloneBodies([this.earth])[0]
     e.vel.x += nx * dv; e.vel.y += ny * dv
     // 조르그가 겨눈 그 순간까지 굴린다 — 충전 잔여 + 광선 비행 시간.
@@ -988,23 +988,6 @@ export class Game {
     const px = p.x - B.ox, py = p.y - B.oy
     const t = px * B.ux + py * B.uy
     return Math.hypot(px - B.ux * t, py - B.uy * t)
-  }
-
-  // 예측은 비싸다(95초를 1/40으로 굴린다 = 3800스텝). canThrust는 HUD가 매
-  // 프레임 읽으므로 그대로 부르면 프레임 예산을 통째로 먹는다 — solveAim과
-  // 같은 주기로만 다시 풀고 그 사이에는 답을 재사용한다. 0.5초 늦게 켜지는
-  // 것은 95초짜리 대응 창에서 아무것도 바꾸지 않는다.
-  dodgeWorks(L) {
-    if (L.state !== LASER_CHARGE) return false
-    // 판이 바뀌면 시계가 0으로 돌아가므로 '거꾸로 갔다'도 다시 풀 사유다.
-    if (L.dodgeT == null || this.time < L.dodgeT || this.time - L.dodgeT >= DODGE_REFRESH) {
-      L.dodgeT = this.time
-      // 켤 때와 끌 때의 문턱이 다르다(DODGE_HOLD). 답이 이전 답에 기대므로
-      // **다음 조준에는 물려 가면 안 된다** — 새 충전이 시작될 때 laser.js가
-      // 이 두 줄(dodgeT/dodgeOk)을 초기화한다.
-      L.dodgeOk = this.dodgeMiss(L) > hitRadiusOf(this.earth) * (L.dodgeOk ? DODGE_HOLD : 1)
-    }
-    return L.dodgeOk
   }
 
   // 지금 지구를 가장 임박하게 겨누는 광선. 없으면 null.
@@ -1029,17 +1012,15 @@ export class Game {
     // 있을 때만 참이므로 여기서 L은 언제나 있다 — 없으면 누를 수 없는 버튼이다.
     const L = this.mostUrgentBeam()
     if (!L) return false
-    // 방향도 세기도 **예측이 쓴 그 함수 그대로**다. canThrust가 "이걸로 산다"고
-    // 답한 그 분사를 여기서 그대로 태운다 — 다른 값을 쓰면 버튼이 거짓말이 된다.
-    // (세기는 고정이다. 요새는 질량에 비례해 밀지만 지구는 하나뿐이라 비례시킬
-    //  것이 없다 — 회랑을 벗어나는 데 필요한 만큼만.)
-    const { nx, ny } = this.burnDir(this.beamLine(L))
-    const dv = this.burnDv(nx, ny)
+    // 방향은 태양 반대쪽 하나(burnDir), 세기는 그 광선을 확실히 비켜날 만큼
+    // (burnDv). 둘 다 이 함수 하나에서만 정해지므로 버튼과 결과가 안 갈린다.
+    const { nx, ny } = this.burnDir()
+    const dv = this.burnDv(L)
     e.vel.x += nx * dv; e.vel.y += ny * dv
     e.trailFlash = 2.0
     this.thrusters--
     this.addFx({ kind: 'earthBurn', x: e.pos.x, y: e.pos.y, r: hitRadiusOf(e), a: Math.atan2(-ny, -nx) })
-    this.message = msg('msg.earthBurn', { n: this.thrusters })
+    this.message = msg('msg.earthBurn', { n: this.thrusters, dv: dv.toFixed(1) })
     return true
   }
 
