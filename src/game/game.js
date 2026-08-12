@@ -21,25 +21,6 @@ import * as Aim from './aim.js'
 // 관측 모드 배속 단계 — 화면의 배속 버튼이 이 사이를 돈다
 const OBS_SPEEDS = [1, 2, 4, 8]
 
-// 추진기가 먹히는지 다시 계산하는 간격(인게임 초). laser.js의 AIM_REFRESH와
-// 같은 값이다 — 조준선을 다시 푸는 그 박자에 맞춰 답도 갱신된다.
-const DODGE_REFRESH = 0.5
-
-// ─── 켜진 버튼을 붙잡는 문턱 (판정 반경 대비) ────────────────────
-// 켜질 때는 예측이 판정 반경을 넘어야 하지만, **한 번 켜진 뒤에는 이 문턱
-// 아래로 내려가야 꺼진다.** 충전이 끝나 갈수록 예측값은 판정 반경을 향해
-// 미끄러져 내려오는데, 마진 없이 딱 한 줄로 자르면 그 경계에서 버튼이
-// 깜빡인다(계측 20시드×5스테이지: 145발 중 14발에 그런 구간이 있었고,
-// 예측이 0.9R까지 내려왔다가 다시 1.0R 위로 튀어 오르는 모양이었다).
-//
-// **낮은 쪽으로 잡은 것은 선택이다.** 이 띠 안(0.8R~1.0R)에서는 버튼이
-// 켜져 있지만 예측은 "아슬아슬하게 맞는다"라고 말한다 — 즉 헛되이 태울 수
-// 있다. 그래도 그 반대(태우면 살 수 있었는데 버튼이 꺼져 있었다)보다 낫다:
-// 헛분사는 자원 하나를 잃지만 못 누른 분사는 판을 잃는다. 그리고 애초에
-// 이 경계에서는 예측 자체가 못 믿을 자리다 — 2체 모형의 오차가 판정 반경
-// 언저리(≈10 GU)와 같은 자릿수이므로, 0.8R로 둔 띠는 그 오차의 폭이다.
-const DODGE_HOLD = 0.8
-
 // 정치자금이 안 붙는 파괴 사유. **조르그가 제 광선으로 부순 것은 내 공이 아니다** —
 // 예전 점수표에서도 laser만 0점이었고, 화폐가 바뀌어도 그 규칙은 그대로다.
 const NO_CREDIT = new Set(['laser'])
@@ -889,27 +870,30 @@ export class Game {
   // 없을 때의 분사는 기준선이 지구의 진로라 방향에 뜻이 없고 — 무엇보다
   // **세 발뿐인 자원을 아무 일도 안 일어나는 화면에서 태워 없앨 수 있었다.**
   //
-  // 조준 여부만으로는 부족하다는 것이 계측에서 나왔다(16시드 × 누른 시점):
-  // 충전 잔여 15초에 누르면 8/16, 10초면 1/16, 5초면 1/16이다. 늦게 누른
-  // 분사는 회랑을 벗어날 시간이 없다 — 그런데 그때도 버튼은 켜져 있었고,
-  // 플레이어는 세 발 중 하나를 태우고 그대로 맞았다.
+  // ── 조건은 하나다: 지금 겨눠지고 있는가 ──
+  // 예전에는 여기서 **결과를 미리 물었다**: 지금 태우면 광선이 닿는 순간 회랑을
+  // 벗어나 있는가(dodgeMiss), 그 값이 판정 반경을 넘을 때만 켰다. 세기가 고정
+  // (Δv 2.5)이던 시절에는 그게 유일하게 정직한 방법이었다 — 늦게 누른 분사는
+  // 정말로 아무것도 못 했으니까.
   //
-  // **세기로는 못 고친다.** Δv를 2.5에서 14까지(5.6배) 올려 봐도 전체 회피율은
-  // 71% → 93%에서 멎고, 일찍 누른 경우는 오히려 나빠진다(T-90: 15/16 → 13/16).
-  // 세게 밀수록 궤도 주기가 크게 바뀌어서, 95초 뒤에는 비켜난 지구가 도로
-  // 조준선 근처로 돌아오기 때문이다. 즉 이건 힘이 모자란 게 아니라 **분사한
-  // 결과를 아무도 안 물어본 것**이다.
+  // 그런데 그 게이트가 **버튼을 못 쓰는 버튼**으로 만들었다(계측 20시드 ×
+  // 반경 4단 × 충전 잔여 8지점): 충전 잔여 20초까지는 100%로 켜지지만 10초에서
+  // 0~14%, 5초에서는 전 반경 0%다. 게다가 안전장치(dodgeSafe)가 세기를 깎다가
+  // 0.17까지 내려간 표본이 있었다 — 그런 판에서는 창이 아무리 많이 남아 있어도
+  // 버튼이 영영 안 켜진다. "카이퍼 벨트 근처에서 안 먹힌다"가 그 얼굴이다.
   //
-  // 그래서 묻는다: 이 분사를 지금 태우면 광선이 닿는 그 순간 지구는 조준선에서
-  // 얼마나 비켜나 있는가(dodgeMiss). 그 값이 지구 판정 반경을 넘을 때만 켜진다.
-  // 켜져 있다는 것은 이제 **"지금 누르면 산다"**는 뜻이고, 꺼져 있으면 아직
-  // (또는 이미) 그 순간이 아니라는 뜻이다 — 재고는 그대로 남는다.
+  // 이제 게이트를 걷는다. **겨눠지고 있으면 켜진다.** 결과를 보증하는 것은
+  // 게이트가 아니라 **세기**다: 분사는 확실히 비켜날 때까지 스스로 커진다
+  // (burnDv). 그래서 이 버튼은 "지금 누르면 산다"가 아니라 **"지금 누를 수
+  // 있다"**를 뜻하게 됐고, 그건 버튼이 원래 해야 하는 말이다.
   get canThrust() {
     if (!(this.thrusters > 0
       && this.mode === 'observe' && !this.doom && !this.won && !this.lost
       && this.earth.alive && !this.warpCurtain)) return false
+    // 이미 나간 빛(TRAVEL)은 조준이 아니라 결과다 — 그때는 태울 데가 없다.
+    // 빗나가는 것으로 이미 판정된 광선(safe)도 위협이 아니다(mostUrgentBeam).
     const L = this.mostUrgentBeam()
-    return !!L && this.dodgeWorks(L)
+    return !!L && L.state === LASER_CHARGE
   }
 
   // ── 실제로 쏠 선 ──
@@ -935,24 +919,42 @@ export class Game {
     return { ox: m.x, oy: m.y, ux: dx / dist, uy: dy / dist, dist }
   }
 
-  // ── 분사 방향 ──
-  // 쏠 선에 직각(정면으로 도망가면 그대로 따라잡힌다), 두 직각 중 태양 반대쪽
-  // (안쪽으로 피하면 태양 우물로 떨어진다). 요새의 회피 분사와 같은 규칙이다.
-  // **예측과 실행이 이 함수 하나를 같이 쓴다** — 갈라 두면 "된다고 해 놓고
-  // 다른 방향으로 태우는" 버튼이 된다. 받는 것도 계산된 선(beamLine) 하나여야
-  // 한다: 광선 객체를 받아 여기서 선을 다시 그으면 그 갈라짐이 되살아난다.
-  burnDir(B) {
+  // ── 분사 방향: **태양 반대쪽** ──
+  // 예전에는 쏠 선에 직각으로 밀었다(요새의 회피 분사와 같은 규칙). 그 방향은
+  // 광선 하나에는 최적이지만 **광선마다 다르다** — 어느 쪽으로 튈지 플레이어가
+  // 미리 못 읽고, 총구가 마침 옆에 있으면 태양 쪽으로 밀리기도 했다.
+  //
+  // 이제 방향은 하나뿐이다: 태양에서 밖으로. 언제나 정의돼 있고, 언제나 같은
+  // 그림이고(불꽃이 안쪽을 향해 뿜는다), 태양 우물에서 멀어지는 쪽이다.
+  // 조준선을 가로지르는 성분은 세기가 만든다 — 반경 방향으로 민 궤도는 한
+  // 바퀴를 돌지 않아도 진행 방향으로 크게 어긋난다(그게 궤도역학이다).
+  burnDir() {
     const e = this.earth
-    let nx = -B.uy, ny = B.ux
-    if (nx * e.pos.x + ny * e.pos.y < 0) { nx = -nx; ny = -ny }
-    return { nx, ny }
+    const r = Math.hypot(e.pos.x, e.pos.y) || 1
+    return { nx: e.pos.x / r, ny: e.pos.y / r }
   }
 
-  // 실제로 실릴 세기 — 이 한 방으로 지구가 태양에 처박히면 안 되므로 통과할
-  // 때까지 한 단계씩 낮춘다(요새의 dodgeSafe와 같은 안전장치).
-  burnDv(nx, ny) {
+  // ── 세기: 확실히 벗어날 때까지 키운다 ──
+  // 예전에는 고정값(EARTH_BURN_DV)에서 시작해 안전할 때까지 **깎았다**. 그래서
+  // 궤도가 이미 빠듯한 판에서는 0.17까지 내려가 아무 일도 안 일어났고, 창이
+  // 20초 아래로 내려가면 2.5로는 회랑을 못 벗어났다.
+  //
+  // 방향을 뒤집는다: 기본 세기에서 시작해 **비켜날 때까지 키운다.** 목표는
+  // "지구 판정 반경 × EARTH_BURN_CLEAR" — 판정 원 몇 개만큼 확실히 밖이다.
+  // 안전장치는 이제 **더 키우지 못하게 막는 상한**이지, 세기를 지우는 장치가
+  // 아니다. 기본 세기 아래로는 절대 안 내려간다 — 누른 버튼은 반드시 무언가를
+  // 한다. (창이 몇 초밖에 안 남은 순간에는 상한까지 태워도 못 피할 수 있다.
+  //  그때도 궤도는 통째로 갈린다 — 다음 광선은 다른 판에서 맞는다.)
+  burnDv(L) {
+    const { nx, ny } = this.burnDir()
+    const need = hitRadiusOf(this.earth) * CFG.EARTH_BURN_CLEAR
     let dv = CFG.EARTH_BURN_DV
-    while (dv > 0.2 && !this.dodgeSafe(this.earth, nx, ny, dv)) dv *= 0.8
+    for (let i = 0; i < 16; i++) {
+      if (this.missAfter(L, nx, ny, dv) >= need) break
+      const next = dv * CFG.EARTH_BURN_STEP
+      if (next > CFG.EARTH_BURN_MAX || !this.dodgeSafe(this.earth, nx, ny, next)) break
+      dv = next
+    }
     return dv
   }
 
@@ -974,11 +976,9 @@ export class Game {
   // 지구도 **혼자** 굴린다(propagate). 요새를 같은 sim에 넣으면 둘이 서로
   // 끌어당겨서, 조준점을 푸는 세계(solveAim의 propagate — 태양 중력만)와
   // 다른 세계를 보게 된다.
-  dodgeMiss(L) {
-    if (L.state !== LASER_CHARGE) return 0
+  missAfter(L, nx, ny, dv) {
+    if (!L || L.state !== LASER_CHARGE) return 0
     const B = this.beamLine(L)
-    const { nx, ny } = this.burnDir(B)
-    const dv = this.burnDv(nx, ny)
     const e = cloneBodies([this.earth])[0]
     e.vel.x += nx * dv; e.vel.y += ny * dv
     // 조르그가 겨눈 그 순간까지 굴린다 — 충전 잔여 + 광선 비행 시간.
@@ -988,23 +988,6 @@ export class Game {
     const px = p.x - B.ox, py = p.y - B.oy
     const t = px * B.ux + py * B.uy
     return Math.hypot(px - B.ux * t, py - B.uy * t)
-  }
-
-  // 예측은 비싸다(95초를 1/40으로 굴린다 = 3800스텝). canThrust는 HUD가 매
-  // 프레임 읽으므로 그대로 부르면 프레임 예산을 통째로 먹는다 — solveAim과
-  // 같은 주기로만 다시 풀고 그 사이에는 답을 재사용한다. 0.5초 늦게 켜지는
-  // 것은 95초짜리 대응 창에서 아무것도 바꾸지 않는다.
-  dodgeWorks(L) {
-    if (L.state !== LASER_CHARGE) return false
-    // 판이 바뀌면 시계가 0으로 돌아가므로 '거꾸로 갔다'도 다시 풀 사유다.
-    if (L.dodgeT == null || this.time < L.dodgeT || this.time - L.dodgeT >= DODGE_REFRESH) {
-      L.dodgeT = this.time
-      // 켤 때와 끌 때의 문턱이 다르다(DODGE_HOLD). 답이 이전 답에 기대므로
-      // **다음 조준에는 물려 가면 안 된다** — 새 충전이 시작될 때 laser.js가
-      // 이 두 줄(dodgeT/dodgeOk)을 초기화한다.
-      L.dodgeOk = this.dodgeMiss(L) > hitRadiusOf(this.earth) * (L.dodgeOk ? DODGE_HOLD : 1)
-    }
-    return L.dodgeOk
   }
 
   // 지금 지구를 가장 임박하게 겨누는 광선. 없으면 null.
@@ -1029,17 +1012,15 @@ export class Game {
     // 있을 때만 참이므로 여기서 L은 언제나 있다 — 없으면 누를 수 없는 버튼이다.
     const L = this.mostUrgentBeam()
     if (!L) return false
-    // 방향도 세기도 **예측이 쓴 그 함수 그대로**다. canThrust가 "이걸로 산다"고
-    // 답한 그 분사를 여기서 그대로 태운다 — 다른 값을 쓰면 버튼이 거짓말이 된다.
-    // (세기는 고정이다. 요새는 질량에 비례해 밀지만 지구는 하나뿐이라 비례시킬
-    //  것이 없다 — 회랑을 벗어나는 데 필요한 만큼만.)
-    const { nx, ny } = this.burnDir(this.beamLine(L))
-    const dv = this.burnDv(nx, ny)
+    // 방향은 태양 반대쪽 하나(burnDir), 세기는 그 광선을 확실히 비켜날 만큼
+    // (burnDv). 둘 다 이 함수 하나에서만 정해지므로 버튼과 결과가 안 갈린다.
+    const { nx, ny } = this.burnDir()
+    const dv = this.burnDv(L)
     e.vel.x += nx * dv; e.vel.y += ny * dv
     e.trailFlash = 2.0
     this.thrusters--
     this.addFx({ kind: 'earthBurn', x: e.pos.x, y: e.pos.y, r: hitRadiusOf(e), a: Math.atan2(-ny, -nx) })
-    this.message = msg('msg.earthBurn', { n: this.thrusters })
+    this.message = msg('msg.earthBurn', { n: this.thrusters, dv: dv.toFixed(1) })
     return true
   }
 
@@ -1168,14 +1149,14 @@ export class Game {
       return
     }
 
-    // 휘발성 — 맞는 순간 그 자리에서 유폭. 반경 안이 통째로 밀린다.
-    // **이 공도 밀린다.** 예전에는 여기서 임펄스를 건너뛰었는데, 그때는 유폭이
-    // 곧 소멸이라 밀 대상이 없었기 때문이다. 이제 살아남으므로 "핵은 민다"는
-    // 이 판의 대전제가 여기서도 그대로 성립해야 한다 — 안 그러면 맞고도 제자리에
-    // 선 공 하나가 판에서 유일한 예외로 남는다.
+    // 휘발성 — 맞는 순간 그 자리에서 유폭하고 **없어진다.** 작약량은 안 본다:
+    // 1Mt이든 12Mt이든 가스 행성에 핵이 닿으면 한 방이다.
+    // (한동안은 체력 1만 닳고 살아남았다. 그러면 이 태그가 "터지는 공"이 아니라
+    //  "터지는 시늉을 하는 공"이 된다 — 같은 유폭을 세 번 보고 나서야 없어지므로
+    //  한 번의 사건이 세 번으로 흐려지고, 유폭을 노린 한 수의 값도 1/3이 된다.
+    //  터지는 것은 한 번뿐이어야 그 한 번이 계획할 값어치를 갖는다.)
     if (b.role === 'volatile') {
-      const push = applyNuke(b, point.x, point.y, yld)
-      this.addFx({ kind: 'nuke', x: point.x, y: point.y, yld, r: b.radius, px: push.dx, py: push.dy })
+      this.addFx({ kind: 'nuke', x: point.x, y: point.y, yld, r: b.radius })
       this.volatileBlast(b)
       return
     }
@@ -1252,9 +1233,9 @@ export class Game {
       o.vel.x += dx / d * dv; o.vel.y += dy / d * dv
       o.trailFlash = 2
     }
-    this.message = msg('msg.volatile', { name: nameOf(b), r: R.toFixed(0), hp: Math.max(0, (b.hp ?? CFG.PLANET_HP) - 1) })
-    // 제 몸에는 딱 1. 부서지는 것은 **체력이 다 닳았을 때뿐**이다.
-    return this.damage(b, 1, 'blast')
+    this.message = msg('msg.volatile', { name: nameOf(b), r: R.toFixed(0) })
+    // **제 몸은 남지 않는다.** 유폭은 한 번이고, 그 한 번에 이 공이 없어진다.
+    this.killBody(b, 'blast', { fx: false })
   }
 
   // ─── 불안정 행성 — 쪼개지며 쏜다 ─────────────────────────────
@@ -1279,20 +1260,13 @@ export class Game {
     this.killBody(b, 'burst', { fx: false, shatterIt: false })
   }
 
-  // ─── 산탄 한 갈래가 무언가에 닿았다 ──────────────────────────
-  // physics.resolveBodyPairs가 파편을 이미 지운 뒤에 부른다 — 여기서 하는 일은
-  // "그 한 방이 무엇을 깎았는가"뿐이다. 반환값 'destroyed'는 배열이 아니라
-  // **판이 바뀌었다**는 신호다(부른 쪽이 그 스텝을 거기서 끝낸다).
-  onShardHit(s, o) {
-    const vRel = Math.hypot(s.vel.x - o.vel.x, s.vel.y - o.vel.y)
-    this.addFx({ kind: 'shard', x: s.pos.x, y: s.pos.y, r: hitRadiusOf(s), v: vRel })
-    // 식은 파편은 스러지기만 한다. 궤도를 한참 돌다 제 발로 굴러 들어온 조각이
-    // 행성 체력을 깎으면 그건 내가 쏜 게 아니다 — 당구 충돌의 COLLIDE_DMG_V와 같은 규칙.
-    if (vRel < CFG.SHARD_DMG_V) return null
-    // 삼키는 것과 못 부수는 것에는 안 통한다 — 광선·핵이 그러하듯 여기서도 같다.
-    if (o.mothership) return null
-    this.message = msg('msg.shard.hit', { name: nameOf(o), v: vRel.toFixed(0) })
-    return this.damage(o, CFG.SHARD_DMG, 'shrapnel') ? 'destroyed' : null
+  // 부딪힌 자국. 산탄이 낀 충돌은 당구공 소리가 아니라 **꽂히는 소리**다 —
+  // 판정은 같아도(onPlanetCollision) 그림과 소리는 갈려야 한다. 안 그러면
+  // 일곱 갈래가 꽂히는 동안 화면에서 "공 일곱 개가 부딪혔다"로 읽힌다.
+  hitFx(a, b, x, y, vRel, soft) {
+    const s = a.shard ? a : b.shard ? b : null
+    if (s) this.addFx({ kind: 'shard', x, y, r: hitRadiusOf(s), v: vRel })
+    else this.addFx({ kind: 'bump', x, y, r: (hitRadiusOf(a) + hitRadiusOf(b)) * 0.5, v: vRel, soft })
   }
 
   // ─── 행성끼리의 충돌 = 당구 + 체력 ────────────────────────────
@@ -1302,6 +1276,12 @@ export class Game {
   // 자연스러운 공전 중의 느린 스침(상대속도 < COLLIDE_DMG_V)은
   // 데미지가 없다: 판이 저 혼자 정리되면 플레이어가 할 일이 사라진다.
   // 반환값 'destroyed' 는 배열이 변했다는 신호(파편 생성) — physics가 그 스텝을 끝낸다.
+  //
+  // **산탄도 이 함수를 그대로 지난다**(physics.resolveBodyPairs). 체력 1짜리
+  // 공으로 취급되므로 가스 행성에 꽂히면 유폭하고 불안정 행성에 꽂히면 다시
+  // 쪼개진다 — 연쇄가 성립하는 이유는 규칙을 따로 안 썼기 때문이다.
+  // 산탄이라서 달라지는 것은 **말과 그림 둘뿐**이고(hitFx·아래 message),
+  // 판정은 한 글자도 안 갈린다.
   onPlanetCollision(a, b) {
     // 가스 행성 — **세게** 처박히면 그 자리에서 유폭한다. 연쇄를 노릴 자리.
     //
@@ -1310,12 +1290,10 @@ export class Game {
     // 안에 소멸). 압축된 판에서는 이웃 궤도끼리 스치는 일이 늘 있는데,
     // 그 정도 접촉으로 목성이 사라지면 판의 지형이 통째로 없어진다.
     // 그래서 문턱을 둔다: 스치는 건 튕기고, 진짜로 처박아야 터진다.
-    // **터져도 그 공은 안 죽는다**(volatileBlast) — 체력 1만 닳는다.
     const vRel0 = Math.hypot(a.vel.x - b.vel.x, a.vel.y - b.vel.y)
-    // 쌍의 쿨다운을 **여기서 미리 읽는다.** 유폭이 더 이상 그 공을 죽이지
-    // 않으므로(volatileBlast) 둘은 터진 뒤에도 겹쳐 있고, 막지 않으면 다음
-    // 스텝에 같은 판정이 또 걸린다 — 한 번의 접촉이 기관총이 된다.
-    // 아래 당구 판정이 쓰는 것과 **같은 창**이다: 한 번의 만남은 한 번이다.
+    // 쌍의 쿨다운을 **여기서 미리 읽는다.** 아래 당구 판정이 쓰는 것과 같은
+    // 창이라야 "한 번의 만남은 한 번"이 두 규칙에서 같은 뜻이 된다 — 유폭이든
+    // 파열이든 당구든, 한 번 붙은 쌍은 이 창 안에서 다시 판정되지 않는다.
     const key = a.id < b.id ? `${a.id}|${b.id}` : `${b.id}|${a.id}`
     const last = this.pairCool.get(key) ?? -99
     const cool = (a.isEarth || b.isEarth) ? CFG.EARTH_HIT_COOLDOWN : CFG.HIT_COOLDOWN
@@ -1324,11 +1302,12 @@ export class Game {
       this.pairCool.set(key, this.time)
       const vol = a.role === 'volatile' ? a : b, other = vol === a ? b : a
       this.message = msg('msg.collide.volatile', { a: nameOf(vol), b: nameOf(other), v: vRel0.toFixed(0) })
-      // **튕기고 나서 터진다.** 예전에는 튕기지 않았는데, 그때는 가스 행성이
-      // 그 자리에서 사라져 튕길 것이 없었기 때문이다. 이제 남으므로 당구는
-      // 당구대로 성립해야 한다 — 유폭의 밀기는 그 위에 얹힌다.
-      elasticBounce(a, b)
-      this.damage(other, 3, 'collision')
+      // 친 공에게는 **한 대**만 준다. 3이던 시절에는 중립 행성(체력 3)이
+      // 가스를 처박는 순간 같이 즉사했다 — 유폭 반경이 크다는 것과 "닿은 공이
+      // 죽는다"는 다른 이야기인데 그 둘이 붙어 있었다. 유폭은 여전히 반경
+      // 안을 통째로 밀지만(volatileBlast), 미는 것으로 죽는 천체는 없다.
+      // (튕기지는 않는다 — 가스는 이 자리에서 사라지므로 튕길 것이 없다.)
+      this.damage(other, 1, 'collision')
       this.volatileBlast(vol)
       return 'destroyed'
     }
@@ -1351,6 +1330,7 @@ export class Game {
     const vRel = elasticBounce(a, b)   // ← 여기서 실제로 튕긴다
     a.bumpFlash = 0.5; b.bumpFlash = 0.5
     // 접촉 판정은 한 번의 충돌에서 여러 스텝 이어질 수 있다 — 쿨다운으로 한 번만 센다
+
     //
     // **지구만 창이 길다.** 0.7초는 "같은 쌍이 여러 스텝 겹쳐 있다"를 막는 값인데,
     // 반발계수가 1이고 둘이 서로 끌어당기므로 한 번의 스침에서 접촉이 몇 번씩
@@ -1363,18 +1343,23 @@ export class Game {
     // (창 자체는 위에서 `fresh`로 이미 읽어 두었다 — 유폭 판정과 같은 창을
     //  써야 "한 번의 만남은 한 번"이 두 규칙에서 같은 뜻이 된다.)
     if (!fresh) {
-      this.addFx({ kind: 'bump', x: cx, y: cy, r: (hitRadiusOf(a) + hitRadiusOf(b)) * 0.5, v: vRel, soft: true })
+      this.hitFx(a, b, cx, cy, vRel, true)
       return null
     }
     this.pairCool.set(key, this.time)
 
     const dmg = vRel < CFG.COLLIDE_DMG_V ? 0 : vRel >= 160 ? 3 : vRel >= 90 ? 2 : 1
-    this.addFx({ kind: 'bump', x: cx, y: cy, r: (hitRadiusOf(a) + hitRadiusOf(b)) * 0.5, v: vRel, soft: dmg === 0 })
+    this.hitFx(a, b, cx, cy, vRel, dmg === 0)
     if (dmg === 0) {
       this.message = msg('msg.collide.soft', { a: nameOf(a), b: nameOf(b), v: vRel.toFixed(0) })
       return null
     }
-    this.message = msg('msg.collide', { a: nameOf(a), b: nameOf(b), v: vRel.toFixed(0), dmg })
+    // 산탄이 꽂힌 것은 "공 둘이 부딪혔다"가 아니다 — 판정은 같아도 사건의
+    // 이름은 다르다. 화면에 뜨는 문장도 그렇게 갈라 준다.
+    const s = a.shard ? b : b.shard ? a : null
+    this.message = s
+      ? msg('msg.shard.hit', { name: nameOf(s), v: vRel.toFixed(0), dmg })
+      : msg('msg.collide', { a: nameOf(a), b: nameOf(b), v: vRel.toFixed(0), dmg })
     // 둘 다 같은 피해를 받는다. 하나라도 박살나면 그 스텝은 거기서 끝낸다.
     const ka = this.damage(a, dmg, 'collision')
     const kb = this.damage(b, dmg, 'collision')
@@ -1405,7 +1390,9 @@ export class Game {
   // (지구에 직접 핵을 박는 것은 여전히 즉시 게임 오버다 — detonate는 체력을
   //  아예 안 거치고 판을 끝낸다. 그건 규칙이 아니라 선언이다.)
   damage(b, n, cause) {
-    if (!b.alive || b.type === 'debris') return false
+    // 산탄은 **체력 1짜리 공**이라 여기서 안 걸러진다 — 맞으면 그대로 죽는다.
+    // 걸러지는 건 장식용 잔해뿐이다: 잔해는 튕기기만 하고 아무 체력도 안 가진다.
+    if (!b.alive || (b.type === 'debris' && !b.shard)) return false
     b.hp = (b.hp ?? CFG.PLANET_HP) - (b.isEarth ? Math.min(n, CFG.EARTH_MAX_DMG) : n)
     b.hitFlash = Math.max(b.hitFlash, 0.6)
     b.trailFlash = 2.0
@@ -1420,6 +1407,10 @@ export class Game {
       this.fail('EARTH_LOST', msg('msg.fail.earthCrush'))
       return true
     }
+    // 산탄은 **조용히** 없어진다. 판정은 행성과 같아도 총알 하나가 다 쓰인 것을
+    // 행성 폭파 연출로 알리면, 일곱 갈래가 꽂히는 동안 화면이 그걸로 덮인다.
+    // 꽂혔다는 건 hitFx가 이미 말했다.
+    if (b.shard) { this.killBody(b, cause, { fx: false }); return true }
     this.blastFx(b, 1.6)
     this.killBody(b, cause, { fx: false })
     return true
@@ -1474,7 +1465,8 @@ export class Game {
       if (cause === 'sun') this.addFx({ kind: 'sun', x: b.pos.x, y: b.pos.y })
       else this.blastFx(b, 1)
     }
-    if (shatterIt) shatter(b, this.bodies, () => this.rng.next())
+    // 파편은 더 쪼개지지 않는다 — 잔해의 잔해는 아무 정보도 아니다.
+    if (shatterIt && b.type !== 'debris') shatter(b, this.bodies, () => this.rng.next())
     this.recordKill(b, cause)
     // 모성이 부서지면 난사가 그 자리에서 멎는다. **recordKill 다음이다** —
     // 저쪽이 판을 쓸어내는 동안의 파괴는 전과가 아니라는 규칙(recordKill의
@@ -1555,16 +1547,16 @@ export class Game {
   // 바깥쪽은 추방 대신 **카이퍼 벨트 쿠션**이다: 박으면 폭발하고, 속력을
   // 그대로 유지한 채 반사각으로 판 안으로 되돌아온다. 잃는 공은 없다.
   //
-  // 예외는 파편이다. 파편은 애초에 체력으로 안 죽는다(damage()가 debris를
-  // 걸러낸다) — 유일한 퇴장은 행성 대기권 소멸(physics.resolveBodyPairs)과
-  // 태양 낙하뿐이었다. 벨트에서마저 당구공처럼 튕겨 돌려보내면 어느 쪽에도
-  // 안 걸린 파편은 이번 판이 끝날 때까지 벨트를 무한히 왕복한다 — 이미
-  // 박살난 행성의 부스러기가 화면에는 거의 안 보이는 채로 벨트를 계속
-  // "들이받는" 것처럼 보이는 원인이었다. 대기권·태양과 같은 취급으로
-  // 맞춘다: 벨트에 닿으면 그 자리에서 조용히 소멸한다(폭발 연출 없음).
-  // 넷째 퇴장로는 **시간**이다: 안쪽으로 쏜 산탄은 대기권·태양·벨트 어디에도
-  // 안 걸린 채 궤도에 얹힐 수 있는데, 샷건은 그 순간의 사건이라 판에 남으면
-  // 안 된다. 그 시계는 여기가 아니라 stepBodies에 있다(예측과 공유해야 한다).
+  // 예외는 파편이다. **장식용 잔해가 판에서 없어지는 자리는 여기 둘뿐이다** —
+  // 카이퍼 벨트와 태양. 잔해는 체력이 없고(damage가 거른다) 행성에 닿으면
+  // 튕기므로(physics.resolveBodyPairs), 판의 두 끝 말고는 걸릴 데가 없다.
+  // 벨트에서 공처럼 튕겨 돌려보내면 잔해가 판이 끝날 때까지 벽을 왕복하며
+  // "들이받는" 그림이 남는다 — 그래서 잔해만은 벨트에서 조용히 소멸한다
+  // (폭발 연출 없음). 태양도 같다.
+  // 산탄에는 셋째 퇴장로가 하나 더 있다: **시간**(config.SHARD_TTL). 안쪽으로
+  // 쏜 갈래는 두 끝 어디에도 안 걸린 채 궤도에 얹힐 수 있는데, 샷건은 그
+  // 순간의 사건이라 판에 남으면 안 된다. 그 시계는 여기가 아니라 stepBodies에
+  // 있다 — 예측선이 같은 함수를 써야 거짓말을 안 한다.
   bodyBounds() {
     for (const b of this.bodies) {
       if (!b.alive) continue
