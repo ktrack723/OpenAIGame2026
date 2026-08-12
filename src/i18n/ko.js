@@ -76,7 +76,6 @@ export const ko = {
   'goal.hive': '이번 판에는 조르그 모함(◎)이 궤도 바깥에 와 있다 — 부술 때까지 요새를 계속 실어 나른다. 체력 5.',
   'goal.siege': '그리고 초엘리트(✷)가 서 있다 — 체력 3. 이놈은 광선이 아니라 **핵으로 당구를 친다**: 중립 행성 하나를 골라 지구에 처박는다. 조준선이 뜨면 그 공을 치워라.',
   'cause.collision': '충돌 파괴', 'cause.sun': '항성 처분',
-  'cause.collision': '충돌 파괴', 'cause.sun': '항성 처분',
   'cause.blast': '유폭', 'cause.laser': '조르그 레이저에 관통',
   'cause.burst': '파열', 'cause.shrapnel': '산탄 피격',
 

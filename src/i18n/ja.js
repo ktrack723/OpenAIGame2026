@@ -70,7 +70,6 @@ export const ja = {
   'goal.hive': '今回はゾルグ母艦（◎）が軌道の外に来ている — 壊すまで要塞を運び込み続ける。体力5。',
   'goal.siege': 'そして超エリート（✷）が立っている — 体力3。こいつはビームを撃たない。**核でビリヤードを打つ**のだ：中立惑星をひとつ選び、地球へ叩き込む。照準線が出たらその玉をどかせ。',
   'cause.collision': '衝突破壊', 'cause.sun': '恒星に処分',
-  'cause.collision': '衝突破壊', 'cause.sun': '恒星に処分',
   'cause.blast': '誘爆', 'cause.laser': 'ゾルグ光線に貫通',
   'cause.burst': '破裂', 'cause.shrapnel': '散弾被弾',
 

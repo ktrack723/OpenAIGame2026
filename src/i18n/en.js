@@ -70,7 +70,6 @@ export const en = {
   'goal.hive': 'A Zorg hive ship (◎) is parked outside the orbits this wave — it keeps ferrying fortresses in until you break it. 5 HP.',
   'goal.siege': 'And a super-elite (✷) has taken position — 3 HP. This one does not fire beams: it **plays billiards with nukes**, picking a neutral planet and driving it into Earth. When the aim line appears, get that ball out of the way.',
   'cause.collision': 'Destroyed by collision', 'cause.sun': 'Dropped into the sun',
-  'cause.collision': 'Destroyed by collision', 'cause.sun': 'Dropped into the sun',
   'cause.blast': 'Gas detonation', 'cause.laser': 'Pierced by the Zorg beam',
   'cause.burst': 'Burst apart', 'cause.shrapnel': 'Hit by shrapnel',
 
