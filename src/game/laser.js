@@ -165,6 +165,10 @@ export function stepLaser(L, game, dt, n = 1) {
     L.state = LASER_CHARGE; L.t = 0
     L.ox = src.pos.x; L.oy = src.pos.y
     L.head = 0; L.back = 0; L.refresh = 0
+    // 회피 판정은 히스테리시스가 걸려 있어 **직전 답에 기댄다**(game.dodgeWorks).
+    // 지난 조준이 켜진 채로 끝났으면 그 값이 새 조준의 첫 문턱을 느슨하게
+    // 만든다 — 조준이 바뀌면 답도 처음부터 다시 묻는다.
+    L.dodgeT = null; L.dodgeOk = false
     L.n = n
     L.range = game.aMax * CFG.LASER_RANGE_MUL
     // 지구의 **원래 궤도** 사본. 이제부터 진짜 지구가 이것과 벌어지는 만큼
