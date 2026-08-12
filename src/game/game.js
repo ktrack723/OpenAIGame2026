@@ -11,7 +11,7 @@ import { msg, nameOf } from '../i18n/index.js'
 import { bearing } from '../core/angle.js'
 import { createSystem, reinforce, summonCue, summonFort } from './system.js'
 import { makeBody } from './body.js'
-import { chargeLeft, impactLeft, makeDoom, makeLaser, stepDoom, stepLaser, stepSpent, LASER_CHARGE, LASER_SPENT, LASER_TRAVEL } from './laser.js'
+import { chargeLeft, impactLeft, makeDoom, makeLaser, propagate, stepDoom, stepLaser, stepSpent, LASER_CHARGE, LASER_SPENT, LASER_TRAVEL } from './laser.js'
 import * as Aim from './aim.js'
 
 // 관측 모드 배속 단계 — 화면의 배속 버튼이 이 사이를 돈다
@@ -20,6 +20,21 @@ const OBS_SPEEDS = [1, 2, 4, 8]
 // 추진기가 먹히는지 다시 계산하는 간격(인게임 초). laser.js의 AIM_REFRESH와
 // 같은 값이다 — 조준선을 다시 푸는 그 박자에 맞춰 답도 갱신된다.
 const DODGE_REFRESH = 0.5
+
+// ─── 켜진 버튼을 붙잡는 문턱 (판정 반경 대비) ────────────────────
+// 켜질 때는 예측이 판정 반경을 넘어야 하지만, **한 번 켜진 뒤에는 이 문턱
+// 아래로 내려가야 꺼진다.** 충전이 끝나 갈수록 예측값은 판정 반경을 향해
+// 미끄러져 내려오는데, 마진 없이 딱 한 줄로 자르면 그 경계에서 버튼이
+// 깜빡인다(계측 20시드×5스테이지: 145발 중 14발에 그런 구간이 있었고,
+// 예측이 0.9R까지 내려왔다가 다시 1.0R 위로 튀어 오르는 모양이었다).
+//
+// **낮은 쪽으로 잡은 것은 선택이다.** 이 띠 안(0.8R~1.0R)에서는 버튼이
+// 켜져 있지만 예측은 "아슬아슬하게 맞는다"라고 말한다 — 즉 헛되이 태울 수
+// 있다. 그래도 그 반대(태우면 살 수 있었는데 버튼이 꺼져 있었다)보다 낫다:
+// 헛분사는 자원 하나를 잃지만 못 누른 분사는 판을 잃는다. 그리고 애초에
+// 이 경계에서는 예측 자체가 못 믿을 자리다 — 2체 모형의 오차가 판정 반경
+// 언저리(≈10 GU)와 같은 자릿수이므로, 0.8R로 둔 띠는 그 오차의 폭이다.
+const DODGE_HOLD = 0.8
 
 // 정치자금이 안 붙는 파괴 사유. **조르그가 제 광선으로 부순 것은 내 공이 아니다** —
 // 예전 점수표에서도 laser만 0점이었고, 화폐가 바뀌어도 그 규칙은 그대로다.
@@ -719,17 +734,38 @@ export class Game {
     return !!L && this.dodgeWorks(L)
   }
 
+  // ── 실제로 쏠 선 ──
+  // 광선은 **(발사 순간의 요새) → (조준점)**을 잇는 직선이다. **지금 화면에
+  // 그어져 있는 그 선이 아니다** — 요새는 충전 95초 내내 공전하므로 쏘는
+  // 순간에는 이미 다른 자리에 있다. 조준점(L.ax/ay)만은 solveAim이 '도달
+  // 순간의 ghost 자리'로 풀어 둔 값이라 다시 굴릴 것이 없다. 움직이는 것은
+  // 총구뿐이고, 그래서 여기서 굴리는 것도 총구 하나뿐이다.
+  //
+  // **회피 방향도 빗나감 예측도 이 선 하나만 본다.** 예전에는 방향(burnDir)만
+  // 지금의 총구로 잡고 예측(dodgeMiss)만 미래의 총구로 쟀는데, 그 두 선이
+  // 어긋난 각도가 곧 헛분사였다(계측 8시드: 충전 잔여 95초에 42~168°,
+  // 70초에 48~165°). 90° 어긋난 직각은 광선을 **따라 도망가는** 방향이라
+  // 95초를 밀어도 조준선에서 5 GU밖에 못 비켰고 — 예측은 그 5 GU를 정직하게
+  // 답했으므로 **대응할 시간이 제일 많은 구간에서 버튼이 안 켜졌다.**
+  // 그게 "조준당했는데 부스터가 활성화되지 않는다"의 정체다.
+  beamLine(L) {
+    // 이미 나간 빛은 선이 발사 때 고정됐다 — 굴릴 것이 없다.
+    if (L.state === LASER_TRAVEL) return { ox: L.ox, oy: L.oy, ux: L.ux, uy: L.uy, dist: L.aimDist }
+    const m = L.from ? propagate(L.from, chargeLeft(L)) : { x: L.ox, y: L.oy }
+    const dx = L.ax - m.x, dy = L.ay - m.y
+    const dist = Math.hypot(dx, dy) || 1
+    return { ox: m.x, oy: m.y, ux: dx / dist, uy: dy / dist, dist }
+  }
+
   // ── 분사 방향 ──
-  // 광선에 직각(정면으로 도망가면 그대로 따라잡힌다), 두 직각 중 태양 반대쪽
+  // 쏠 선에 직각(정면으로 도망가면 그대로 따라잡힌다), 두 직각 중 태양 반대쪽
   // (안쪽으로 피하면 태양 우물로 떨어진다). 요새의 회피 분사와 같은 규칙이다.
   // **예측과 실행이 이 함수 하나를 같이 쓴다** — 갈라 두면 "된다고 해 놓고
-  // 다른 방향으로 태우는" 버튼이 된다.
-  burnDir(L) {
+  // 다른 방향으로 태우는" 버튼이 된다. 받는 것도 계산된 선(beamLine) 하나여야
+  // 한다: 광선 객체를 받아 여기서 선을 다시 그으면 그 갈라짐이 되살아난다.
+  burnDir(B) {
     const e = this.earth
-    const bx = L.state === LASER_TRAVEL ? L.ux : L.ax - L.ox
-    const by = L.state === LASER_TRAVEL ? L.uy : L.ay - L.oy
-    const s = Math.hypot(bx, by) || 1
-    let nx = -by / s, ny = bx / s
+    let nx = -B.uy, ny = B.ux
     if (nx * e.pos.x + ny * e.pos.y < 0) { nx = -nx; ny = -ny }
     return { nx, ny }
   }
@@ -751,30 +787,29 @@ export class Game {
   // 이미 날고 있는 광선(TRAVEL)에는 0을 준다. 남은 비행이 1~2초라 Δv 2.5로는
   // 4 GU도 못 비킨다 — 그 순간의 버튼은 재고만 태우는 거짓말이다.
   //
-  // **총구도 같이 굴린다.** 광선은 (발사 순간의 요새) → (조준점)을 잇는 선인데,
-  // 요새는 공전하므로 95초 뒤의 그 선은 지금 화면에 그어진 선이 아니다.
-  // 총구를 지금 자리에 고정한 채로 재 봤더니 일찍 누를수록 답이 크게 틀렸다
-  // (계측: T-90에서 예측 619 GU인데 실제로는 10 GU를 비켜 맞았다).
-  // 조준점(L.ax/ay)은 이미 solveAim이 '도달 순간의 ghost 자리'로 풀어 둔 값이라
-  // 다시 굴릴 것이 없다 — 움직이는 것은 총구뿐이다.
+  // 기준선은 beamLine이 준다 — **분사 방향을 잡은 그 선 그대로**다. 총구를
+  // 지금 자리에 고정한 채로 재면 일찍 누를수록 답이 크게 틀렸고(계측: T-90에서
+  // 예측 619 GU인데 실제로는 10 GU를 비켜 맞았다), 방향만 지금 자리로 잡고
+  // 예측만 미래 자리로 재면 이번에는 그 헛분사를 정직하게 재느라 버튼이
+  // 안 켜졌다(beamLine 주석). 재는 선과 미는 선은 같은 선이어야 한다.
+  //
+  // 지구도 **혼자** 굴린다(propagate). 요새를 같은 sim에 넣으면 둘이 서로
+  // 끌어당겨서, 조준점을 푸는 세계(solveAim의 propagate — 태양 중력만)와
+  // 다른 세계를 보게 된다.
   dodgeMiss(L) {
     if (L.state !== LASER_CHARGE) return 0
-    const { nx, ny } = this.burnDir(L)
+    const B = this.beamLine(L)
+    const { nx, ny } = this.burnDir(B)
     const dv = this.burnDv(nx, ny)
-    const sim = cloneBodies(L.from ? [this.earth, L.from] : [this.earth])
-    sim[0].vel.x += nx * dv; sim[0].vel.y += ny * dv
+    const e = cloneBodies([this.earth])[0]
+    e.vel.x += nx * dv; e.vel.y += ny * dv
     // 조르그가 겨눈 그 순간까지 굴린다 — 충전 잔여 + 광선 비행 시간.
-    // 적분 간격도 solveAim과 같은 1/40이어야 두 예측이 같은 세계를 본다.
-    const T = chargeLeft(L) + L.aimDist / CFG.LASER_SPEED
-    const n = Math.round(T * 40)
-    for (let i = 0; i < n; i++) stepBodies(sim, 1 / 40)
-    const ox = sim[1] ? sim[1].pos.x : L.ox, oy = sim[1] ? sim[1].pos.y : L.oy
-    const dx = L.ax - ox, dy = L.ay - oy
-    const d = Math.hypot(dx, dy) || 1
-    const ux = dx / d, uy = dy / d
-    const px = sim[0].pos.x - ox, py = sim[0].pos.y - oy
-    const t = px * ux + py * uy
-    return Math.hypot(px - ux * t, py - uy * t)
+    // 비행 거리도 쏠 선의 길이(B.dist)다. L.aimDist는 지금 총구에서 잰 값이라
+    // 여기 섞으면 또 두 선이 갈린다.
+    const p = propagate(e, chargeLeft(L) + B.dist / CFG.LASER_SPEED)
+    const px = p.x - B.ox, py = p.y - B.oy
+    const t = px * B.ux + py * B.uy
+    return Math.hypot(px - B.ux * t, py - B.uy * t)
   }
 
   // 예측은 비싸다(95초를 1/40으로 굴린다 = 3800스텝). canThrust는 HUD가 매
@@ -786,7 +821,10 @@ export class Game {
     // 판이 바뀌면 시계가 0으로 돌아가므로 '거꾸로 갔다'도 다시 풀 사유다.
     if (L.dodgeT == null || this.time < L.dodgeT || this.time - L.dodgeT >= DODGE_REFRESH) {
       L.dodgeT = this.time
-      L.dodgeOk = this.dodgeMiss(L) > hitRadiusOf(this.earth)
+      // 켤 때와 끌 때의 문턱이 다르다(DODGE_HOLD). 답이 이전 답에 기대므로
+      // **다음 조준에는 물려 가면 안 된다** — 새 충전이 시작될 때 laser.js가
+      // 이 두 줄(dodgeT/dodgeOk)을 초기화한다.
+      L.dodgeOk = this.dodgeMiss(L) > hitRadiusOf(this.earth) * (L.dodgeOk ? DODGE_HOLD : 1)
     }
     return L.dodgeOk
   }
@@ -817,7 +855,7 @@ export class Game {
     // 답한 그 분사를 여기서 그대로 태운다 — 다른 값을 쓰면 버튼이 거짓말이 된다.
     // (세기는 고정이다. 요새는 질량에 비례해 밀지만 지구는 하나뿐이라 비례시킬
     //  것이 없다 — 회랑을 벗어나는 데 필요한 만큼만.)
-    const { nx, ny } = this.burnDir(L)
+    const { nx, ny } = this.burnDir(this.beamLine(L))
     const dv = this.burnDv(nx, ny)
     e.vel.x += nx * dv; e.vel.y += ny * dv
     e.trailFlash = 2.0
