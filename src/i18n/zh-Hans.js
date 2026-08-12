@@ -70,7 +70,6 @@ export const zhHans = {
   'goal.hive': '这一波有一艘佐格母舰（◎）停在轨道外 — 在被打碎前会不断运来要塞。体力 5。',
   'goal.siege': '而且超精英（✷）已经就位 — 生命 3。这家伙不放光束：它**用核弹打台球**，挑一颗中立行星撞向地球。瞄准线一出现，就把那颗球挪开。',
   'cause.collision': '碰撞摧毁', 'cause.sun': '投入恒星',
-  'cause.collision': '碰撞摧毁', 'cause.sun': '投入恒星',
   'cause.blast': '殉爆', 'cause.laser': '被佐格光束贯穿',
   'cause.burst': '崩裂', 'cause.shrapnel': '被霰弹击中',
 
