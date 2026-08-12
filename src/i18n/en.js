@@ -8,6 +8,7 @@ export const en = {
   'ui.findPrev': '◀ CONTACT', 'ui.findNext': 'CONTACT ▶',
   'ui.findPrev.tip': 'Next contact angle, counter-clockwise', 'ui.findNext.tip': 'Next contact angle, clockwise',
   'ui.fire': 'FIRE', 'ui.fire.key': 'SPACE',
+  'ui.fire.deadline': 'WINDOW CLOSED — LAST SHOT IN FLIGHT', 
   'ui.fire.reload': 'RELOADING — {max} SHOTS IN FLIGHT', 'ui.fire.abort': 'ABORT — EARTH IMPACT',
   'ui.wait': 'ADVANCE ▶▶', 'ui.wait.tip': 'Time flows only while held',
   'ui.toObs': 'OBSERVE ▶', 'ui.toObs.tip': 'Observe mode — the UI clears and the board runs',
@@ -191,6 +192,7 @@ export const en = {
   'msg.miss.bend': 'Not enough bend — {deg}° of the {need}° needed',
   'msg.miss.timing': 'Timing — the ball had already moved on',
 
+  'toast.deadline': 'Operation window closed — the shots already out are the last ones',
   'toast.salvoFull': 'All {n} warheads are out — one has to settle before the next',
   'toast.relay': 'Warhead steered — the shot in flight was shoved',
   'toast.slow': 'Launch speed too low — must exceed Earth escape velocity {v}',

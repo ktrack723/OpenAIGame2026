@@ -702,9 +702,11 @@ export function updateHud(el, game) {
     // 막히는 것은 "탄이 날고 있을 때"가 아니라 **자리가 다 찼을 때**다
     // (game.salvoFull). 한 발이 날고 있어도 다음 한 발은 쏠 수 있고,
     // 그 두 번째 발로 첫 발을 치는 것이 이 게임의 새 수다.
-    fireBtn.disabled = game.salvoFull || veil
-    fireBtn.querySelector('.ftext').textContent = game.salvoFull ? t('ui.fire.reload', { max: CFG.MAX_INFLIGHT })
-      : p.outcome === 'earth' ? t('ui.fire.abort') : t('ui.fire')
+    // 시한이 지나면 새 발은 없다 — 이미 나간 발이 마지막이다(game.pastDeadline).
+    fireBtn.disabled = game.salvoFull || game.pastDeadline || veil
+    fireBtn.querySelector('.ftext').textContent = game.pastDeadline ? t('ui.fire.deadline')
+      : game.salvoFull ? t('ui.fire.reload', { max: CFG.MAX_INFLIGHT })
+        : p.outcome === 'earth' ? t('ui.fire.abort') : t('ui.fire')
   } else {
     lcd.className = 'lcd off'
     el.querySelector('#lcdTag').textContent = t(game.runOver ? 'lcd.dead' : 'lcd.hold')

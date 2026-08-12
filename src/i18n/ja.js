@@ -8,6 +8,7 @@ export const ja = {
   'ui.findPrev': '◀ 接触角', 'ui.findNext': '接触角 ▶',
   'ui.findPrev.tip': '当たる角度を反時計回りに探す', 'ui.findNext.tip': '当たる角度を時計回りに探す',
   'ui.fire': 'FIRE', 'ui.fire.key': 'SPACE',
+  'ui.fire.deadline': '時限終了 — 最終弾 飛行中', 
   'ui.fire.reload': '再装填待ち — {max}発 飛行中', 'ui.fire.abort': 'ABORT — 地球に直撃',
   'ui.wait': '時間を進める ▶▶', 'ui.wait.tip': '押している間だけ時間が流れる',
   'ui.toObs': '観測 ▶', 'ui.toObs.tip': '観測モード — UIが消え盤面が動く',
@@ -191,6 +192,7 @@ export const ja = {
   'msg.miss.bend': '屈折不足 — {deg}° / 必要 {need}°',
   'msg.miss.timing': 'タイミング — 玉はもう通り過ぎていた',
 
+  'toast.deadline': '作戦時限が終了 — すでに出ている弾が最後だ',
   'toast.salvoFull': '弾頭{n}発が出払っている — 一発が決着してから次弾',
   'toast.relay': '弾頭誘導 — 飛んでいた弾が押された',
   'toast.slow': '発射速度不足 — 地球の脱出速度 {v} を超える必要がある',

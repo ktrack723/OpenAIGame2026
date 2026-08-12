@@ -254,12 +254,30 @@ export class Game {
   get inFlight() { return this.flying > 0 }
   get salvoFull() { return this.flying >= CFG.MAX_INFLIGHT }
 
+  // ─── 시한이 끝난 뒤 ─────────────────────────────────────────
+  // 시한을 넘겨도 **날고 있는 마지막 한 발은 끝까지 보내준다**(checkEnd). 그 유예는
+  // "탄이 하나도 안 남았을 때 모성을 부른다"로 적혀 있는데, 자리가 둘이 되면서
+  // 거기가 구멍이 됐다: 한 발이 죽기 전에 다음 발을 쏘면 **0이 되는 순간이 영영
+  // 안 온다.** 계측에서 아무렇게나 여덟 발을 쏘아 152초를 벌었고, 한 판은 시한을
+  // 110초 넘겨서 클리어됐다 — 시계가 판정에서 통째로 빠진 것이다.
+  //
+  // 그래서 시한이 지나면 **발사가 닫힌다.** 유예는 이미 나간 발의 것이지 새 발의
+  // 것이 아니다. 모성이 와 있는 동안(doom)은 예외다 — 저것을 부수는 유일한 길이
+  // 공을 던지는 것이라, 거기서 발사를 막으면 마지막 길이 닫힌다.
+  get pastDeadline() {
+    return !this.doom && !this.won && !this.lost && this.time >= this.stageTime
+  }
+
   fire() {
     // 모성이 와 있어도 쏜다 — 저것을 부수는 유일한 길이 공을 던지는 것이다.
     if (this.won || this.lost || !this.earth.alive) return
     if (this.warpCurtain) return   // 개막 중 — 아직 내 차례가 아니다
     if (this.salvoFull) {
       this.setToast(msg('toast.salvoFull', { n: CFG.MAX_INFLIGHT }))
+      return
+    }
+    if (this.pastDeadline) {
+      this.setToast(msg('toast.deadline'))
       return
     }
     if (this.power <= this.launchEscape) {
@@ -1267,6 +1285,12 @@ export class Game {
     const push = missilePush(c.x, c.y, p.x, p.y, cue.yld)
     ball.vel.x += push.dx * push.dv; ball.vel.y += push.dy * push.dv
     ball.relayed++
+    // 인카운터 기록은 여기서 접는다. 스윙바이는 **중력이 꺾은 각**을 재는 것인데
+    // (진입 속도 vIn 과 이탈 속도의 사잇각), 그 사이에 핵으로 한 번 밀면 그 각에
+    // 임펄스가 섞여 들어간다 — 행성 곁에서 릴레이한 발이 "스윙바이 40°"로 보고되고
+    // 정치자금까지 붙는 셈이다. 밀린 뒤부터 다시 센다: 그 뒤로 중력이 마저 꺾는
+    // 만큼은 여전히 진짜 스윙바이다.
+    ball.enc.clear()
     const wave = blastWave(this.bodies, c.x, c.y, cue.yld, null)
     this.addFx({
       kind: 'nuke', x: c.x, y: c.y, yld: cue.yld, r: CFG.MISSILE_HIT_R,

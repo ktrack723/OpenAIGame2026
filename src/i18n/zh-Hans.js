@@ -8,6 +8,7 @@ export const zhHans = {
   'ui.findPrev': '◀ 接触角', 'ui.findNext': '接触角 ▶',
   'ui.findPrev.tip': '逆时针寻找可命中的角度', 'ui.findNext.tip': '顺时针寻找可命中的角度',
   'ui.fire': 'FIRE', 'ui.fire.key': 'SPACE',
+  'ui.fire.deadline': '时限已到 — 最后一发飞行中', 
   'ui.fire.reload': '等待再装填 — {max}发飞行中', 'ui.fire.abort': 'ABORT — 直击地球',
   'ui.wait': '推进时间 ▶▶', 'ui.wait.tip': '按住时时间才流动',
   'ui.toObs': '观测 ▶', 'ui.toObs.tip': '观测模式 — UI 消失，盘面运转',
@@ -191,6 +192,7 @@ export const zhHans = {
   'msg.miss.bend': '偏折不足 — {deg}° / 需要 {need}°',
   'msg.miss.timing': '时机 — 球已经过去了',
 
+  'toast.deadline': '作战时限已到 — 已经出膛的那几发就是最后一发',
   'toast.salvoFull': '{n}发弹头都已出膛 — 一发见分晓才能再打',
   'toast.relay': '弹头引导 — 飞行中的那一发被推开了',
   'toast.slow': '发射速度不足 — 必须超过地球逃逸速度 {v}',
