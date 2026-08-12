@@ -10,7 +10,7 @@ export const ko = {
   'ui.findPrev': '◀ 접촉각', 'ui.findNext': '접촉각 ▶',
   'ui.findPrev.tip': '닿는 각도를 반시계로', 'ui.findNext.tip': '닿는 각도를 시계로',
   'ui.fire': 'FIRE', 'ui.fire.key': 'SPACE',
-  'ui.fire.reload': '재장전 대기 — 비행 중', 'ui.fire.abort': 'ABORT — 지구 직격',
+  'ui.fire.reload': '재장전 대기 — {max}발 비행 중', 'ui.fire.abort': 'ABORT — 지구 직격',
   'ui.wait': '시간 진행 ▶▶', 'ui.wait.tip': '누르고 있는 동안만 시간이 흐른다',
   'ui.toObs': '관측 ▶', 'ui.toObs.tip': '관측 모드 — UI가 사라지고 판이 흐른다',
   'ui.zout': '－', 'ui.zin': '＋', 'ui.zauto': '자동', 'ui.zfull': '전체', 'ui.new': '새 런',
@@ -18,7 +18,7 @@ export const ko = {
   'ui.zauto.tip': '목표 자동 프레이밍 ( 0 )', 'ui.zfull.tip': '성계 전체 ( 9 )',
   'ui.new.tip': '새 시드로 다시', 'ui.lang.tip': '언어 / Language',
   'ui.mute.tip': '소리 켜기/끄기 ( M )', 'ui.mute.on': '소리 켬', 'ui.mute.off': '음소거',
-  'ui.hint': '발사대·예측선을 끌면 조준 — 멀리 끌수록 곱게 · TAB 조준/관측 · SHIFT 시간 진행 · S 배속 · ← → 각도 · ↑ ↓ 속도 · [ ] 작약 · F 접촉각 · M 음소거 · 공을 짚으면 제원',
+  'ui.hint': '발사대·예측선을 끌면 조준 — 멀리 끌수록 곱게 · TAB 조준/관측 · SHIFT 시간 진행 · S 배속 · ← → 각도 · ↑ ↓ 속도 · [ ] 작약 · F 접촉각 · M 음소거 · 공을 짚으면 제원 · 탄두는 동시에 2발 — 먼저 쏜 탄을 뒤 탄으로 쳐서 진로를 꺾는다',
   'ui.stage': '{stage}판',
   'ui.aim': '◎ 조준 모드', 'ui.aim.sub': '시간 정지 · TAB / 클릭',
   'ui.speed': '배속', 'ui.speed.tip': '관측 배속 (S)',
@@ -47,12 +47,13 @@ export const ko = {
   'lcd.ready': 'READY', 'lcd.ready.sub': '조준 대기',
   'lcd.hold': 'HOLD', 'lcd.hold.sub': '발사 불가',
   'lcd.dead': 'DEAD', 'lcd.dead.sub': '작전 종료',
-  'lcd.inflight': '탄이 비행 중 — 결판난 뒤에 다음 탄',
+  'lcd.inflight': '탄두 {n}/{max}발 비행 중',
   'lcd.default': '작약 {yield}Mt · Δv={impulse}×{yield}/질량 · 폭풍 {blast} GU',
   'lcd.tag.abort': 'ABORT', 'lcd.abort': '지구 직격 — 즉시 게임 오버', 'lcd.abort.sub': '각도를 바꿔라',
   'lcd.tag.chain': 'CHAIN', 'lcd.tag.debris': 'DEBRIS',
   'lcd.tag.solar': 'SOLAR', 'lcd.tag.noctc': 'NO CTC', 'lcd.tag.belt': 'BELT',
   'lcd.tag.target': 'TARGET', 'lcd.tag.cue': 'CUE', 'lcd.tag.spray': 'SPRAY',
+  'lcd.tag.relay': 'RELAY',
   'lcd.chain.sub': '{aim} · 반경 {r} GU · ◆{hp}/{hpMax}',
   'lcd.spray.sub': '{aim} · {n}갈래 {deg}° 부채꼴 · 방위 {dir}°',
   'lcd.debris': '파편에 조기 폭발',
@@ -60,6 +61,9 @@ export const ko = {
   'lcd.noctc': '{ttl}초 내 접촉 없음', 'lcd.noctc.sub': '자폭',
   'lcd.belt': '카이퍼 벨트에서 기폭', 'lcd.belt.sub': '판 밖으로 나가는 발 — 공은 튕겨도 탄두는 터진다',
   'lcd.direct': '↗{push}° Δv{dv} · →{course}° {speed}GU/s · ◆{hp}/{hpMax}',
+  // 탄이 탄을 친다 — 체력이 없는 물건이라 ◆ 한 칸만 빠진다
+  'lcd.relay.sub': '↗{push}° Δv{dv} · →{course}° {speed}GU/s',
+  'lcd.nudged': '⤳ 이 발은 날아가다 먼저 쏜 탄에 밀린다',
   'lcd.warn.blast': '⚠ 폭풍 반경에 지구',
   'lcd.warn.spray': '⚠ 부채꼴 안에 지구 — 산탄이 우리 집으로 간다',
   'lcd.warn.armor': '무겁다 — 임펄스 {pct}%',
@@ -150,6 +154,8 @@ export const ko = {
   'planet.hygiea': '히기에이아 Hygiea', 'planet.jupiter': '목성 Jupiter', 'planet.saturn': '토성 Saturn',
   'planet.uranus': '천왕성 Uranus', 'planet.neptune': '해왕성 Neptune', 'planet.pluto': '명왕성 Pluto',
   'planet.haumea': '하우메아 Haumea', 'planet.makemake': '마케마케 Makemake', 'planet.eris': '에리스 Eris',
+  // 예측이 무는 것이 공이 아니라 **내 탄두**일 때의 이름표(aim.relayInfo)
+  'shot.mine': '비행 중인 내 탄두',
   'planet.debris': '파편', 'planet.mothership': '조르그 모성',
 
   // ── 판 진행 메시지 ────────────────────────────────────────────
@@ -174,6 +180,7 @@ export const ko = {
   'msg.nuke.mothership': '{name}에 핵이 통하지 않았다 — 밀리지도 않는다. 공을 던져라',
   'msg.nuke.debris': '파편에 격발 — 탄두 조기 폭발',
   'msg.nuke.hit': '{name} 타격 — Δv {dv} · 방위 {dir}°{tail}',
+  'msg.nuke.relay': '탄두로 탄두를 쳤다 — {yield}Mt · Δv {dv} · 방위 {dir}°. 저 탄의 진로가 바뀌었다',
   'msg.nuke.armor': ' (장갑에 막혀 거의 안 밀렸다)',
   'msg.volatile': '{name} 유폭! — 반경 {r} GU 안이 전부 밀렸다 (체력 {hp} 남음)',
   'msg.unstable': '{name} 파열! — 방위 {dir}°로 산탄 {n}갈래',
@@ -200,7 +207,8 @@ export const ko = {
   'msg.miss.timing': '타이밍 — 공이 지나갔다',
 
   // ── 토스트 ────────────────────────────────────────────────────
-  'toast.inflight': '아직 탄이 날고 있다 — 결판난 뒤에 다음 탄을 쏜다',
+  'toast.salvoFull': '탄두 {n}발이 다 나가 있다 — 하나가 결판나야 다음 발',
+  'toast.relay': '탄두 유도 — 날아가던 탄이 밀렸다',
   'toast.slow': '발사 속도 부족 — 지구 탈출속도 {v} 초과 필요',
   'toast.capture': '포획됨 — 너무 느렸다 (강제 추락)',
   'toast.noAngle': '이 발사 속도로는 닿는 각도가 없다 — 속도를 바꿔라',
@@ -301,6 +309,11 @@ export const ko = {
     '자연 천체 접근 — 혜성이다. 벨트를 그냥 통과했다.',
     '굴릴 공이 하나 더 왔다. 지나가는 동안만이다.',
     '혜성 진입 확인. 저건 궤도에 안 남는다 — 쓰려면 지금이다.',
+  ],
+  'gnd.cueBlast': [
+    '탄두가 탄두를 쳤습니다 — 앞서 나간 발의 진로가 바뀌었습니다.',
+    '중간에서 한 번 더 꺾었습니다. 저건 유도가 아니라 당구입니다.',
+    '큐로 쓴 한 발은 여기서 끝입니다. 남은 한 발을 보십시오.',
   ],
   'gnd.beltBlast': [
     '벨트에 박았습니다. 판 밖입니다 — 아무것도 못 맞혔습니다.',

@@ -2,8 +2,9 @@ import { fromAngle, len } from '../core/vector.js'
 import { Rng } from '../core/random.js'
 import { CFG, aMaxOf, beltRadius, escapeSpeed, hitRadiusOf } from './config.js'
 import {
-  applyNuke, beltBounce, blastWave, cloneBodies, elasticBounce, resolveBodyPairs, segCircleEntry,
-  segHitsCircle, shardBurst, shatter, stepBodies, stepMissile, updateEncounters,
+  applyNuke, beltBounce, blastWave, cloneBodies, elasticBounce, missilePush, resolveBodyPairs,
+  segCircleEntry, segHitsCircle, shardBurst, shatter, stepBodies, stepMissile, sweepMeet,
+  updateEncounters,
 } from './physics.js'
 import { hasRole, roleOf, shardReach, volatileRadius } from './roles.js'
 import { makeGoal } from './objectives.js'
@@ -263,15 +264,21 @@ export class Game {
   // 붙잡혀 되떨어진다 = 자기 지구에 핵을 박는다.
   get launchEscape() { return escapeSpeed(this.earth.mu, CFG.LAUNCH_OFFSET) }
 
-  // 비행 중인 탄이 있으면 다음 탄을 못 쏜다 — 탄약이 아니라 **차례**가 자원이다.
-  get inFlight() { return this.missiles.some(m => m.alive) }
+  // 탄약이 아니라 **차례**가 자원이다 — 다만 자리가 둘이다(CFG.MAX_INFLIGHT).
+  // inFlight = 지금 판 위에 내 탄이 있는가(화면·연출이 묻는 값),
+  // salvoFull = 자리가 다 찼는가(발사가 막히는 조건). 둘은 다른 질문이다:
+  // 한 발이 날고 있어도 다음 한 발은 쏠 수 있고, 그 두 번째 발로 첫 발을
+  // 치는 것이 이 규칙이 열어 준 수다(crossFire).
+  get flying() { let n = 0; for (const m of this.missiles) if (m.alive) n++; return n }
+  get inFlight() { return this.flying > 0 }
+  get salvoFull() { return this.flying >= CFG.MAX_INFLIGHT }
 
   fire() {
     // 모성이 와 있어도 쏜다 — 저것을 부수는 유일한 길이 공을 던지는 것이다.
     if (this.won || this.lost || !this.earth.alive) return
     if (this.warpCurtain) return   // 개막 중 — 아직 내 차례가 아니다
-    if (this.inFlight) {
-      this.setToast(msg('toast.inflight'))
+    if (this.salvoFull) {
+      this.setToast(msg('toast.salvoFull', { n: CFG.MAX_INFLIGHT }))
       return
     }
     if (this.power <= this.launchEscape) {
@@ -279,12 +286,16 @@ export class Game {
       return
     }
     const p = this.launchPos(), v = fromAngle(this.aim, this.power)
+    this.shots++
     this.missiles.push({
+      // 탄에도 이름을 붙인다 — 예측선이 "저 탄을 친다"고 말하려면 그 탄을
+      // 가리킬 이름이 있어야 한다(aim.predictPath → Scene의 리드선).
+      // 천체 id는 z…/c… 라 겹치지 않는다.
+      id: `m${this.shots}`,
       pos: { ...p }, vel: v, yld: this.yieldMt, alive: true, chain: 0, nearMiss: 0, age: 0, fade: 0,
       path: [{ ...p }], pathN: 0, enc: new Map(), bestDeflection: 0,
-      encountered: false, minSunDist: Infinity, hit: null, out: null,
+      encountered: false, minSunDist: Infinity, hit: null, out: null, relayed: 0,
     })
-    this.shots++
     this.addFx({ kind: 'launch', x: p.x, y: p.y, a: this.aim })
     this.message = msg('msg.away', { yield: this.yieldMt })
     // 쏘면 자동으로 관측 모드로 넘어간다 — 쏜 뒤엔 보는 게 할 일이다.
@@ -506,9 +517,12 @@ export class Game {
 
   // ─── 초엘리트의 탄 ───────────────────────────────────────────
   // 내 탄(missiles)과 배열을 따로 두는 이유는 규칙이 다르기 때문이다:
-  // 이쪽은 중력을 안 받고(유도탄), 한 번에 여러 발이 날 수 있고, 무엇보다
-  // **내 발사 차례를 막지 않는다**(inFlight는 missiles만 본다). 한 배열에
+  // 이쪽은 중력을 안 받고(유도탄), 마릿수 제한이 없고, 무엇보다
+  // **내 발사 차례를 막지 않는다**(flying은 missiles만 센다). 한 배열에
   // 섞으면 조르그가 쏜 탄이 내 재장전을 잠그는 사고가 난다.
+  // 탄끼리의 충돌(crossFire)도 내 탄들 사이에서만 본다 — 저쪽 탄을 내 탄으로
+  // 쳐서 막는 건 다른 규칙이고(그건 광선 요격이 하는 일이다), 여기서 조용히
+  // 딸려 나오면 안 된다.
   stepFoeShots(dt) {
     // 모성이 왔으면 저쪽 탄도 멎는다. 판돈을 회수하러 본대가 직접 온 자리에서
     // 부하가 쏜 탄이 마저 날아와 지구를 한 대 더 때리면, 그 한 대가 난사보다
@@ -647,6 +661,7 @@ export class Game {
       if (m.alive) this.missileBounds(m)
       if (!m.alive) this.finishShot(m)
     }
+    this.crossFire()
     resolveBodyPairs(this.bodies, this)
     this.bodyBounds()
     if (this.doom) this.tickDoom(dt)
@@ -1224,6 +1239,63 @@ export class Game {
     })
     // 폭풍이 지구를 정통으로 훑었다면 경고 — 지구가 밀려 태양에 빠지는 사고가 실제로 난다
     if (wave.pushed.some(p => p.body.isEarth)) this.setToast(msg('toast.blastEarth'))
+  }
+
+  // ─── 탄이 탄을 친다 ─────────────────────────────────────────
+  // 두 발이 동시에 날 수 있게 되면서(CFG.MAX_INFLIGHT) 생긴 수다.
+  // **탄두도 공이다**: 탄끼리 부딪히면 빠른 쪽이 큐, 느린 쪽이 공이다.
+  // 빠른 탄은 그 자리에서 터지고, 느린 탄은 핵에 밀려 진로가 꺾인다.
+  // 규칙은 행성을 칠 때와 한 글자도 다르지 않다 — 방향은 폭심 → 맞은 것의
+  // 중심, 크기는 작약량 / 질량(physics.missilePush). 새로 배울 것이 없다.
+  //
+  // 쓰는 법은 당구다: 먼저 **허공에 느린 탄을 하나 걸어 둔다.** 그 자체로는
+  // 아무 데도 안 닿는 발이다. 그 탄이 표적 옆을 지날 즈음, 뒤이어 빠른 탄으로
+  // 옆구리를 쳐서 꺾어 넣는다. 중력과 스윙바이만으로는 안 나오던 각이
+  // 이 한 수로 열린다 — 유도탄을 준 게 아니라 **큐를 하나 더 준 것**이다.
+  // (값을 치르고 있다: 두 발이 곧 두 차례이고, 큐로 쓴 탄은 사라진다.)
+  //
+  // 스텝 안의 **어느 시점에** 만나는지까지 푼다(sweepMeet). 둘 다 초당 수십
+  // GU로 날므로 스텝 끝 위치만 비교하면 서로를 통과해 버린다.
+  crossFire() {
+    if (this.flying < 2) return
+    const live = this.missiles.filter(m => m.alive && m.prev)
+    for (let i = 0; i < live.length; i++) {
+      for (let j = i + 1; j < live.length; j++) {
+        const a = live[i], b = live[j]
+        if (!a.alive || !b.alive) continue     // 이 스텝에 이미 큐로 쓰인 탄
+        const u = sweepMeet(a.prev, a.pos, b.prev, b.pos, CFG.MISSILE_HIT_R)
+        if (u < 0) continue
+        // 빠른 쪽이 큐다 — 플레이어가 고른 발사 속도가 그대로 역할이 된다
+        // ("느리게 걸어 두고 빠르게 친다"). 같으면 나중에 쏜 쪽이 큐다:
+        // 뒤에서 따라붙은 발이 앞선 발을 치는 게 이 수의 모양이라 그렇다.
+        const sa = Math.hypot(a.vel.x, a.vel.y), sb = Math.hypot(b.vel.x, b.vel.y)
+        const aIsCue = sa > sb || (sa === sb && a.age < b.age)
+        this.relay(aIsCue ? a : b, aIsCue ? b : a, u)
+      }
+    }
+  }
+
+  // 큐가 된 탄두의 기폭. 폭심은 **만나는 그 순간 큐가 있던 자리**이고, 밀리는
+  // 방향은 거기서 공이 된 탄두를 향한다 — applyNuke와 같은 벡터다.
+  // 폭풍(blastWave)도 그대로 터진다: 허공에서 터진 핵이라고 주변 공을 안 미는
+  // 이유가 없고, 그걸 노리고 두 발을 붙이는 것도 하나의 수다.
+  relay(cue, ball, u) {
+    const at = (m) => ({ x: m.prev.x + (m.pos.x - m.prev.x) * u, y: m.prev.y + (m.pos.y - m.prev.y) * u })
+    const c = at(cue), p = at(ball)
+    cue.alive = false; cue.hit = 'relay'
+    const push = missilePush(c.x, c.y, p.x, p.y, cue.yld)
+    ball.vel.x += push.dx * push.dv; ball.vel.y += push.dy * push.dv
+    ball.relayed++
+    const wave = blastWave(this.bodies, c.x, c.y, cue.yld, null)
+    this.addFx({
+      kind: 'nuke', x: c.x, y: c.y, yld: cue.yld, r: CFG.MISSILE_HIT_R,
+      px: push.dx, py: push.dy, wave: wave.radius, cue: true,
+    })
+    this.message = msg('msg.nuke.relay', {
+      yield: cue.yld, dv: push.dv.toFixed(1), dir: bearing(push.dx, push.dy).toFixed(0),
+    })
+    this.setToast(msg('toast.relay'))
+    if (wave.pushed.some(q => q.body.isEarth)) this.setToast(msg('toast.blastEarth'))
   }
 
   // ─── 휘발성 유폭 ─────────────────────────────────────────────
