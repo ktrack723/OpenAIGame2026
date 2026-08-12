@@ -76,7 +76,10 @@ const SAY = {
   // 빠지는 일이지만, 이놈이 사라지는 것은 **지구로 공이 굴러오는 일 자체가
   // 그치는** 것이다.
   siegeDown: 7,
-  laserHit: 4, nuke: 4, volatile: 4, siegeNuke: 4,
+  // 파열(shatter)은 유폭과 같은 층이다. 산탄 한 갈래(shard)는 여기 없다 —
+  // 한 번의 파열에서 일곱 번까지 오는 사건이라 관제가 그때마다 입을 열면
+  // 정작 그 산탄이 무엇을 부쉈는지(fortDown)가 제 목소리에 묻힌다.
+  laserHit: 4, nuke: 4, volatile: 4, shatter: 4, siegeNuke: 4,
   // 잠금은 경보다 — 광선 충전(3)보다 위에 둔다. 광선은 선이라 화면에 이미
   // 그려져 있지만, "저 공이 지구로 온다"는 말은 이 한 줄밖에 하지 않는다.
   siegeLock: 5,

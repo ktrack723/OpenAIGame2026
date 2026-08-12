@@ -399,6 +399,15 @@ function predLine(game, p) {
     case 'void': return ['warn', t('lcd.tag.void'), `${name}${badge}`, roleAim(h.role)]
     case 'volatile': return ['hit', t('lcd.tag.chain'), `${name}${badge}`,
       t('lcd.chain.sub', { aim: roleAim(h.role), r: h.volatileR.toFixed(0) })]
+    // 샷건 — 2층(직접 결과)에 들어가는 값은 **갈래 수와 총구 방향** 둘뿐이다.
+    // 그 부채꼴 안에서 무엇이 맞는지는 안 말한다(2차 충돌은 안 알려준다는 규칙).
+    // 다만 지구가 그 안에 서 있는 것만은 3층 경고로 못 박는다 — 판을 통째로
+    // 잃는 사고이고, 각도 한 번으로 피할 수 있으며, 계산으로 확정되는 사실이다.
+    case 'unstable': return [h.earthInCone ? 'bad' : 'hit', t('lcd.tag.spray'), `${name}${badge}`,
+      t('lcd.spray.sub', {
+        aim: roleAim(h.role), n: h.shards, dir: dirOf(h.dx, h.dy),
+        deg: (h.shardCone * 2 * 180 / Math.PI).toFixed(0),
+      }) + (h.earthInCone ? ` · ${t('lcd.warn.spray')}` : '')]
     case 'debris': return ['warn', t('lcd.tag.debris'), t('lcd.debris'), '']
     case 'sun': return ['warn', t('lcd.tag.solar'), t('lcd.solar'), t('lcd.solar.sub')]
     // 벨트 기폭 — 판 밖으로 나가는 발이다. 공은 쿠션에 튕기지만 탄두는 거기서 끝난다.

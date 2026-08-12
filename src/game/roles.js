@@ -1,7 +1,7 @@
 import { CFG, nukeDv } from './config.js'
 import { t } from '../i18n/index.js'
 
-// ─── 행성 태그 — 여섯 ───────────────────────────────────────────
+// ─── 행성 태그 — 일곱 ───────────────────────────────────────────
 // 태그가 안 붙은 건 전부 **일반 행성**이다. 규칙이 없는 게 규칙이라
 // 마음 놓고 큐볼로 쓰면 된다.
 //
@@ -12,6 +12,7 @@ import { t } from '../i18n/index.js'
 //   🪐 가스 행성   — 터진다. 핵을 맞으면 그 자리에서 유폭한다.
 //   🧊 얼음 행성   — 가볍다. 질량이 절반이라 두 배로 밀린다(최고의 큐볼).
 //   🕳 특이점      — 삼킨다. 블랙홀·태양처럼 닿는 것을 없애 버린다.
+//   💥 불안정 행성 — 쪼개진다. 맞은 반대쪽으로 파편 일곱 갈래를 샷건처럼 뿌린다.
 //
 // 태그는 **행성의 종류가 정한다**(아래 TAG_BY_TYPE). 금속 행성처럼 생긴 게
 // 금속 행성이고 가스 행성처럼 생긴 게 터진다 — 보이는 것과 규칙이 어긋나지 않는다.
@@ -29,15 +30,23 @@ export const ROLES = {
   volatile: { icon: '🪐', color: 0xfb923c, dvScale: 1 },
   light: { icon: '🧊', color: 0x8be9ff, dvScale: 1 },
   void: { icon: '🕳', color: 0xa855f7, dvScale: 0 },
+  // 연두는 이 태그 하나뿐이다. 가스(주황)와 사건이 닮았으므로 색까지 닮으면
+  // 화면에서 둘이 섞인다 — "원으로 민다"와 "부채꼴로 쏜다"는 다른 계획이다.
+  unstable: { icon: '💥', color: 0xa3e635, dvScale: 1 },
 }
-// 태그 문장 — 부르는 쪽은 이 셋만 쓴다.
-const PCT = { pct: (CFG.ARMOR_DV * 100).toFixed(0) }
+// 태그 문장 — 부르는 쪽은 이 셋만 쓴다. 문장에 들어갈 **게임 수치**는 여기서
+// 채운다: 표에 숫자를 박아 두면 config를 고친 날 문장만 옛날 값으로 남는다.
+const PCT = {
+  pct: (CFG.ARMOR_DV * 100).toFixed(0),
+  n: CFG.UNSTABLE_SHARDS,
+  deg: (CFG.UNSTABLE_CONE * 2 * 180 / Math.PI).toFixed(0),
+}
 export const roleLabel = (k) => t(`role.${k}`)
 export const roleBrief = (k) => t(`role.${k}.brief`, PCT)
 export const roleAim = (k) => t(`role.${k}.aim`, PCT)
 
 // 종류 → 태그. 여기 없는 종류는 전부 일반 행성이다.
-export const TAG_BY_TYPE = { iron: 'armor', gas: 'volatile', void: 'void', ice: 'light' }
+export const TAG_BY_TYPE = { iron: 'armor', gas: 'volatile', void: 'void', ice: 'light', shard: 'unstable' }
 
 // 종류별 질량 배율 — 얼음은 **가볍다**. 이게 "얼음 행성"의 메카닉 전부다:
 // 같은 크기라도 질량이 절반이라 핵 한 방에 두 배로 밀린다(Δv = 임펄스/질량).
@@ -77,3 +86,15 @@ export const effDv = (b, yld) => nukeDv(yld, b.mu) * dvScaleOf(b)
 // 가스 행성 유폭 반경 — 작약량과 무관하게 그 행성의 크기로 정해진다.
 // 상수라서 조준 전에 화면에 원으로 그려 줄 수 있다(= 계획이 가능하다).
 export const volatileRadius = (b) => Math.max(CFG.VOLATILE_MIN_R, b.radius * CFG.VOLATILE_R)
+
+// ─── 샷건의 제원 ───────────────────────────────────────────────
+// 갈래 수·부채꼴 반각·사거리. 셋 다 **행성 크기와 무관한 상수**라 유폭 반경과
+// 같은 이유로 조준 전에 그려 줄 수 있다: 어느 살을 칠지 고르는 순간 총구가
+// 어디를 향하는지가 이미 정해져 있어야 계획이 성립한다.
+//
+// 사거리는 "TTL 동안 날아가는 거리"가 아니라 **그리는 길이**다. 파편은 태양
+// 탈출속도의 다섯 배로 나가므로 그 안에서는 궤적이 사실상 직선이고, 그 너머는
+// 중력이 눈에 띄게 휘기 시작해 부채꼴이 거짓말이 된다. 그래서 거기서 자른다.
+export const SHARD_N = CFG.UNSTABLE_SHARDS
+export const shardCone = () => CFG.UNSTABLE_CONE
+export const shardReach = () => CFG.UNSTABLE_SPEED * 3

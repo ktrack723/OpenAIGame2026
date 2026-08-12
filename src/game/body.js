@@ -44,6 +44,13 @@ export function makeBody(spec = {}) {
     // 다음 분사까지 남은 대기(실시간 초). 줄어드는 건 이쪽이다 — 연료가 아니라
     // 간격만 든다는 뜻이고, 0이면 언제든 다시 태울 수 있다.
     boostCool: spec.boostCool ?? 0,
+    // 산탄인가 — 불안정 행성이 쪼개지며 쏜 파편(physics.shardBurst)에만 1이 실린다.
+    // 그냥 잔해(충돌로 생긴 파편)와 **갈라 두는 이유**: 잔해는 예나 지금이나
+    // 미사일을 조기 격발시키는 장애물일 뿐인데, 여기에 피해를 얹으면 판이
+    // 저 혼자 정리된다(충돌 한 번에 파편이 8~10개씩 생긴다). 산탄만 때린다.
+    shard: spec.shard ?? 0,
+    // 남은 수명(인게임 초). 0이면 무제한 — 산탄만 유한하다(config.SHARD_TTL).
+    ttl: spec.ttl ?? 0,
     hp, hpMax: spec.hpMax ?? hp,
     hitFlash: spec.hitFlash ?? 0,
     trailFlash: spec.trailFlash ?? 0,

@@ -42,9 +42,15 @@ export const SIEGE_FLY = 'fly'
 
 // 큐볼 자격 — **밀리는 공이어야** 이 수가 성립한다. 요새가 옆자리를 고를 때
 // 쓰는 것과 같은 문턱을 쓴다(CFG.FORT_CUE_MIN_DV): 목성·토성처럼 무거운
-// 공은 9Mt로는 꿈쩍도 안 하므로 골라도 헛수다.
+// 공은 6Mt로는 꿈쩍도 안 하므로 골라도 헛수다.
 // 조르그가 제 편(요새·모함·다른 초엘리트)을 치지는 않는다 — 그건 당구가
 // 아니라 자해다. 특이점은 핵이 안 통하고(Δv 0) 파편은 공이 아니다.
+//
+// 가스(유폭)와 불안정(파열)도 뺀다. 밀리는 대신 **다른 일**을 하는 공이라,
+// 이 함수의 답을 받아 "밀면 지구에 닿는다"를 푸는 시뮬레이션(trial)이 그
+// 순간 거짓이 된다 — 가스는 반경 안을 통째로 밀어내고 불안정은 일곱 갈래로
+// 쪼개진다. 조르그의 계산이 거친 것은 상관없지만(태양·지구·큐볼만 굴린다)
+// **애초에 다른 사건이 일어나는 공**을 고르는 것은 거친 게 아니라 틀린 것이다.
 function candidates(game, from) {
   const e = game.earth
   const out = []
@@ -52,6 +58,7 @@ function candidates(game, from) {
     if (!b.alive || b === from || b.isEarth) continue
     if (b.zorg || b.role === 'battery' || b.role === 'hive' || b.role === 'siege') continue
     if (b.type === 'debris' || b.role === 'void' || b.mothership) continue
+    if (b.role === 'volatile' || b.role === 'unstable') continue
     if ((b.warpIn ?? 0) > 0) continue
     if (effDv(b, CFG.SIEGE_YIELD) < CFG.FORT_CUE_MIN_DV) continue
     // 지구에서 너무 먼 공은 지평(150초) 안에 못 온다. 굴려 보기 전에 걸러

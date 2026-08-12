@@ -48,11 +48,15 @@ function drawTag(sp, text, color) {
   sp.userData.px = { w, h }
 }
 
+// 부채꼴 한 벌 — 중심에서 반경 1까지, 반각 half(rad). 안쪽을 살짝 비워 두면
+// 공에 가려지는 부분이 없어 총구가 어디서 시작하는지가 읽힌다.
+const coneGeo = (half) => new THREE.RingGeometry(0.06, 1, 3, 1, -half, half * 2)
+
 // 경로·락온 색 = 무엇에 닿는가 (결과가 아니라 접촉 대상)
 export const PRED_TONE = {
   target: 0x4ade80, neutral: 0xe2e8f0, earth: 0xf87171,
   debris: 0x94a3b8, sun: 0xfb923c, timeout: 0x67e8f9, belt: 0x7dd3fc,
-  volatile: 0xfb923c, void: 0xa855f7,
+  volatile: 0xfb923c, void: 0xa855f7, unstable: 0xa3e635,
 }
 
 // ─── 조준 보조 렌더 ─────────────────────────────────────────────
@@ -98,6 +102,20 @@ export class AimHelper {
     }))
     this.blastRing.renderOrder = 11
     this.blastRing.visible = false
+    // ── 샷건의 총구 ──
+    // 불안정 행성을 물었을 때만 켠다. 유폭 반경 원과 같은 자리(같은 정보 층)에
+    // 서는 물건이다: "이 한 발이 어디까지 미치는가". 원이 아니라 부채꼴인 것이
+    // 곧 이 태그와 가스 행성의 차이라, 모양 하나로 둘이 갈린다.
+    // 반각은 예측이 넘겨주므로(h.shardCone) 기하를 그때 굽고 캐시해 둔다 —
+    // 반지름 1짜리 부채꼴이라 사거리는 scale 하나로 맞춘다.
+    this.cone = new THREE.Mesh(coneGeo(0.44), new THREE.MeshBasicMaterial({
+      color: 0xa3e635, transparent: true, opacity: 0.18, depthTest: false, depthWrite: false,
+      side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
+    }))
+    this.cone.renderOrder = 10
+    this.cone.visible = false
+    this.coneGeos = new Map([[0.44, this.cone.geometry]])
+    this.scene.add(this.cone)
     // 화살표 옆 수치 — 충격 방향(노랑) / 타격 직후 진로(흰색)
     this.pushTag = tagSprite(); this.courseTag = tagSprite()
     this.pushTag.visible = false; this.courseTag.visible = false
@@ -105,6 +123,14 @@ export class AimHelper {
   }
 
   tick(dt) { this.t += dt }
+
+  // 반각별 부채꼴 기하 — 상수라 실제로는 한 벌뿐이지만, 값이 바뀌어도
+  // 같은 자리에서 조용히 따라오도록 표로 둔다(백분위로 반올림해 공유).
+  coneGeoFor(half) {
+    const k = Math.round(Math.max(0.05, Math.min(1.4, half)) * 100) / 100
+    if (!this.coneGeos.has(k)) this.coneGeos.set(k, coneGeo(k))
+    return this.coneGeos.get(k)
+  }
 
   // Scene이 매 프레임 넘겨주는 참조 (락온 반경 = 그려지는 반경)
   bind(bodies, renderRadius) { this.bodies = bodies; this.renderRadius = renderRadius }
@@ -168,6 +194,20 @@ export class AimHelper {
       this.blastRing.material.opacity = h.outcome === 'earth' ? 0.6 : useVol ? 0.55 : 0.3
       this.blastRing.material.color.setHex(h.outcome === 'earth' ? 0xf87171 : 0xf59e0b)
     }
+    // ── 샷건 부채꼴 ──
+    // 총구는 임펄스와 같은 방향이다(h.dx, h.dy) — 노란 화살표가 서던 자리에
+    // 이 공에서는 부채꼴이 선다. 지구가 그 안에 들면 붉게 물들여 못 박는다.
+    const shot = !!h && h.shards > 0
+    this.cone.visible = shot
+    if (shot) {
+      const geo = this.coneGeoFor(h.shardCone)
+      if (this.cone.geometry !== geo) this.cone.geometry = geo
+      this.cone.position.set(h.x, h.y, 2)
+      this.cone.rotation.z = Math.atan2(h.dy, h.dx)
+      this.cone.scale.setScalar(h.shardReach)
+      this.cone.material.color.setHex(h.earthInCone ? 0xf87171 : 0xa3e635)
+      this.cone.material.opacity = (h.earthInCone ? 0.26 : 0.16) + 0.08 * (0.5 + 0.5 * Math.sin(this.t * 5))
+    }
     if (push) {
       const R = this.lockRing.scale.x   // 락온과 같은 반경 위에서 화살표를 시작한다
       // 임펄스(노랑): 폭심에서 공의 중심을 뚫고 나가는 방향 — 길이 ∝ Δv
@@ -207,6 +247,7 @@ export class AimHelper {
     this.pushArrow.visible = false
     this.courseArrow.visible = false
     this.blastRing.visible = false
+    this.cone.visible = false
     this.pushTag.visible = false
     this.courseTag.visible = false
   }

@@ -10,16 +10,19 @@ import { LaserView } from './LaserView.js'
 import { Belt } from './Belt.js'
 import { Icons } from './Icons.js'
 
-// 분류별 재질 — 분류가 다섯으로 줄었으므로 재질도 다섯이다.
+// 분류별 재질 — 규칙이 있는 분류만 남겼으므로 재질도 그만큼이다.
 // (용암·해양·독성·생명은 게임 규칙이 없어 없앴다 — Icons.CATEGORY 주석 참고.)
 // 색은 곧 규칙이다: 회색 암석 = 규칙 없음, 하늘색 얼음 = 가벼움,
-// 흰 금속 = 무거움, 노란 가스 = 터짐, 검은 특이점 = 삼킴.
+// 흰 금속 = 무거움, 노란 가스 = 터짐, 연두 = 쪼개져 쏨, 검은 특이점 = 삼킴.
 // 표면 성질(거칠기·금속성·자체발광)은 종류가 정하고, **색만** 팔레트가 흔든다.
 const MATS = {
   rock: { rough: 0.95, metal: 0.05, emis: 0.00 },
   ice: { rough: 0.25, metal: 0.05, emis: 0.06 },
   iron: { rough: 0.30, metal: 0.95, emis: 0.00 },
   gas: { rough: 0.85, metal: 0.00, emis: 0.08 },
+  // 불안정 — 갈라진 틈에서 속이 빛난다. 자체발광이 다섯 중 제일 높은 이유가
+  // 그것이다: "이건 곧 터진다"가 표면 색이 아니라 **틈**으로 읽혀야 한다.
+  shard: { rough: 0.55, metal: 0.20, emis: 0.22 },
   void: { rough: 1.00, metal: 0.00, emis: 0.00 },
   earth: { rough: 0.55, metal: 0.10, emis: 0.08 },
   zorg: { rough: 0.28, metal: 0.88, emis: 0.30 },   // 조르그 모성 — 검은 강철
@@ -43,6 +46,9 @@ const PALETTE = {
   ice: [0x8be9ff, 0xa8f0e4, 0xd6fbff, 0x7fd4cc, 0xbdf3e8],
   iron: [0xcbd5e1, 0xb6bfcb, 0xd8d0be, 0xa4aeba, 0xe0e4ea],
   gas: [0xffd166, 0xf2a65a, 0xe9c9a0, 0xffb59b, 0xf5e3ae, 0xd9a441],
+  // 연두는 이 종류 하나뿐이다(roles.unstable 주석). 가스의 주황과 한 화면에
+  // 서면 "원으로 미는 것"과 "부채꼴로 쏘는 것"이 색만으로 갈린다.
+  shard: [0xa3e635, 0xbef264, 0x84cc16, 0xd9f99d, 0x9ccb3b],
   void: [0x120a1e],
   earth: [0x3b82f6],       // 이 파랑은 지구 전용이다
   // ── 조르그 함대의 세 등급 ──
@@ -84,6 +90,31 @@ function surfaceTexture(type, pi) {
       shade.offsetHSL(0, 0, (rnd() - 0.5) * 0.3)
       g.globalAlpha = 0.5; g.fillStyle = `#${shade.getHexString()}`
       g.fillRect(0, y, 256, 3 + rnd() * 4)
+    }
+  } else if (type === 'shard') {
+    // 불안정 행성 = **금 간 껍데기**. 어두운 판(板) 사이로 밝은 틈이 지나간다.
+    // 무늬가 곧 규칙이다 — 이 공은 밀리는 게 아니라 저 선을 따라 쪼개진다.
+    const dark = new THREE.Color(tone); dark.offsetHSL(0, -0.15, -0.30)
+    g.globalAlpha = 1; g.fillStyle = `#${dark.getHexString()}`; g.fillRect(0, 0, 256, 128)
+    const hot = new THREE.Color(tone); hot.offsetHSL(0, 0.1, 0.26)
+    for (let i = 0; i < 16; i++) {
+      // 세로로 흐르는 균열 한 줄 — 위에서 아래로 몇 번 꺾인다
+      let x = rnd() * 256
+      g.globalAlpha = 0.35 + rnd() * 0.5
+      g.strokeStyle = `#${hot.getHexString()}`
+      g.lineWidth = 1 + rnd() * 2.6
+      g.beginPath(); g.moveTo(x, 0)
+      for (let y = 0; y <= 128; y += 16) { x += (rnd() - 0.5) * 26; g.lineTo(x, y) }
+      g.stroke()
+    }
+    for (let i = 0; i < 40; i++) {       // 판 위의 얼룩 — 균열만 있으면 평평해 보인다
+      const shade = new THREE.Color(tone)
+      shade.offsetHSL((rnd() - 0.5) * 0.04, (rnd() - 0.5) * 0.2, (rnd() - 0.5) * 0.3)
+      g.globalAlpha = 0.10 + rnd() * 0.22
+      g.fillStyle = `#${shade.getHexString()}`
+      g.beginPath()
+      g.ellipse(rnd() * 256, rnd() * 128, 5 + rnd() * 20, 4 + rnd() * 13, rnd() * 3.14, 0, 6.29)
+      g.fill()
     }
   } else {
     for (let i = 0; i < 90; i++) {
@@ -1618,6 +1649,27 @@ export class SceneView {
       // 이미 같은 반경에 같은 색으로 그린다(h.volatileR). 여기서도 그리면 같은
       // 자리에 같은 원이 둘 겹친다.
       fx.role = { grp, spin: 0.12 }
+      return
+    }
+    if (b.role === 'unstable') {
+      // 껍데기를 **갈래 수만큼** 쪼개 둔다. 일곱 조각이면 일곱 발이 나간다 —
+      // 세어 보면 알 수 있는 정보를 굳이 글로 안 적어도 되게, 판 위에 그려 둔다.
+      // (조각은 판정 원 안쪽에 눕는다. 공이 커지는 게 아니라 무늬가 도는 것이다.)
+      const grp = new THREE.Group()
+      const n = CFG.UNSTABLE_SHARDS, step = Math.PI * 2 / n, gap = 0.17
+      const tone = colorOf(b.type, fx.pi)
+      for (let k = 0; k < n; k++) {
+        const m = new THREE.Mesh(new THREE.RingGeometry(0.58, 0.98, 8, 1, k * step + gap / 2, step - gap), new THREE.MeshBasicMaterial({
+          color: tone, transparent: true, opacity: 0.42,
+          depthTest: false, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
+        }))
+        m.renderOrder = 3
+        grp.add(m)
+      }
+      this.scene.add(grp)
+      // 느리게 돈다 — 가스 고리(0.12)보다 조금 빠르게. 갈라진 것이 아직
+      // 붙어 있다는 느낌이라 완전히 멎어 있으면 그냥 무늬로 읽힌다.
+      fx.role = { grp, spin: 0.22 }
       return
     }
     if (b.role === 'void') {   // 강착원반 느낌의 안쪽 발광 링
