@@ -17,7 +17,7 @@ export const ja = {
   'ui.new.tip': '新しいシードでやり直す', 'ui.lang.tip': '言語 / Language',
   'ui.mute.tip': 'サウンド オン/オフ ( M )', 'ui.mute.on': 'サウンド オン', 'ui.mute.off': 'ミュート',
   'ui.hint': '発射台か予測線をドラッグで照準 — 遠くへ引くほど細かい · TAB 照準/観測 · SHIFT 時間を進める · S 倍速 · ← → 角度 · ↑ ↓ 速度 · [ ] 威力 · F 接触角 · M ミュート · 天体を指すと諸元',
-  'ui.stage': 'A{ante}·{stage}面',
+  'ui.stage': '{stage}面',
   'ui.aim': '◎ 照準モード', 'ui.aim.sub': '時間停止 · TAB / クリック',
   'ui.speed': '倍速', 'ui.speed.tip': '観測倍速 (S)',
   'ui.obs.run': '{scale}× 進行中 · 残り {clock}',
@@ -264,7 +264,7 @@ export const ja = {
   'zorg.warp': 'キャハハハ！　貴様さえいなければ太陽系は我々のものだ！',
 
   'vic.earthSafe': '地球 · 無事',
-  'vic.tag': 'ステージ{stage}突破 · アンテ{ante}',
+  'vic.tag': 'ステージ{stage}突破',
   'vic.title': 'ゾルグ要塞 全滅',
   'vic.body': '管制室が歓声でひっくり返った。今回も地球は無事だ。',
   'vic.go': '科学研究室へ向かう',
@@ -280,7 +280,7 @@ export const ja = {
   'lab.go': '次の侵攻まで平和を楽しむ',
   'lab.goSub': 'ゾルグがまた来る ▶',
 
-  'over.reached': 'ステージ{stage}（アンテ{ante}）まで · 政治資金 {pol} 獲得',
+  'over.reached': 'ステージ{stage}まで · 政治資金 {pol} 獲得',
   'chip.pol': '政治資金',
   'ui.thrust': 'スラスター',
   'msg.earthBurn': '地球の軌道補正噴射 — 回廊から横へ逃げた（残り{n}基）',

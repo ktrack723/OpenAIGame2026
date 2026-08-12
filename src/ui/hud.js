@@ -82,7 +82,7 @@ export function makeHud(game, view) {
   // 남은 숫자는 전부 **칩**이다. 한 줄에 여러 개가 들어가고, 읽는 데 걸리는
   // 시간이 짧고, 무엇보다 세로로 안 자란다.
   el.innerHTML = `<div class="hudtop"><h1>${t('ui.title')}</h1>
-  <span class="ante" id="anteChip">A1</span>
+  <span class="stagechip" id="stageChip">1</span>
   <button id="fold" class="ghost" title="${t('ui.fold')}">▾</button></div>
 <div class="body">
 
@@ -447,7 +447,7 @@ const OVER_DELAY = 2200
 const CTRL_IDS = ['#fire', '#findPrev', '#findNext']
 
 export function updateHud(el, game) {
-  if (el._stageIdx !== game.stageIdx) { el._stageIdx = game.stageIdx; el._sync() }
+  if (el._stage !== game.stage) { el._stage = game.stage; el._sync() }
 
   // ── 모드 전환 — 관측 중에는 패널을 통째로 감추고 버튼 하나만 남긴다 ──
   // cinematic: 오프닝 예고편의 "예측선만" 컷. 예측선은 조준 모드에서만 그려지는데
@@ -594,7 +594,7 @@ export function updateHud(el, game) {
     const why = failWhy(game.failReason, game)
     // 최종 점수는 없어졌다. 남기는 것은 **어디까지 갔고 얼마나 벌었나** —
     // 다음 런에서 더 갈 수 있는지를 재는 유일한 눈금이다.
-    const reached = t('over.reached', { stage: game.stageIdx + 1, ante: game.ante, pol: game.polEarned })
+    const reached = t('over.reached', { stage: game.stage, pol: game.polEarned })
     over.querySelector('#overWhy').textContent =
       why ? t('over.why', { why, reached }) : reached
     el.querySelector('#wait').disabled = true
@@ -602,7 +602,7 @@ export function updateHud(el, game) {
 
   const tgt = game.target, e = game.earth, g = game.goal
   const dx = tgt.pos.x - e.pos.x, dy = tgt.pos.y - e.pos.y
-  el.querySelector('#anteChip').textContent = t('ui.stage', { ante: game.ante, stage: game.stageIdx + 1 })
+  el.querySelector('#stageChip').textContent = t('ui.stage', { stage: game.stage })
   el.querySelector('#goalHead').textContent = g.title
   el.querySelector('#goalCount').textContent = g.label()
   el.querySelector('#objName').textContent =
@@ -612,9 +612,9 @@ export function updateHud(el, game) {
   // 특수 천체 범례 — **아이콘 칩만.** 각 태그가 무슨 짓을 하는지는 공을 짚으면
   // 뜨는 정보창(Inspector)이 이미 한 줄씩 말해 준다. 같은 문장을 패널에도
   // 깔면 세로로 137px을 먹는데, 그 값어치를 하는 건 처음 한 판뿐이다.
-  if (el._roleKey !== game.stageIdx) {
-    el._roleKey = game.stageIdx
-    const list = game.stage.roles ?? []
+  if (el._roleKey !== game.stage) {
+    el._roleKey = game.stage
+    const list = game.stageRoles ?? []
     const roles = el.querySelector('#roles')
     roles.hidden = !list.length
     roles.innerHTML = list.map(k => {

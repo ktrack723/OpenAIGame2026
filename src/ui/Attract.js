@@ -515,7 +515,7 @@ function setUp(g, mode) {
   if (!cast) return null
 
   // 요새는 하나만 남긴다. 둘을 두면 이 한 수로 판이 안 끝나 이야기가 잘린다.
-  // (모함은 안테 5부터라 예고편(=1판)에는 애초에 없지만, 있으면 같이 걷는다.)
+  // (모함은 4스테이지부터라 예고편(=1판)에는 애초에 없지만, 있으면 같이 걷는다.)
   for (let i = g.bodies.length - 1; i >= 0; i--) {
     const b = g.bodies[i]
     if (b.role === 'hive' || (b.role === 'battery' && b !== cast.fort)) g.bodies.splice(i, 1)

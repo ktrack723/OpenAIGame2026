@@ -49,7 +49,7 @@ export const ITEMS = [
 ]
 
 // 이번 판의 진열대. show가 없으면 늘 진열한다.
-// stageIdx는 **다음 판 기준**으로 본다 — 상점은 판이 끝난 뒤에 열리고,
+// game.stage는 **다음 판 기준**으로 본다 — 상점은 판이 끝난 뒤에 열리고,
 // 여기서 산 물건은 다음 판에서 쓰기 때문이다.
 export const stock = (game) => ITEMS.filter((it) => !it.show || it.show(game))
 

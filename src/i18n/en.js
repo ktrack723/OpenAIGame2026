@@ -17,7 +17,7 @@ export const en = {
   'ui.new.tip': 'Restart with a new seed', 'ui.lang.tip': '언어 / Language',
   'ui.mute.tip': 'Sound on/off ( M )', 'ui.mute.on': 'Sound on', 'ui.mute.off': 'Muted',
   'ui.hint': 'Drag the launch pad or the shot line to aim — the farther you drag, the finer · TAB aim/observe · SHIFT advance time · S speed · ← → angle · ↑ ↓ velocity · [ ] yield · F contact angle · M mute · point at a body for its specs',
-  'ui.stage': 'A{ante}·ST{stage}',
+  'ui.stage': 'STAGE {stage}',
   'ui.aim': '◎ AIM MODE', 'ui.aim.sub': 'Time frozen · TAB / click',
   'ui.speed': 'SPEED', 'ui.speed.tip': 'Observation speed (S)',
   'ui.obs.run': '{scale}× running · {clock} left',
@@ -264,7 +264,7 @@ export const en = {
   'zorg.warp': 'Gyahahaha! With you gone, the solar system is OURS!',
 
   'vic.earthSafe': 'EARTH · SAFE',
-  'vic.tag': 'STAGE {stage} CLEARED · ANTE {ante}',
+  'vic.tag': 'STAGE {stage} CLEARED',
   'vic.title': 'ALL ZORG FORTRESSES DESTROYED',
   'vic.body': 'The control room erupts. Earth made it through once more.',
   'vic.go': 'Head to the science lab',
@@ -280,7 +280,7 @@ export const en = {
   'lab.go': 'Enjoy the peace until the next invasion',
   'lab.goSub': 'The Zorg return ▶',
 
-  'over.reached': 'Reached stage {stage} (ante {ante}) · {pol} political capital earned',
+  'over.reached': 'Reached stage {stage} · {pol} political capital earned',
   'chip.pol': 'CAPITAL',
   'ui.thrust': 'THRUST',
   'msg.earthBurn': 'Earth\'s correction burn — it stepped out of the corridor ({n} left)',

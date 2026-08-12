@@ -19,7 +19,7 @@ export const ko = {
   'ui.new.tip': '새 시드로 다시', 'ui.lang.tip': '언어 / Language',
   'ui.mute.tip': '소리 켜기/끄기 ( M )', 'ui.mute.on': '소리 켬', 'ui.mute.off': '음소거',
   'ui.hint': '발사대·예측선을 끌면 조준 — 멀리 끌수록 곱게 · TAB 조준/관측 · SHIFT 시간 진행 · S 배속 · ← → 각도 · ↑ ↓ 속도 · [ ] 작약 · F 접촉각 · M 음소거 · 공을 짚으면 제원',
-  'ui.stage': 'A{ante}·{stage}판',
+  'ui.stage': '{stage}판',
   'ui.aim': '◎ 조준 모드', 'ui.aim.sub': '시간 정지 · TAB / 클릭',
   'ui.speed': '배속', 'ui.speed.tip': '관측 배속 (S)',
   'ui.obs.run': '{scale}× 진행 중 · 잔여 {clock}',
@@ -282,7 +282,7 @@ export const ko = {
 
   // ── 승리 ──────────────────────────────────────────────────────
   'vic.earthSafe': '지구 · 무사',
-  'vic.tag': '스테이지 {stage} 돌파 · 안테 {ante}',
+  'vic.tag': '스테이지 {stage} 돌파',
   'vic.title': '조르그 요새 전멸',
   'vic.body': '관제실이 환호로 뒤집혔다. 이번에도 지구는 무사하다.',
   'vic.go': '정치자금을 쓰러 간다',
@@ -298,7 +298,7 @@ export const ko = {
   'lab.go': '다음 침공까지 평화를 즐긴다',
   'lab.goSub': '조르그가 다시 온다 ▶',
 
-  'over.reached': '{stage}스테이지(안테 {ante})까지 · 정치자금 {pol} 확보',
+  'over.reached': '{stage}스테이지까지 · 정치자금 {pol} 확보',
   'chip.pol': '정치자금',
   'ui.thrust': '추진기',
   'msg.earthBurn': '지구 궤도 보정 분사 — 회랑에서 비켜섰다 (추진기 {n}기 남음)',

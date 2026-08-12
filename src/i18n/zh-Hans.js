@@ -17,7 +17,7 @@ export const zhHans = {
   'ui.new.tip': '用新种子重来', 'ui.lang.tip': '语言 / Language',
   'ui.mute.tip': '声音 开/关 ( M )', 'ui.mute.on': '声音开', 'ui.mute.off': '静音',
   'ui.hint': '拖动发射台或预测线即可瞄准 — 拖得越远越精细 · TAB 瞄准/观测 · SHIFT 推进时间 · S 倍速 · ← → 角度 · ↑ ↓ 速度 · [ ] 当量 · F 接触角 · M 静音 · 指向天体可看参数',
-  'ui.stage': 'A{ante}·第{stage}关',
+  'ui.stage': '第{stage}关',
   'ui.aim': '◎ 瞄准模式', 'ui.aim.sub': '时间静止 · TAB / 点击',
   'ui.speed': '倍速', 'ui.speed.tip': '观测倍速 (S)',
   'ui.obs.run': '{scale}× 进行中 · 剩余 {clock}',
@@ -264,7 +264,7 @@ export const zhHans = {
   'zorg.warp': '咔哈哈哈！只要没了你，太阳系就是我们的！',
 
   'vic.earthSafe': '地球 · 无恙',
-  'vic.tag': '突破第 {stage} 关 · 底注 {ante}',
+  'vic.tag': '突破第 {stage} 关',
   'vic.title': '佐格要塞 全灭',
   'vic.body': '管制室爆出欢呼。这一次地球又挺过来了。',
   'vic.go': '前往科学研究室',
@@ -280,7 +280,7 @@ export const zhHans = {
   'lab.go': '在下次入侵前享受和平',
   'lab.goSub': '佐格还会再来 ▶',
 
-  'over.reached': '打到第{stage}关（安特{ante}）· 累计政治资金 {pol}',
+  'over.reached': '打到第{stage}关 · 累计政治资金 {pol}',
   'chip.pol': '政治资金',
   'ui.thrust': '推进器',
   'msg.earthBurn': '地球轨道修正点火 — 从走廊里侧闪开了（剩{n}具）',
