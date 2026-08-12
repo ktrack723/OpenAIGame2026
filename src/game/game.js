@@ -544,7 +544,8 @@ export class Game {
     // 불안정 행성이 안 쪼개지면, 이 판의 규칙이 쏘는 쪽에 따라 갈리는 것이 된다.
     // (조르그는 이런 공을 큐볼로 고르지 않는다 — siege.candidates가 걸러 낸다.
     //  여기 오는 것은 탄이 표적으로 가는 길에 걸린 공이고, 그건 저쪽 실수다.)
-    if (b.role === 'volatile') { this.volatileBlast(b); return }
+    // 가스는 내 핵과 같다: 밀리고, 터지고, 체력 1을 잃는다(volatileBlast).
+    if (b.role === 'volatile') { applyNuke(b, point.x, point.y, yld); this.volatileBlast(b); return }
     if (b.role === 'unstable') { this.shardShot(b, b.pos.x - point.x, b.pos.y - point.y); return }
     if (b.type === 'debris') { blastWave(this.bodies, point.x, point.y, yld, b); b.alive = false; return }
 
@@ -1168,8 +1169,13 @@ export class Game {
     }
 
     // 휘발성 — 맞는 순간 그 자리에서 유폭. 반경 안이 통째로 밀린다.
+    // **이 공도 밀린다.** 예전에는 여기서 임펄스를 건너뛰었는데, 그때는 유폭이
+    // 곧 소멸이라 밀 대상이 없었기 때문이다. 이제 살아남으므로 "핵은 민다"는
+    // 이 판의 대전제가 여기서도 그대로 성립해야 한다 — 안 그러면 맞고도 제자리에
+    // 선 공 하나가 판에서 유일한 예외로 남는다.
     if (b.role === 'volatile') {
-      this.addFx({ kind: 'nuke', x: point.x, y: point.y, yld, r: b.radius })
+      const push = applyNuke(b, point.x, point.y, yld)
+      this.addFx({ kind: 'nuke', x: point.x, y: point.y, yld, r: b.radius, px: push.dx, py: push.dy })
       this.volatileBlast(b)
       return
     }
@@ -1223,6 +1229,15 @@ export class Game {
   // ─── 휘발성 유폭 ─────────────────────────────────────────────
   // 반경은 그 행성의 크기로 고정 — 조준 전에 원으로 그려 줄 수 있어야
   // "여기까지 밀린다"를 계획할 수 있다.
+  // ── 유폭은 자살이 아니다 ──
+  // 예전에는 여기서 그 공을 죽였다: 한 번 터지면 가스 행성이 판에서 사라졌다.
+  // 그래서 이 태그는 **한 번 쓰고 버리는 폭탄**이었고, 목성·토성처럼 판의 지형을
+  // 이루는 덩치가 스치듯 맞은 한 방에 통째로 없어졌다.
+  //
+  // 이제 유폭이 하는 일은 **미는 것 하나뿐**이다. 그 공 자신은 체력 1을 잃는다 —
+  // 체력이 3이니 세 번까지 터뜨릴 수 있고, 세 번째에 비로소 부서진다. 그때의
+  // 파괴는 다른 공과 똑같은 경로를 탄다(damage → blastFx). 즉 "터졌다"와
+  // "부서졌다"가 서로 다른 사건으로 갈린다.
   volatileBlast(b) {
     if (!b.alive) return
     const R = volatileRadius(b)
@@ -1237,8 +1252,9 @@ export class Game {
       o.vel.x += dx / d * dv; o.vel.y += dy / d * dv
       o.trailFlash = 2
     }
-    this.message = msg('msg.volatile', { name: nameOf(b), r: R.toFixed(0) })
-    this.killBody(b, 'blast', { fx: false })
+    this.message = msg('msg.volatile', { name: nameOf(b), r: R.toFixed(0), hp: Math.max(0, (b.hp ?? CFG.PLANET_HP) - 1) })
+    // 제 몸에는 딱 1. 부서지는 것은 **체력이 다 닳았을 때뿐**이다.
+    return this.damage(b, 1, 'blast')
   }
 
   // ─── 불안정 행성 — 쪼개지며 쏜다 ─────────────────────────────
@@ -1294,10 +1310,24 @@ export class Game {
     // 안에 소멸). 압축된 판에서는 이웃 궤도끼리 스치는 일이 늘 있는데,
     // 그 정도 접촉으로 목성이 사라지면 판의 지형이 통째로 없어진다.
     // 그래서 문턱을 둔다: 스치는 건 튕기고, 진짜로 처박아야 터진다.
+    // **터져도 그 공은 안 죽는다**(volatileBlast) — 체력 1만 닳는다.
     const vRel0 = Math.hypot(a.vel.x - b.vel.x, a.vel.y - b.vel.y)
-    if ((a.role === 'volatile' || b.role === 'volatile') && vRel0 >= CFG.VOLATILE_TRIGGER_V) {
+    // 쌍의 쿨다운을 **여기서 미리 읽는다.** 유폭이 더 이상 그 공을 죽이지
+    // 않으므로(volatileBlast) 둘은 터진 뒤에도 겹쳐 있고, 막지 않으면 다음
+    // 스텝에 같은 판정이 또 걸린다 — 한 번의 접촉이 기관총이 된다.
+    // 아래 당구 판정이 쓰는 것과 **같은 창**이다: 한 번의 만남은 한 번이다.
+    const key = a.id < b.id ? `${a.id}|${b.id}` : `${b.id}|${a.id}`
+    const last = this.pairCool.get(key) ?? -99
+    const cool = (a.isEarth || b.isEarth) ? CFG.EARTH_HIT_COOLDOWN : CFG.HIT_COOLDOWN
+    const fresh = this.time - last >= cool
+    if (fresh && (a.role === 'volatile' || b.role === 'volatile') && vRel0 >= CFG.VOLATILE_TRIGGER_V) {
+      this.pairCool.set(key, this.time)
       const vol = a.role === 'volatile' ? a : b, other = vol === a ? b : a
       this.message = msg('msg.collide.volatile', { a: nameOf(vol), b: nameOf(other), v: vRel0.toFixed(0) })
+      // **튕기고 나서 터진다.** 예전에는 튕기지 않았는데, 그때는 가스 행성이
+      // 그 자리에서 사라져 튕길 것이 없었기 때문이다. 이제 남으므로 당구는
+      // 당구대로 성립해야 한다 — 유폭의 밀기는 그 위에 얹힌다.
+      elasticBounce(a, b)
       this.damage(other, 3, 'collision')
       this.volatileBlast(vol)
       return 'destroyed'
@@ -1319,8 +1349,6 @@ export class Game {
 
     const cx = (a.pos.x + b.pos.x) / 2, cy = (a.pos.y + b.pos.y) / 2
     const vRel = elasticBounce(a, b)   // ← 여기서 실제로 튕긴다
-    const key = a.id < b.id ? `${a.id}|${b.id}` : `${b.id}|${a.id}`
-    const last = this.pairCool.get(key) ?? -99
     a.bumpFlash = 0.5; b.bumpFlash = 0.5
     // 접촉 판정은 한 번의 충돌에서 여러 스텝 이어질 수 있다 — 쿨다운으로 한 번만 센다
     //
@@ -1332,8 +1360,9 @@ export class Game {
     // 판정이 다섯 번 났다). 그러면 바로 위에서 눈금을 하나로 자른 것이 무의미해진다.
     // 한 번의 만남은 한 대다 — 나중에 궤도를 한 바퀴 돌아 다시 오는 것은
     // 새로운 만남이고(EARTH_HIT_COOLDOWN보다 한참 길다) 그건 그대로 또 맞는다.
-    const cool = (a.isEarth || b.isEarth) ? CFG.EARTH_HIT_COOLDOWN : CFG.HIT_COOLDOWN
-    if (this.time - last < cool) {
+    // (창 자체는 위에서 `fresh`로 이미 읽어 두었다 — 유폭 판정과 같은 창을
+    //  써야 "한 번의 만남은 한 번"이 두 규칙에서 같은 뜻이 된다.)
+    if (!fresh) {
       this.addFx({ kind: 'bump', x: cx, y: cy, r: (hitRadiusOf(a) + hitRadiusOf(b)) * 0.5, v: vRel, soft: true })
       return null
     }

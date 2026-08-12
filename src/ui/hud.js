@@ -396,8 +396,10 @@ function predLine(game, p) {
   const name = h ? nameOf(h) : ''
   switch (p.outcome) {
     case 'earth': return ['bad', t('lcd.tag.abort'), t('lcd.abort'), t('lcd.abort.sub')]
+    // 체력을 같이 보여 준다 — 유폭이 더 이상 그 공을 죽이지 않으므로
+    // "몇 번 더 터뜨릴 수 있나"가 이 태그를 쓰는 계획의 전부다.
     case 'volatile': return ['hit', t('lcd.tag.chain'), `${name}${badge}`,
-      t('lcd.chain.sub', { aim: roleAim(h.role), r: h.volatileR.toFixed(0) })]
+      t('lcd.chain.sub', { aim: roleAim(h.role), r: h.volatileR.toFixed(0), hp: h.hp, hpMax: h.hpMax })]
     // 샷건 — 2층(직접 결과)에 들어가는 값은 **갈래 수와 총구 방향** 둘뿐이다.
     // 그 부채꼴 안에서 무엇이 맞는지는 안 말한다(2차 충돌은 안 알려준다는 규칙).
     // 다만 지구가 그 안에 서 있는 것만은 3층 경고로 못 박는다 — 판을 통째로
