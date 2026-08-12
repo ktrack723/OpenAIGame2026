@@ -10,7 +10,7 @@ export const ko = {
   'ui.findPrev': '◀ 접촉각', 'ui.findNext': '접촉각 ▶',
   'ui.findPrev.tip': '닿는 각도를 반시계로', 'ui.findNext.tip': '닿는 각도를 시계로',
   'ui.fire': 'FIRE', 'ui.fire.key': 'SPACE',
-  'ui.fire.deadline': '시한 종료 — 마지막 발 비행 중', 
+  'ui.fire.deadline': '시한 종료 — {n}발 비행 중', 
   'ui.fire.reload': '재장전 대기 — {max}발 비행 중', 'ui.fire.abort': 'ABORT — 지구 직격',
   'ui.wait': '시간 진행 ▶▶', 'ui.wait.tip': '누르고 있는 동안만 시간이 흐른다',
   'ui.toObs': '관측 ▶', 'ui.toObs.tip': '관측 모드 — UI가 사라지고 판이 흐른다',

@@ -280,12 +280,16 @@ export class Game {
     // 모성이 와 있어도 쏜다 — 저것을 부수는 유일한 길이 공을 던지는 것이다.
     if (this.won || this.lost || !this.earth.alive) return
     if (this.warpCurtain) return   // 개막 중 — 아직 내 차례가 아니다
-    if (this.salvoFull) {
-      this.setToast(msg('toast.salvoFull', { n: CFG.MAX_INFLIGHT }))
-      return
-    }
+    // 순서가 규칙이다. 시한이 먼저다 — 자리가 다 찼는지를 먼저 보면, 마지막
+    // 몇 초에 두 발을 걸어 둔 플레이어에게 "하나가 결판나면 다음 발"이라고
+    // **거짓말**을 하게 된다(그 다음 발은 영영 없다). 그 순간에 해야 할 말은
+    // "시한이 끝났다" 하나뿐이고, 그래야 남은 수(추진기·관측)를 찾는다.
     if (this.pastDeadline) {
       this.setToast(msg('toast.deadline'))
+      return
+    }
+    if (this.salvoFull) {
+      this.setToast(msg('toast.salvoFull', { n: CFG.MAX_INFLIGHT }))
       return
     }
     if (this.power <= this.launchEscape) {

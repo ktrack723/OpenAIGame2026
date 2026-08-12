@@ -8,7 +8,7 @@ export const ja = {
   'ui.findPrev': '◀ 接触角', 'ui.findNext': '接触角 ▶',
   'ui.findPrev.tip': '当たる角度を反時計回りに探す', 'ui.findNext.tip': '当たる角度を時計回りに探す',
   'ui.fire': 'FIRE', 'ui.fire.key': 'SPACE',
-  'ui.fire.deadline': '時限終了 — 最終弾 飛行中', 
+  'ui.fire.deadline': '時限終了 — {n}発 飛行中', 
   'ui.fire.reload': '再装填待ち — {max}発 飛行中', 'ui.fire.abort': 'ABORT — 地球に直撃',
   'ui.wait': '時間を進める ▶▶', 'ui.wait.tip': '押している間だけ時間が流れる',
   'ui.toObs': '観測 ▶', 'ui.toObs.tip': '観測モード — UIが消え盤面が動く',
