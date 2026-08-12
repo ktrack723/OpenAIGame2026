@@ -33,13 +33,32 @@ const bodyTurn = (i, every) => i % every === (every >> 1)
 // 그 뒤 판이 어떻게 굴러갈지는 플레이어가 읽어야 한다.
 export function predictPath(game) {
   if (!game.canAim) return EMPTY_PRED
-  // 시간은 0.25초 단위로 뭉갠다 — 관측 중(시계가 흐를 때) 매 프레임 다시 푸는 걸
-  // 막는 장치다. 조준 중에는 시계가 멈춰 있으므로 예측은 항상 정확하고,
-  // 시계가 흐르는 동안엔 초당 4번만 갱신된다(예측 1회가 15ms대라 그게 곧 프레임이다).
-  const key = `${game.aim.toFixed(5)}|${game.power}|${game.yieldMt}|${game.stage}|${Math.floor(game.time * 4)}|${game.shots}|${game.bodies.length}`
+  // 시간은 0.25초 단위로 뭉갠다 — 시계가 흐를 때 매 프레임 다시 푸는 걸 막는
+  // 장치다. 조준 중에는 시계가 멈춰 있으므로 예측은 항상 정확하고, 시간 진행
+  // 버튼을 누르고 있는 동안엔 초당 네 번만 갱신된다.
+  //
+  // **날고 있는 탄은 그 눈금으로 못 잰다.** 행성은 초당 20 GU로 도는데 탄은
+  // 40~56 GU로 날고, 탄끼리의 판정 원은 24 GU밖에 안 된다 — 0.25초를 뭉개면
+  // "이 발이 저 탄을 친다"가 통째로 뒤집힌다. 계측: 시간 진행을 놓은 뒤 화면은
+  // RELAY를 그리고 있는데 지금 쏘면 안 맞는 판이 나왔다(예측선 끝점이 1641 GU
+  // 어긋났고 결말이 relay ↔ timeout으로 갈렸다). 그래서 탄의 자리를 2 GU 눈금으로
+  // 키에 넣는다 — 판정 원의 1/12이라 뒤집힐 만큼 낡을 수가 없다.
+  //
+  // advancing도 키에 든다. 시계가 멎으면 시간 칸이 더는 안 변해서, **놓는 순간의
+  // 낡은 그림이 그대로 굳는다** — 그 한 번을 다시 풀게 하는 것이 이 칸이다.
+  let fly = ''
+  for (const m of game.missiles) {
+    if (m.alive) fly += `${Math.round(m.pos.x / 2)},${Math.round(m.pos.y / 2)};`
+  }
+  const key = `${game.aim.toFixed(5)}|${game.power}|${game.yieldMt}|${game.stage}|${Math.floor(game.time * 4)}|${game.shots}|${game.bodies.length}|${game.advancing ? 1 : 0}|${fly}`
   if (game._predKey === key) return game._pred
   const now = performance.now()
-  if (game._pred && now - (game._predAt || 0) < 45) return game._pred
+  // 쏠 수 없는 동안(자리가 다 찼거나 시한이 지났다)에는 갱신을 늦춘다. 선은
+  // 계속 그린다 — 다음 차례를 재는 데 쓰는 물건이라 지우면 안 된다. 다만 그때의
+  // 예측은 **날고 있는 탄까지 같이 굴리므로 두 배로 비싸고**, 쏠 수도 없는
+  // 발이라 초당 스무 번씩 다시 풀 이유가 없다.
+  const gap = (game.salvoFull || game.pastDeadline) ? 150 : 45
+  if (game._pred && now - (game._predAt || 0) < gap) return game._pred
   game._predAt = now
 
   const sim = cloneBodies(game.bodies), bc = makeStepCache()
