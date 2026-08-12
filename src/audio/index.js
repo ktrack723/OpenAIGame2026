@@ -196,10 +196,23 @@ export class AudioSystem {
         break
       }
 
+      // 부서지는 소리는 **셋**이다. 예전에는 big 플래그 하나로 갈랐는데,
+      // 그건 "광선이나 충돌로 죽었다"였지 "조르그였다"가 아니었다 —
+      // 광선에 녹은 중립 행성이 격파음을 내고 있었다. 이제 그림과 같은
+      // 기준으로 가른다(Explosions.destroy / destroyZorg).
       case 'destroy':
         if (e.earth) { at('destroyEarth', 1, { priority: 2 }); this.music.duck(0.15, 0.6) }
-        else if (e.big) at('destroyBig', 1, { priority: 1 })
-        else at('destroy', 0.8)
+        else if (e.zorg) { at('destroyZorg', 1, { priority: 1 }); this.music.duck(0.1, 0.4) }
+        else at('destroy', 0.85)
+        break
+
+      // 빛기둥이 뻗는 0.45초. 폭발 직전에 끊기므로 짧게 잡혀 있다.
+      case 'zorgCharge':
+        at('zorgCharge', 1, { priority: 1 })
+        break
+
+      case 'comet':
+        at('comet', 0.9)
         break
 
       case 'volatile':
@@ -215,10 +228,6 @@ export class AudioSystem {
       // 걷어내므로 결과적으로 "타닥" 한 번으로 들린다. 세기는 상대속도가 정한다.
       case 'shard':
         at('shard', 0.45 + 0.4 * clamp01((e.v ?? 0) / 200))
-        break
-
-      case 'absorb':
-        at('absorb', e.small ? 0.6 : 0.95, { rate: e.small ? 1.25 : 1 })
         break
 
       // 당구공. 상대속도가 곧 세기다 — 스치면 거의 안 들리고 처박으면 딱 소리가 난다.

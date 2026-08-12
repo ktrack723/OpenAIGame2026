@@ -396,7 +396,6 @@ function predLine(game, p) {
   const name = h ? nameOf(h) : ''
   switch (p.outcome) {
     case 'earth': return ['bad', t('lcd.tag.abort'), t('lcd.abort'), t('lcd.abort.sub')]
-    case 'void': return ['warn', t('lcd.tag.void'), `${name}${badge}`, roleAim(h.role)]
     case 'volatile': return ['hit', t('lcd.tag.chain'), `${name}${badge}`,
       t('lcd.chain.sub', { aim: roleAim(h.role), r: h.volatileR.toFixed(0) })]
     // 샷건 — 2층(직접 결과)에 들어가는 값은 **갈래 수와 총구 방향** 둘뿐이다.
@@ -463,7 +462,10 @@ export function updateHud(el, game) {
   // (canAim), 그 컷은 조준 패널을 안 보여 주는 게 요점이라 모드는 조준으로 두고
   // 패널과 관측 바를 둘 다 걷어낸다.
   const cine = !!game.cinematic
-  const observing = ((game.mode === 'observe' || !!game.doom) && !game.runOver) || cine
+  // 모성이 와 있어도 조준 패널은 걷지 않는다 — 저것을 부수는 유일한 길이
+  // 공을 던지는 것이라(game.doomBroken), 패널을 감추면 그 길이 닫힌다.
+  // 그 대신 판이 안 멈춘다(effTimeScale의 DOOM_AIM_SCALE).
+  const observing = (game.mode === 'observe' && !game.runOver) || cine
   // 관측 바(조준 모드 · 배속)는 **플레이어의 것**이다. 그래서 예고편이 도는
   // 동안에는 안 띄운다 — 누를 수 없는 버튼이 화면 아래에 앉아 있으면 지금
   // 조작할 수 있다는 거짓말이 되고, 무엇보다 그 화면은 전부 저쪽 몫이다.

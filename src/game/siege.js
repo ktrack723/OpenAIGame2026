@@ -57,7 +57,7 @@ function candidates(game, from) {
   for (const b of game.bodies) {
     if (!b.alive || b === from || b.isEarth) continue
     if (b.zorg || b.role === 'battery' || b.role === 'hive' || b.role === 'siege') continue
-    if (b.type === 'debris' || b.role === 'void' || b.mothership) continue
+    if (b.type === 'debris' || b.mothership) continue
     if (b.role === 'volatile' || b.role === 'unstable') continue
     if ((b.warpIn ?? 0) > 0) continue
     if (effDv(b, CFG.SIEGE_YIELD) < CFG.FORT_CUE_MIN_DV) continue

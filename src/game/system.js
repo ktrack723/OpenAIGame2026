@@ -55,6 +55,11 @@ export function createSystem(seed) {
 const WARP_E_MIN = 0.01, WARP_E_MAX = 0.07
 function freeOrbit(rng, bodies, aMax, rNew, nearBand = 0, band = null) {
   const live = bodies.filter(b => b.alive && b.type !== 'debris')
+  // 궤도를 가진 것들만 — **혜성은 궤도에 안 산다.** 성계를 가로질러 지나가는
+  // 중이라 지금 반경이 곧 자리가 아니고, 그걸 이웃으로 세면 지나가는 공 하나가
+  // 반경 띠 하나를 통째로 막는다(그리고 곧 나가 버려 그 자리는 영영 안 쓰인다).
+  // 겹침 검사(아래 clear 루프)에는 그대로 넣는다 — 지금 거기 있는 건 사실이다.
+  const orbiting = live.filter(b => !b.comet)
   const hitNew = hitRadiusFor(rNew)
   // 이웃 하나하나에 대해 "궤도 반경이 이만큼은 벌어져야 한다"를 미리 재 둔다.
   // 예전 규칙은 `26 + rNew × 2.5` — **새로 놓는 공의 크기만** 봤다. 그래서
@@ -64,7 +69,7 @@ function freeOrbit(rng, bodies, aMax, rNew, nearBand = 0, band = null) {
   // (계측: 대역 738 GU 중 빈 자리가 31 GU) — 안쪽 판은 원래 그만큼 빽빽하다.
   // 그래서 **큰 이웃일 때만** 조인다: 판정 원 합의 0.6배와 예전 값 중 큰 쪽.
   // 목성·토성·모함처럼 판정 원이 100 GU를 넘는 것들만 실제로 걸린다.
-  const slots = live.map(b => {
+  const slots = orbiting.map(b => {
     const r = Math.hypot(b.pos.x, b.pos.y)
     return { r, sep: Math.max(26 + rNew * 2.5, (hitNew + hitRadiusOf(b)) * 0.6) }
   })
@@ -73,10 +78,10 @@ function freeOrbit(rng, bodies, aMax, rNew, nearBand = 0, band = null) {
   //   · 너무 무거운 공 — 목성·토성은 최대 작약으로도 Δv가 15~19라
   //     "옆에 있다"가 곧 "칠 수 있다"가 되지 못한다(계측: 토성만 옆에 둔 판은
   //     240수 중 1수만 요새에 닿았고, 가벼운 공이 옆에 있는 판은 6수였다).
-  //   · **안 밀리는 공** — 특이점(Δv 0)과 금속(Δv 절반)은 μ만 봐서는 안 걸러진다.
-  //     그래서 nukeDv가 아니라 effDv로 묻는다(roles.js). 예전에는 특이점 옆에
-  //     요새를 세워 놓고 "밀 수 있는 공 옆"이라고 기록했다.
-  const cueRadii = live
+  //   · **안 밀리는 공** — 금속(Δv 절반)은 μ만 봐서는 안 걸러진다. 그래서
+  //     nukeDv가 아니라 effDv로 묻는다(roles.js).
+  //   · **혜성** — 지나가는 손님이라 요새가 도착할 때쯤엔 없다(orbiting).
+  const cueRadii = orbiting
     .filter(b => !b.isEarth && effDv(b, CFG.YIELD_MAX) >= CFG.FORT_CUE_MIN_DV)
     .map(b => Math.hypot(b.pos.x, b.pos.y))
   // ── 판의 두 벽 안쪽으로 못 박는다 ──────────────────────────
@@ -258,17 +263,16 @@ function warpBody(rng, bodies, aMax, spec) {
     zorg: true, warp: 1,            // warp: 1 → 0 으로 렌더러가 실시간 감쇠시킨다
   })
   if (spec.role === 'battery') { b.role = 'battery'; b.isTarget = true }
-  if (b.role === 'void') { b.mu = Math.max(b.mu, 900); b.radius = radiusOf(b.mu) }
   return b
 }
 
-// 조르그 요새로 쓸 종류 — 가스(터짐)·불안정(쪼개짐)·특이점(못 부숨)은 제외한다.
-// 가스·불안정 요새는 핵 한 방에 제 사건으로 죽어 표적 구실을 못 하고,
-// 특이점 요새는 아예 부술 수가 없어서 판이 성립하지 않는다.
+// 조르그 요새로 쓸 종류 — 가스(터짐)·불안정(쪼개짐)은 제외한다.
+// 둘 다 핵 한 방에 제 사건으로 죽어 표적 구실을 못 한다.
 const FORT_TYPES = ['rock', 'rock', 'iron']   // 요새는 암석이 기본, 가끔 금속(안 밀리는 표적)
-// 큐볼로 굴러오는 중립 천체 종류 — 여섯 태그 중 다섯(금속·가스·얼음·특이점·
-// 불안정)이 여기서 나온다. 남은 하나(조르그 요새)는 위의 증원 경로에서만 붙는다.
-const NEUTRAL_TYPES = ['rock', 'ice', 'ice', 'iron', 'gas', 'shard', 'void']
+// 큐볼로 굴러오는 중립 천체 종류 — 태그 넷(금속·가스·얼음·불안정)이 여기서
+// 나온다. 요새·모함·초엘리트는 증원 경로에서만 붙고, 혜성은 벨트 밖에서만
+// 들어온다(comet.js).
+const NEUTRAL_TYPES = ['rock', 'ice', 'ice', 'iron', 'gas', 'shard']
 
 // ── 배역서 ──────────────────────────────────────────────────────
 // 요새 한 기와 중립 한 기를 만드는 규칙. 판이 열릴 때(reinforce)와 모함이
@@ -323,18 +327,15 @@ function fortSpec(rng, earth, stage, tag, heavy, outer = false) {
 }
 
 // forceType — 그 판에 **반드시 보여 줘야 하는** 종류(아래 forcedType). 추첨에만
-// 맡기면 태그 하나를 끝까지 못 보고 런이 끝난다(특이점은 9스테이지까지 0회가
-// 나온 적이 있다). 못 박는 판은 config에 있다: VOID_STAGE · UNSTABLE_STAGE.
+// 맡기면 태그 하나를 끝까지 못 보고 런이 끝난다. 못 박는 판은 config에 있다:
+// UNSTABLE_STAGE.
 function neutralSpec(rng, stage, tag, forceType = null) {
-  let type = NEUTRAL_TYPES[rng.int(0, NEUTRAL_TYPES.length - 1)]
-  if (forceType) type = forceType
-  else if (type === 'void' && stage < CFG.VOID_STAGE) type = 'ice'
+  const type = forceType ?? NEUTRAL_TYPES[rng.int(0, NEUTRAL_TYPES.length - 1)]
   return { mu: muFor(rng, stage), name: `${zorgName(rng, tag)}`, type }
 }
 // 이 판이 못 박고 보여 주는 종류(없으면 null). 두 판이 겹치지 않으므로
 // 순서만 정해 두면 된다 — 겹치면 앞의 것이 이긴다.
-const forcedType = (stage) =>
-  stage === CFG.UNSTABLE_STAGE ? 'shard' : stage === CFG.VOID_STAGE ? 'void' : null
+const forcedType = (stage) => (stage === CFG.UNSTABLE_STAGE ? 'shard' : null)
 
 // 만들어 놓고 붙일 것 — 금속 요새는 장갑 태그를 겹쳐 얹는다.
 const dressFort = (b) => { if (b && b.type === 'iron') b.mods = ['armor']; return b }
@@ -458,7 +459,9 @@ export function summonCue(rng, bodies, earth, stage, tag) {
 // 깨끗이 비웠으면 많이 오고, 중립 행성이 잔뜩 남았으면 적게 온다.
 export function reinforce(rng, bodies, earth, stage) {
   const aMax = aMaxOf(stage)
-  const live = bodies.filter(b => b.alive && b.type !== 'debris')
+  // 혜성은 안 센다 — **상주 인구가 아니다.** 판을 넘길 때 걷히는 물건이라
+  // (game.loadStage) 정원을 차지한 적도, 큐볼 재고에 든 적도 없어야 한다.
+  const live = bodies.filter(b => b.alive && b.type !== 'debris' && !b.comet)
   const room = Math.max(0, CFG.SYSTEM_CAP - live.length)
 
   // 두 판에 한 기씩, 8기에서 멎는다(config.REINF_* 표 참고).
@@ -470,7 +473,7 @@ export function reinforce(rng, bodies, earth, stage) {
   // 굴릴 공이 모자랄 때만 중립을 같이 보낸다(조르그 입장에선 소모품이다).
   //
   // 예전에는 **판마다 최소 한 기**를 보장했다. 이유는 태그 구경이었다 —
-  // 특이점·얼음은 중립으로만 굴러오므로 0기가 되면 다섯 태그 중 둘을 끝까지
+  // 얼음은 중립으로만 굴러오므로 0기가 되면 태그 하나를 끝까지
   // 못 본다는 것이었다. 그런데 그 보장에는 끝이 없어서 중립이 판마다 한 기씩
   // **영영 쌓였고**, 성계 정원(SYSTEM_CAP 34)을 중립이 다 먹었다.
   // 그 대가는 판을 만드는 것들이 치렀다(24시드 계측):
@@ -479,10 +482,11 @@ export function reinforce(rng, bodies, earth, stage) {
   //   · 모함은 제 자리(궤도 바깥 좁은 대역)를 못 찾아 4판 88% → 12판 25%로
   //     강림률이 무너졌다. 제일 공들인 물건이 후반에 사라진 셈이다.
   //
-  // 이제 기준은 하나다: **굴릴 공이 모자란가.** 모함이 보충을 결정할 때 쓰는
-  // 것과 같은 문턱(HIVE_KEEP_CUE)이라 성계를 채우는 두 경로가 같은 질문을 한다.
-  // 태그 구경은 **못 박은 두 판**(UNSTABLE_STAGE·VOID_STAGE)으로 충분하다 —
-  // 그 판만은 굴릴 공이 넉넉해도 한 기를 세운다(정원이 남아 있는 한).
+  // 이제 기준은 하나다: **굴릴 공이 모자란가.** 모함이 보충을 결정할 때
+  // (stepHive) 그리고 혜성이 주기를 당길 때(comet.js) 쓰는 것과 같은 문턱
+  // (HIVE_KEEP_CUE)이라, 성계를 채우는 **세 경로가 같은 질문을 한다.**
+  // 태그 구경은 **못 박은 한 판**(UNSTABLE_STAGE)으로 충분하다 — 그 판만은
+  // 굴릴 공이 넉넉해도 한 기를 세운다(정원이 남아 있는 한).
   const cueBalls = live.filter(b => !b.isEarth && !b.zorg).length
   let neutral = cueBalls < CFG.HIVE_KEEP_CUE
     ? Math.min(CFG.REINF_NEUTRAL, cueBalls < 2 ? 2 : 1)

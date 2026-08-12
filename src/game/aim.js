@@ -220,7 +220,6 @@ function impactInfo(game, o, point, simEarth) {
   let outcome = 'neutral'
   if (o.type === 'debris') outcome = 'debris'
   else if (o.isEarth) outcome = 'earth'
-  else if (o.role === 'void') outcome = 'void'
   else if (o.role === 'volatile') outcome = 'volatile'
   else if (o.role === 'unstable') outcome = 'unstable'
   else if (isT) outcome = 'target'

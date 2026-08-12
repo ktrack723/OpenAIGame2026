@@ -36,7 +36,11 @@ const scientist = (x, cls, coat, skin) => `
 // 이미 멈춰 있고(won → effTimeScale 0) 파티클만 실시간으로 돈다.
 // 패배보다는 짧게 잡았다: 지구 화구는 크고 오래 남지만 요새 하나가 부서지는
 // 건 그보다 빨리 잦아든다.
-const OPEN_DELAY = 1500
+//
+// 1500 → 1900. 조르그는 이제 **두 박자로** 터진다(빛기둥 0.45초 → 폭발).
+// 마지막 요새를 부수는 순간 won이 되므로, 예전 값이면 폭발이 채 피기도 전에
+// 패널이 덮었다 — 이 게임의 마지막 그림을 패널이 가리는 셈이다.
+const OPEN_DELAY = 1900
 
 export class Victory {
   constructor(game, onContinue) {
