@@ -89,7 +89,7 @@ export const zhHant = {
   'cat.shard': '不穩定行星', 'cat.shard.mech': '會裂 — 朝挨打的反方向撒出霰彈。打中氣態/不穩定會連鎖',
   'cat.comet': '彗星', 'cat.comet.mech': '穿行而過 — 從古柏帶外進來，筆直橫穿星系',
   'cat.earth': '地球', 'cat.earth.mech': '家 — 被撞三次就結束',
-  'cat.zorg': '佐格母艦', 'cat.zorg.mech': '時限一到它就來 — 核彈無效。只有把行星砸上去才行',
+  'cat.zorg': '佐格母艦', 'cat.zorg.mech': '時限一到它就來 — 核彈無效。體力 10，只有把行星砸上去，還得砸好幾次',
   'cat.hive': '佐格巢艦', 'cat.hive.mech': '運送增援 — 打碎它就停',
   'cat.debris': '殘骸', 'cat.debris.mech': '會彈來彈去 — 讓飛彈提前引爆。只有古柏帶和太陽能清掉它',
   'cat.shardAmmo': '霰彈', 'cat.shardAmmo.mech': '不穩定行星打出的彈 — 按體力 1 判定。碰到就結束',

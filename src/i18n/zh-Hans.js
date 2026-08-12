@@ -89,7 +89,7 @@ export const zhHans = {
   'cat.shard': '不稳定行星', 'cat.shard.mech': '会裂 — 朝挨打的反方向撒出霰弹。打中气态/不稳定会连锁',
   'cat.comet': '彗星', 'cat.comet.mech': '穿行而过 — 从柯伊伯带外进来，笔直横穿星系',
   'cat.earth': '地球', 'cat.earth.mech': '家 — 被撞三次就结束',
-  'cat.zorg': '佐格母舰', 'cat.zorg.mech': '时限一到它就来 — 核弹无效。只有把行星砸上去才行',
+  'cat.zorg': '佐格母舰', 'cat.zorg.mech': '时限一到它就来 — 核弹无效。体力 10，只有把行星砸上去，还得砸好几次',
   'cat.hive': '佐格巢舰', 'cat.hive.mech': '运送增援 — 打碎它就停',
   'cat.debris': '残骸', 'cat.debris.mech': '会弹来弹去 — 让导弹提前引爆。只有柯伊伯带和太阳能清掉它',
   'cat.shardAmmo': '霰弹', 'cat.shardAmmo.mech': '不稳定行星打出的弹 — 按体力 1 判定。碰到就结束',

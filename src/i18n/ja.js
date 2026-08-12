@@ -89,7 +89,7 @@ export const ja = {
   'cat.shard': '不安定惑星', 'cat.shard.mech': '砕ける — 当たった反対側へ散弾を撒く。ガス・不安定に刺さると連鎖',
   'cat.comet': '彗星', 'cat.comet.mech': '通り過ぎる — カイパーベルトを突き抜けて星系を横切る',
   'cat.earth': '地球', 'cat.earth.mech': '我が家 — 三度叩かれたらゲームオーバー',
-  'cat.zorg': 'ゾルグ母船', 'cat.zorg.mech': '時間切れで現れる — 核は効かない。惑星をぶつけるしかない',
+  'cat.zorg': 'ゾルグ母船', 'cat.zorg.mech': '時間切れで現れる — 核は効かない。体力10、惑星を何度もぶつけるしかない',
   'cat.hive': 'ゾルグ母艦', 'cat.hive.mech': '増援を運ぶ — 壊せば止まる',
   'cat.debris': '残骸', 'cat.debris.mech': '弾んで回る — ミサイルを早期に起爆させる。消えるのはベルトと太陽だけ',
   'cat.shardAmmo': '散弾', 'cat.shardAmmo.mech': '不安定惑星が撃った弾 — 体力1として判定される。触れたらそこで終わり',

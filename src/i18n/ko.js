@@ -98,7 +98,7 @@ export const ko = {
   'cat.shard': '불안정 행성', 'cat.shard.mech': '쪼개진다 — 맞은 반대쪽으로 산탄을 뿌린다. 가스·불안정에 꽂히면 연쇄',
   'cat.comet': '혜성', 'cat.comet.mech': '지나간다 — 카이퍼 벨트를 뚫고 들어와 성계를 가로지른다',
   'cat.earth': '지구', 'cat.earth.mech': '우리 집 — 세 번 처박히면 게임 오버',
-  'cat.zorg': '조르그 모성', 'cat.zorg.mech': '시한이 끝나면 온다 — 핵은 안 통한다. 공을 던져야 부서진다',
+  'cat.zorg': '조르그 모성', 'cat.zorg.mech': '시한이 끝나면 온다 — 핵은 안 통한다. 체력 10, 공을 여러 번 처박아야 부서진다',
   'cat.hive': '조르그 모함', 'cat.hive.mech': '증원을 실어 나른다 — 부수면 그친다',
   'cat.debris': '잔해', 'cat.debris.mech': '튕겨 다닌다 — 미사일을 조기 격발시킨다. 벨트·태양에서만 사라진다',
   'cat.shardAmmo': '산탄', 'cat.shardAmmo.mech': '불안정 행성이 쏜 탄 — 체력 1처럼 판정된다. 닿으면 그 자리에서 끝',
