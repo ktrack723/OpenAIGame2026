@@ -27,6 +27,8 @@ export class Explosions {
       else if (e.kind === 'laserHit') this.laserHit(e)
       else if (e.kind === 'laserMiss') this.laserMiss(e)
       else if (e.kind === 'volatile') this.volatile(e)
+      else if (e.kind === 'shatter') this.shatter(e)
+      else if (e.kind === 'shard') this.shard(e)
       else if (e.kind === 'absorb') this.absorb(e)
       else if (e.kind === 'nuke') this.nuke(e)
       else if (e.kind === 'destroy') this.destroy(e)
@@ -361,6 +363,44 @@ export class Explosions {
     P.burst(e.x, e.y, { n: 120, color: 0xff4d2b, speed: 150, size: 30, ttl: 4.0, drag: 0.36 })
     this.rig.hit(VIS.SHAKE_MAX)
     this.rig.focus(e.x, e.y, R * 1.2)
+  }
+
+  // ─── 불안정 행성 파열 — 한쪽으로 쏟아진다 ─────────────────────
+  // 유폭(volatile)과 **일부러 같은 문법**을 쓰되 방향만 다르다: 저건 사방으로
+  // 퍼지는 원이고 이건 한쪽으로 쏟아지는 부채꼴이다. 그림이 그 차이만 말하면
+  // 플레이어는 이미 아는 것(유폭) 위에 한 가지만 더 얹어 배운다.
+  //
+  // 분사 방향(e.a)은 실제 파편이 나가는 방향과 같은 값이다 — 연출이 판보다
+  // 먼저 말하고 판이 그대로 따라오므로, 눈이 산탄을 놓치지 않는다.
+  shatter(e) {
+    const P = this.parts, R = Math.max(70, (e.r ?? 20) * 3.2)
+    const cone = e.cone ?? 0.44, a = e.a ?? 0
+    this.flash(0.42, '#ecfccb')
+    // ① 껍데기가 터지는 순간 — 흰 코어 한 겹만. 원은 여기서 끝난다
+    P.puff(e.x, e.y, { r0: R * 0.12, r1: R * 0.7, ttl: 0.22, color: 0xffffff, alpha: 1 })
+    P.puff(e.x, e.y, { r0: R * 0.10, r1: R * 1.2, ttl: 0.8, color: 0xa3e635, alpha: 0.8, delay: 0.03 })
+    // ② 총구 화염 — 부채꼴 안으로만. 세 겹이 점점 좁고 빠르게 나간다
+    P.burst(e.x, e.y, { n: 260, color: 0xbef264, speed: 620, size: 17, ttl: 1.5, spread: cone * 2.2, dir: a })
+    P.burst(e.x, e.y, { n: 160, color: 0xecfccb, speed: 1050, size: 11, ttl: 1.0, spread: cone * 1.4, dir: a })
+    P.burst(e.x, e.y, { n: 90, color: 0xffffff, speed: 1500, size: 8, ttl: 0.6, spread: cone * 0.7, dir: a })
+    // ③ 반동 — 뒤로 뿜는 짧은 연기. "쐈다"는 앞보다 뒤에서 더 잘 읽힌다
+    P.burst(e.x, e.y, { n: 70, color: 0x4d7c0f, speed: 170, size: 22, ttl: 2.4, spread: 1.5, dir: a + Math.PI, drag: 0.5 })
+    // ④ 충격파는 얇게 한 겹만 — 여기서 링을 두껍게 깔면 유폭으로 읽힌다
+    P.shock(e.x, e.y, R, 0xffffff, 0.5, { thin: true, from: 0.08, to: 3.0, alpha: 0.9 })
+    P.shock(e.x, e.y, R, 0xa3e635, 1.0, { thin: true, from: 0.12, to: 4.4, delay: 0.1, alpha: 0.5 })
+    this.rig.hit(20)
+    this.rig.focus(e.x, e.y, Math.max(R * 2.4, (e.reach ?? 0) * 0.6), 1.7)
+  }
+
+  // ─── 산탄 한 갈래가 꽂혔다 ───────────────────────────────────
+  // 작게. 한 번의 파열에서 일곱 번까지 날 수 있는 소리이자 그림이라, 하나가
+  // 크면 정작 그 뒤에 오는 격파 연출이 묻힌다. 그래도 **닿았다는 건 보여야**
+  // 한다 — 파편이 소리 없이 사라지면 빗나간 것과 구분이 안 된다.
+  shard(e) {
+    const P = this.parts, R = Math.max(16, (e.r ?? 6) * 2.2)
+    P.puff(e.x, e.y, { r0: R * 0.2, r1: R * 1.1, ttl: 0.24, color: 0xecfccb, alpha: 0.9 })
+    P.burst(e.x, e.y, { n: 22, color: 0xbef264, speed: 220, size: 8, ttl: 0.5 })
+    P.shock(e.x, e.y, R, 0xa3e635, 0.34, { thin: true, from: 0.15, to: 2.2, alpha: 0.7 })
   }
 
   // ─── 특이점 흡수 — 밖에서 안으로 빨려 들어간다 ────────────────
