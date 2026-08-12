@@ -81,9 +81,13 @@ export function makeLaser(rng, from, nextAt = CFG.LASER_FIRST, earth = null) {
   }
 }
 
-// 지구를 태양 중력만으로 seconds초 뒤까지 굴린다. 행성 섭동은 무시 —
+// 천체 하나를 태양 중력만으로 seconds초 뒤까지 굴린다. 행성 섭동은 무시 —
 // 조르그의 계산도 이 정도이고(그래서 밀면 빗나간다), 무엇보다 싸다.
-function propagate(state, seconds) {
+//
+// **지구의 회피 예측(game.dodgeMiss)도 이 함수를 쓴다.** 조준점을 푸는 세계와
+// "분사하면 비켜나는가"를 묻는 세계가 갈리면 두 예측이 다른 답을 내고, 그러면
+// 버튼이 거짓말을 한다 — 같은 적분기, 같은 간격(1/40)이어야 한다.
+export function propagate(state, seconds) {
   const sim = cloneBodies([state])
   const dt = 1 / 40, n = Math.round(seconds / dt)
   for (let i = 0; i < n; i++) stepBodies(sim, dt)
