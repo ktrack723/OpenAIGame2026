@@ -53,7 +53,12 @@ export function createSystem(seed) {
 // 상수로 뺐다 — 예전에는 뽑는 자리에 0.01+0.06이 박혀 있고 벽 쪽에는 1.08이라는
 // 마법수가 따로 있어서, 한쪽만 고치면 조용히 어긋났다.
 const WARP_E_MIN = 0.01, WARP_E_MAX = 0.07
-function freeOrbit(rng, bodies, aMax, rNew, nearBand = 0, band = null) {
+// sepMul — 이웃과 벌려야 하는 **궤도 반경** 간격에 곱하는 값. 1이 기본이고,
+// 마지막 시도만 이걸 낮춰 붐비는 판에서도 자리를 찾는다(warpBody ⑤).
+// 겹침 검사(아래 clear 루프)에는 안 건다 — 저건 "남의 몸 위에 떨어뜨리지
+// 마라"라서 느슨하게 할 여지가 없다. 여기서 무르는 것은 띠를 나눠 쓰는 것뿐인데,
+// 궤도가 가까운 이웃은 이 게임에서 **칠 수 있는 공**이라 오히려 판을 살린다.
+function freeOrbit(rng, bodies, aMax, rNew, nearBand = 0, band = null, sepMul = 1) {
   const live = bodies.filter(b => b.alive && b.type !== 'debris')
   // 궤도를 가진 것들만 — **혜성은 궤도에 안 산다.** 성계를 가로질러 지나가는
   // 중이라 지금 반경이 곧 자리가 아니고, 그걸 이웃으로 세면 지나가는 공 하나가
@@ -71,7 +76,7 @@ function freeOrbit(rng, bodies, aMax, rNew, nearBand = 0, band = null) {
   // 목성·토성·초엘리트처럼 판정 원이 100 GU를 넘는 것들만 실제로 걸린다.
   const slots = orbiting.map(b => {
     const r = Math.hypot(b.pos.x, b.pos.y)
-    return { r, sep: Math.max(26 + rNew * 2.5, (hitNew + hitRadiusOf(b)) * 0.6) }
+    return { r, sep: Math.max(26 + rNew * 2.5, (hitNew + hitRadiusOf(b)) * 0.6) * sepMul }
   })
   // 이웃 후보 = **실제로 밀 수 있는 공**. 세 가지를 뺀다:
   //   · 지구 — 치면 게임 오버라 큐볼이 아니다
@@ -230,7 +235,9 @@ function warpBody(rng, bodies, aMax, spec) {
   // 덩치는 질량에서 오되, 대형 요새는 거기에 한 겹 더 얹는다(rMul).
   // **체력이 곧 크기**여야 "저건 두 방짜리"가 한눈에 읽힌다.
   const radius = radiusOf(mu) * (spec.rMul ?? 1)
-  const find = (zone, near) => zone ? freeOrbit(rng, bodies, aMax, radius, near ? zone.near : 0, zone.band) : null
+  const find = (zone, near, sepMul = 1) => zone
+    ? freeOrbit(rng, bodies, aMax, radius, near ? zone.near : 0, zone.band, sepMul)
+    : null
   // 요새는 ① 제 대역 안에서 ② 밀 수 있는 공 옆자리에 놓는다.
   // 못 찾으면 제약을 푸는데, **푸는 순서가 곧 규칙**이다 — 대역보다 옆자리가 먼저다.
   // 밀 수 있는 공이 하나도 없는 자리에 선 요새는 안쪽이든 바깥이든 플레이어가
@@ -244,10 +251,31 @@ function warpBody(rng, bodies, aMax, spec) {
   // 일이 있었다(계측: 6스테이지에서 180기 중 18기).
   // ※ 옆자리 폭은 대역이 정한다(zone.near): 바깥은 궤도가 성겨서 안쪽
   //   기준(150)을 그대로 쓰면 통과하는 자리가 아예 없다.
-  const orb = (spec.role === 'battery'
-    ? find(spec.zone, true) ?? find(spec.alt, true) ?? find(spec.zone, false) ?? find(spec.span, false)
-    : null)
-    ?? freeOrbit(rng, bodies, aMax, radius)
+  // ④에서 **멈춘다.** 예전에는 여기서 대역 없는 자리 찾기로 한 번 더 떨어졌는데,
+  // 그건 위 ④까지의 규칙을 통째로 무르는 줄이었다: 성계 전체(A_MIN ~ aMax×0.95)를
+  // 뒤지므로 표적이 손 닿는 거리 밖에 앉는다. 위 주석이 "예전에는"이라고 적은
+  // 그 일이 이 줄로 계속 일어나고 있었다.
+  //
+  // 걸리는 것은 하필 **대형 요새**다. 덩치가 크니(FORT_HEAVY_MU + rMul) 자리
+  // 요구가 까다로워 ①~④를 다 놓치고, 판이 거듭될수록 성계가 붐벼서 더 자주
+  // 놓친다. 계측(7판): 대형 셋이 지구 궤도의 2.64·3.13·3.13배에 앉았다 —
+  // 바깥 대역 상한(2.4배)의 밖이다. 자동 플레이는 가까운 요새 셋을 372초에
+  // 정리하고 남은 그 한 기에 625초를 더 쓰고도 체력 1까지밖에 못 깎았고,
+  // 7판 실패 다섯 판이 모두 "한 기 남음"으로 끝났다.
+  //
+  // 그래서 표적은 손 닿는 대역 밖으로 안 내보낸다. 대신 마지막 한 걸음을
+  // **대역이 아니라 간격**에서 무른다(⑤): 같은 span 안에서 이웃과 벌릴 궤도
+  // 간격만 절반으로 줄인다. 대역을 놓는 것과 달리 이건 판을 안 깨뜨린다 —
+  // 궤도가 가까운 이웃은 이 게임에서 **칠 수 있는 공**이고, 몸이 겹치는 것은
+  // freeOrbit의 겹침 검사가 그대로 막는다.
+  //   ⑤까지 놓치면 그때는 안 세운다(null). 한 기 적은 판은 성립하지만,
+  //   손댈 수 없는 표적이 선 판은 난이도가 아니라 벽이다.
+  // 배경으로 까는 것들(중립·큐볼)은 예전처럼 아무 데나 세운다 — 저건 부숴야
+  // 할 물건이 아니라 굴릴 공이라, 멀리 있어도 판이 성립한다.
+  const orb = spec.role === 'battery'
+    ? find(spec.zone, true) ?? find(spec.alt, true) ?? find(spec.zone, false)
+      ?? find(spec.span, false) ?? find(spec.span, false, 0.5)
+    : freeOrbit(rng, bodies, aMax, radius)
   if (!orb) return null
   const b = makeBody({
     id: nextId(),

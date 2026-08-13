@@ -96,9 +96,21 @@ export class Game {
   // 초엘리트가 온 판은 목표가 하나 더 — 그만큼 더 준다.
   // (판이 열릴 때 정해 두고 안 바꾼다. 부순 순간 시계가 줄어들면
   //  "부쉈더니 손해"가 되는데, 그건 이 물건이 주려는 판단이 아니다.)
+  // 시한은 **이번 판에 세워진 표적 수**를 센다(TIME_PER_THREAT). 판 번호만 보던
+  // 예전 식은 톱니를 만들었다: 요새 마릿수는 두 판에 한 기씩 계단으로 뛰는데
+  // 시한은 판마다 고르게 오르니, 마릿수가 뛰는 판(3·5·7·9판)에서만 표적 하나에
+  // 주어지는 시간이 뚝 떨어졌다 — 계측한 톱니가 이렇다:
+  //   320 · 331 · 228 · 235 · 170 · 174 · 149 · 152 · 134 · 137초
+  // 7판이 149초로 그 골짜기 하나였고, 실제로 자동 플레이가 4시드 중 1건만
+  // 뚫었다(그 한 건도 시한의 96%를 썼다). 바로 다음 8판은 152초로 더 헐거웠다.
+  // 표적 수를 세면 골짜기가 사라진다 — 어려워지는 것은 그대로 두되(판마다
+  // 표적 하나당 시간은 계속 줄어든다) **뛰는 판만 벌하지 않는다.**
   get stageTime() {
     const grow = Math.min(this.stage - 1, CFG.STAGE_CAP - 1)
-    return CFG.TIME_BASE + CFG.TIME_PER_STAGE * grow
+    // 판이 열릴 때 짜인 명단이다(loadStage). 부숴도 안 줄어든다 — 부순 순간
+    // 시계가 줄면 "부쉈더니 손해"가 되는데, 그건 이 물건이 주려는 판단이 아니다.
+    const threats = this.targets?.length ?? 0
+    return CFG.TIME_BASE + CFG.TIME_PER_STAGE * grow + CFG.TIME_PER_THREAT * threats
       + (this.siegeHere ? CFG.SIEGE_TIME : 0)
   }
   get timeLeft() { return Math.max(0, this.stageTime - this.time) }
