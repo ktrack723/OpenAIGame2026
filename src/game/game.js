@@ -219,6 +219,20 @@ export class Game {
 
   nextStage() {
     if (!this.won || this.runOver) return
+    // ── 판을 깨면 지구가 한 칸 아문다 ──────────────────────────
+    // 광선이 지구를 즉사시키던 시절에는 체력이 사실상 충돌 전용이라 거의 안
+    // 깎였다. 이제 광선도 같은 눈금을 먹으므로(tickLaser의 지구 분기) 체력이
+    // **런 내내 한 방향으로만 닳는 톱니**가 됐다 — 계측 15판에서 3→3→3→2→1→0
+    // 처럼 판을 넘길수록 조용히 줄었고, 되돌릴 방법인 상점 수리를 산 런은
+    // 한 판도 없었다. 추진기가 언제나 바닥이라 그쪽이 먼저였기 때문이다.
+    //
+    // 그래서 되돌리는 길을 판 자체에 붙인다: 판을 깨면 한 칸. 광선이 판당
+    // 한두 번 무는 박자와 같은 주기라, "이번 판은 한 대 맞고 넘길 수 있다"가
+    // 되고 두 대는 여전히 아프다. 최대치를 넘지 않으므로 쌓이지도 않는다.
+    if (this.earth.alive && this.earth.hp < (this.earth.hpMax ?? CFG.EARTH_HP)) {
+      this.earth.hp++
+      this.setToast(msg('toast.earthMend', { hp: this.earth.hp, hpMax: this.earth.hpMax ?? CFG.EARTH_HP }))
+    }
     // 정산할 것이 없다 — 정치자금은 벌 때 바로 지갑에 들어가고 판을 넘어 그대로 간다.
     this.stage++; this.loadStage()
   }
@@ -1136,11 +1150,24 @@ export class Game {
       this.setToast(msg('toast.laser.sun'))
       return
     }
+    // ── 지구는 광선에도 **눈금 하나**만 잃는다 ──────────────────
+    // 예전에는 여기서 판이 그대로 끝났다 — 체력이 셋 다 남아 있어도. 그런데
+    // 이 게임이 스스로 적어 둔 규칙은 "지구도 세 번 처박히면 끝난다"이고,
+    // 상대속도 160짜리 충돌이 꽉 찬 지구를 한 번에 지우던 자리는 이미 그
+    // 이유로 고쳐 놓았다(damage 주석). 광선만 그 예외로 남아 있었다.
+    //
+    // 플레이로 재 보면 그 예외가 판을 지배했다. 판 하나에 광선이 한두 번 무는데
+    // 확실한 대응 수단(추진기)은 판당 한 개다(정치자금 5 · 수입 5~9). 계측
+    // 12판에서 봇은 **매 판 첫 충전에 그 하나를 태우고 재고 0으로 남았고**,
+    // 충전이 두 번 온 판이 정확히 지구를 잃은 판이었다. 즉 "두 번째 광선"은
+    // 실력이 아니라 재고 문제였고, 그 한 번이 곧 런의 끝이었다.
+    // 이제는 눈금 하나다 — 여전히 아프고(체력 셋 중 하나 · 판을 넘어 이어진다),
+    // 상점의 수리와 같은 통화로 이어지지만, 한 번의 실수가 런을 끝내지는 않는다.
+    // 다른 천체에게는 규칙이 그대로다: 광선에 닿으면 체력 불문 사라진다.
     if (b.isEarth) {
-      this.addFx({ kind: 'destroy', x: b.pos.x, y: b.pos.y, r: b.radius * 2, earth: true })
-      b.alive = false
-      this.fail('EARTH_LASER', msg('msg.fail.laser'))
       this.setToast(msg('toast.laser.earth'))
+      this.message = msg('msg.laser.earth', { hp: Math.max(0, (b.hp ?? CFG.EARTH_HP) - CFG.EARTH_MAX_DMG) })
+      this.damage(b, CFG.EARTH_MAX_DMG, 'laser', { reason: 'EARTH_LASER', text: msg('msg.fail.laser') })
       return
     }
     // 체력 불문 파괴. 막아 준 대가가 그 공의 소멸이다.
@@ -1517,7 +1544,10 @@ export class Game {
   // 아무것도 안 바뀐다 — 깎이는 것은 **눈금 하나뿐**이다.
   // (지구에 직접 핵을 박는 것은 여전히 즉시 게임 오버다 — detonate는 체력을
   //  아예 안 거치고 판을 끝낸다. 그건 규칙이 아니라 선언이다.)
-  damage(b, n, cause) {
+  // earthEnd — 지구가 이 피해로 **끝났을 때** 적을 사인. 안 주면 충돌로 친다.
+  // 광선은 제 이름으로 끝나야 한다(EARTH_LASER): 무엇에 죽었는지가 다음 판의
+  // 판단을 바꾸는데, 다 "짓눌렸다"로 적으면 그 정보가 사라진다.
+  damage(b, n, cause, earthEnd = null) {
     // 산탄은 **체력 1짜리 공**이라 여기서 안 걸러진다 — 맞으면 그대로 죽는다.
     // 걸러지는 건 장식용 잔해뿐이다: 잔해는 튕기기만 하고 아무 체력도 안 가진다.
     if (!b.alive || (b.type === 'debris' && !b.shard)) return false
@@ -1532,7 +1562,7 @@ export class Game {
     if (b.isEarth) {
       this.addFx({ kind: 'destroy', x: b.pos.x, y: b.pos.y, r: b.radius * 2, earth: true })
       b.alive = false
-      this.fail('EARTH_LOST', msg('msg.fail.earthCrush'))
+      this.fail(earthEnd?.reason ?? 'EARTH_LOST', earthEnd?.text ?? msg('msg.fail.earthCrush'))
       return true
     }
     // 산탄은 **조용히** 없어진다. 판정은 행성과 같아도 총알 하나가 다 쓰인 것을
