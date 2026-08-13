@@ -596,10 +596,19 @@ export function updateHud(el, game) {
     const sub = game.doom
       ? t('ui.obs.doom')
       : game.laserCharging
+        // 추진기를 누를 수 있는 순간에는 **그 값**을 같이 적는다 — 이 줄이
+        // 관측 모드에서 유일하게 읽히는 줄이고, 추진기는 지구를 제일 크게
+        // 미는 물건이다(누적 여덟 번이면 태양행 · game.burnPreview 주석).
         ? t('ui.obs.charge', {
           left: game.laserLeft.toFixed(0), miss: game.laserMiss.toFixed(0),
           verdict: t(game.laserSafe ? 'ui.obs.charge.safe' : 'ui.obs.charge.hit'),
-        })
+        }) + (game.burnPreview
+          ? ' · ' + (game.burnPreview.doomed ? t('alarm.burn.sun')
+            : t('alarm.burn', {
+              dv: game.burnPreview.dv.toFixed(1),
+              a: game.burnPreview.peri.toFixed(0), b: game.burnPreview.peri2.toFixed(0),
+            }))
+          : '')
       : game.laserFlying
         ? t('ui.obs.fly', { left: game.laserImpactLeft.toFixed(1) })
       // 초엘리트의 잠금 — 광선보다 **뒤에** 둔다. 둘이 겹칠 때 급한 쪽은
@@ -705,8 +714,15 @@ export function updateHud(el, game) {
     const nCharge = game.laserChargingCount
     el.querySelector('#laserT').textContent = t('alarm.charge.t', { left: game.laserLeft.toFixed(1) })
       + (nCharge > 1 ? t('alarm.multi', { n: nCharge }) : '')
+    // 추진기 값 — 이 버튼은 광선을 피하는 대신 **지구 궤도를 판다.** 계측에서
+    // 한 번에 근일점이 평균 56 GU 내려가고 누적이라, 여덟 번이면 다른 무엇과도
+    // 상관없이 지구를 잃는다. 그 값을 누르기 전에 여기서 말한다(game.burnPreview).
+    const burn = game.burnPreview
     el.querySelector('#laserWhy').textContent = t(game.laserSafe ? 'alarm.safe' : 'alarm.hit',
       { miss: game.laserMiss.toFixed(0), need: hitRadiusOf(game.earth).toFixed(0) })
+      + (burn ? ' · ' + (burn.doomed ? t('alarm.burn.sun')
+        : t('alarm.burn', { dv: burn.dv.toFixed(1), a: burn.peri.toFixed(0), b: burn.peri2.toFixed(0) })) : '')
+    lm.classList.toggle('bad', !!burn?.doomed)
   } else if (game.laserFlying) {
     lm.hidden = false
     lm.classList.remove('ok')

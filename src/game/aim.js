@@ -339,7 +339,10 @@ export function coarseContact(game, ang, track) {
 //
 // push는 physics의 그 함수들이 돌려준 값 그대로다(blastPushOn/volatilePushOn).
 // 실제로 미는 식과 여기서 그리는 식이 갈리면 그게 제일 나쁜 거짓말이 된다.
-function earthShove(game, earth, push) {
+// export인 이유: 지구를 미는 것이 폭풍만이 아니다. **지구 추진기**가 제일 크게
+// 민다(계측: 한 번에 근일점 평균 56 GU, 최대 91 GU). 그쪽 예고도 같은 식으로
+// 풀어야 화면에 같은 선이 뜬다 — 예고가 둘이면 그중 하나는 반드시 거짓말이 된다.
+export function earthShove(game, earth, push) {
   if (!earth || !push || push.dv <= 0) return null
   const vx = earth.vel.x + push.dx * push.dv, vy = earth.vel.y + push.dy * push.dv
   const now = game.sunOrbit(earth.pos.x, earth.pos.y, earth.vel.x, earth.vel.y)

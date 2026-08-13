@@ -11,6 +11,7 @@ import { makeGoal } from './objectives.js'
 import { msg, nameOf } from '../i18n/index.js'
 import { bearing } from '../core/angle.js'
 import { createSystem, reinforce, sendCueBall } from './system.js'
+import { earthShove } from './aim.js'
 import { stepComets } from './comet.js'
 import { makeBody } from './body.js'
 import { chargeLeft, impactLeft, makeDoom, makeLaser, propagate, stepDoom, stepLaser, stepSpent, LASER_CHARGE, LASER_SPENT, LASER_TRAVEL } from './laser.js'
@@ -1037,6 +1038,27 @@ export class Game {
       if (t < bestT) { bestT = t; best = L }
     }
     return best
+  }
+
+  // ─── 이 버튼을 누르면 지구 궤도가 어떻게 되는가 ──────────────
+  // 추진기는 이 게임에서 **지구를 가장 크게 미는 물건**이다. 그런데 그동안
+  // 화면에는 "광선을 피한다"만 있고 그 값이 없었다. 계측(6시드 18회): 한 번에
+  // 근일점이 평균 56 GU, 최대 91 GU 내려간다. 게다가 누적이다 —
+  //   669 → 599 → 543 → 496 GU (세 번)
+  // 태양이 지구를 삼키는 반경이 210 GU이므로, 여덟 번이면 다른 무엇과도
+  // 상관없이 지구를 잃는다. 그 여덟 번이 화면 어디에도 안 적혀 있었다.
+  //
+  // 그래서 누르기 전에 밀린 뒤의 궤도를 그대로 돌려준다(폭풍 예고와 **같은
+  // 함수**다 — aim.earthShove). 미는 방향·세기도 실제로 누를 때 쓰는 그 둘을
+  // 그대로 쓴다(burnDir/burnDv). 셋 중 하나라도 따로 계산하면 그 순간
+  // 화면의 선과 실제 결과가 갈린다.
+  get burnPreview() {
+    if (!this.canThrust) return null
+    const L = this.mostUrgentBeam()
+    if (!L) return null
+    const { nx, ny } = this.burnDir()
+    const dv = this.burnDv(L)
+    return earthShove(this, this.earth, { dx: nx, dy: ny, dv, radius: 0 })
   }
 
   earthThrust() {

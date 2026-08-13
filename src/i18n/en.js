@@ -39,6 +39,8 @@ export const en = {
   'alarm.safe': 'Miss {miss} GU — you live as it stands. Keep pushing.',
   'alarm.hit': 'Miss {miss} GU — still a hit. You need more than {need} GU.',
   'alarm.fly': 'Beam in flight — it goes straight. The first body it touches is gone (the sun and singularities only block it). Park a warhead within {r} GU of its path to cut it.',
+  'alarm.burn': 'Thruster: perihelion {a}→{b} GU (Δv{dv})',
+  'alarm.burn.sun': '☠ Burning the thruster drops Earth into the sun',
 
   'lcd.ready': 'READY', 'lcd.ready.sub': 'Awaiting aim',
   'lcd.hold': 'HOLD', 'lcd.hold.sub': 'Cannot fire',

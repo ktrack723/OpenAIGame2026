@@ -39,6 +39,8 @@ export const zhHans = {
   'alarm.safe': '偏离 {miss} GU — 照这样能活。继续推。',
   'alarm.hit': '偏离 {miss} GU — 仍会被击中。要超过 {need} GU 才能活。',
   'alarm.fly': '光束飞行中 — 一直走直线。碰到的第一个天体会消失（太阳与奇点只是挡下）。把弹头放到航线 {r} GU 以内就能截断。',
+  'alarm.burn': '推进器：近日点 {a}→{b} GU（Δv{dv}）',
+  'alarm.burn.sun': '☠ 点火推进器会把地球推进太阳',
 
   'lcd.ready': 'READY', 'lcd.ready.sub': '等待瞄准',
   'lcd.hold': 'HOLD', 'lcd.hold.sub': '无法发射',

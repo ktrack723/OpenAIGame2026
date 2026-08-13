@@ -43,6 +43,8 @@ export const ko = {
   'alarm.safe': '빗나감 {miss} GU — 이대로면 산다. 계속 밀어 둬라.',
   'alarm.hit': '빗나감 {miss} GU — 아직 맞는다. {need} GU를 넘겨야 산다.',
   'alarm.fly': '광선 비행 중 — 직진한다. 닿는 첫 천체는 소멸(태양·특이점은 막기만). 진로에 탄두를 {r} GU 안으로 걸치면 끊긴다.',
+  'alarm.burn': '추진기: 근일점 {a}→{b} GU (Δv{dv})',
+  'alarm.burn.sun': '☠ 추진기를 태우면 지구가 태양으로 떨어진다',
 
   // ── LCD 예측 ──────────────────────────────────────────────────
   'lcd.ready': 'READY', 'lcd.ready.sub': '조준 대기',

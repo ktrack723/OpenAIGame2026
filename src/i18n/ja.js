@@ -39,6 +39,8 @@ export const ja = {
   'alarm.safe': '外れ {miss} GU — このままなら助かる。押し続けろ。',
   'alarm.hit': '外れ {miss} GU — まだ当たる。{need} GU を超えなければ死ぬ。',
   'alarm.fly': 'ビーム飛行中 — まっすぐ進む。最初に触れた天体は消滅（太陽と特異点は防ぐだけ）。進路に弾頭を {r} GU 以内へ置けば断ち切れる。',
+  'alarm.burn': 'スラスター: 近日点 {a}→{b} GU (Δv{dv})',
+  'alarm.burn.sun': '☠ スラスターを焚くと地球が太陽へ落ちる',
 
   'lcd.ready': 'READY', 'lcd.ready.sub': '照準待機',
   'lcd.hold': 'HOLD', 'lcd.hold.sub': '発射不可',

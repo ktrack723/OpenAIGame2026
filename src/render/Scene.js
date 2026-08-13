@@ -2684,7 +2684,19 @@ void main() {
           shove ? { x: shove.vx, y: shove.vy } : null, g.aMax,
           shove?.doomed ? 0xf87171 : 0xfbbf24)
       } else this.orbits.ghost(null)
-    } else { this.aim.hide(); this.orbits.ghost(null) }
+    } else { this.aim.hide(); this.burnGhost(g) }
+  }
+
+  // ── 관측 중에도 지구가 밀리는 순간이 하나 있다: 추진기 ──────────
+  // 조준선이 없는 모드라 위쪽 분기를 안 타지만, 지구를 제일 크게 미는 것이
+  // 바로 이 버튼이다(계측: 한 번에 근일점 평균 56 GU, 누적으로 여덟 번이면
+  // 지구를 잃는다). 누르기 전에 같은 유령 궤도로 값을 보여 준다 — 폭풍 예고와
+  // 같은 선, 같은 색 규칙이라 플레이어가 새로 배울 것이 없다.
+  burnGhost(g) {
+    const burn = g.burnPreview
+    this.orbits.ghost(burn ? { x: burn.x, y: burn.y } : null,
+      burn ? { x: burn.vx, y: burn.vy } : null, g.aMax,
+      burn?.doomed ? 0xf87171 : 0xfbbf24)
   }
 
 }

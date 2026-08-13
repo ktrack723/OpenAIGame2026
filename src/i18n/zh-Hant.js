@@ -39,6 +39,8 @@ export const zhHant = {
   'alarm.safe': '偏離 {miss} GU — 照這樣能活。繼續推。',
   'alarm.hit': '偏離 {miss} GU — 仍會被擊中。要超過 {need} GU 才能活。',
   'alarm.fly': '光束飛行中 — 一直走直線。碰到的第一個天體會消失（太陽與奇點只是擋下）。把彈頭放到航線 {r} GU 以內就能截斷。',
+  'alarm.burn': '推進器：近日點 {a}→{b} GU（Δv{dv}）',
+  'alarm.burn.sun': '☠ 點火推進器會把地球推進太陽',
 
   'lcd.ready': 'READY', 'lcd.ready.sub': '等待瞄準',
   'lcd.hold': 'HOLD', 'lcd.hold.sub': '無法發射',
