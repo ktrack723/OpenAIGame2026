@@ -1829,9 +1829,11 @@ export class Game {
     this.mothership = ship
     this.doom = makeDoom(ship.pos.x, ship.pos.y, this.aMax * CFG.LASER_RANGE_MUL, ship)
     this.addFx({ kind: 'warp', x: ship.pos.x, y: ship.pos.y, r: hitRadiusOf(ship), fort: true })
-    // 총구가 달아오른다 — 요새가 충전할 때와 **같은 신호**를 쓴다. 저 붉은
-    // 수축 링이 곧 "아직 안 쐈다"이고, 그동안이 마지막 한 수의 창이다.
-    this.addFx({ kind: 'laserCharge', x: ship.pos.x, y: ship.pos.y, r: hitRadiusOf(ship) })
+    // 총구가 달아오른다 — 요새가 충전할 때와 **같은 신호**를 쓴다. 저 수축 링이
+    // 곧 "아직 안 쐈다"이고, 그동안이 마지막 한 수의 창이다. 다만 색은 자홍이다
+    // (doom: true) — 모양이 "아직 안 쐈다"를 말하고, 색이 "누구의 총구인가"를
+    // 말한다. 뒤이어 오는 난사도 같은 자홍이라 둘이 한 물건으로 읽힌다.
+    this.addFx({ kind: 'laserCharge', x: ship.pos.x, y: ship.pos.y, r: hitRadiusOf(ship), doom: true })
     this.setMode('observe')
     this.message = msg('msg.doom')
     this.setToast(msg('toast.doom'))
@@ -1842,13 +1844,16 @@ export class Game {
     // 그래서 이 함수는 지역 변수로 물고 돈다. 안 그러면 그 프레임의 남은
     // 사건에서 this.doom.x가 터진다.
     const D = this.doom
+    // doom: true — 연출을 자홍으로 굽는다(Explosions의 LZ_DOOM). 요새의 광선과
+    // 그림은 같고 색만 갈리는데, 그 색이 곧 규칙의 차이다: 요새의 광선은 지구
+    // 체력을 한 눈금 깎지만(EARTH_MAX_DMG) 이 난사는 체력을 안 본다.
     for (const e of stepDoom(D, this, dt)) {
       if (e.kind === 'beam') {
-        this.addFx({ kind: 'laserFire', x: D.x, y: D.y, a: e.a })
+        this.addFx({ kind: 'laserFire', x: D.x, y: D.y, a: e.a, doom: true })
         continue
       }
       const b = e.body
-      this.addFx({ kind: 'laserHit', x: e.x, y: e.y, r: b ? hitRadiusOf(b) : CFG.R_STAR, sun: !b })
+      this.addFx({ kind: 'laserHit', x: e.x, y: e.y, r: b ? hitRadiusOf(b) : CFG.R_STAR, sun: !b, doom: true })
       if (!b || b.mothership) continue   // 태양과 제 몸은 안 부서진다
       if (b.isEarth) {
         this.addFx({ kind: 'destroy', x: b.pos.x, y: b.pos.y, r: b.radius * 2, earth: true })

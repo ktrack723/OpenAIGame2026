@@ -5,6 +5,24 @@ import { CFG, VIS } from '../game/config.js'
 // 게임 로직이 쌓아둔 fx 큐를 소비해 파티클/링/섬광으로 옮긴다.
 // 여기 있는 숫자는 전부 "보이는 크기"일 뿐, 미는 힘·반경 같은 게임 수치가
 // 아니다 — 그건 game.js와 config.js에만 있다.
+
+// ─── 두 광선의 색 ───────────────────────────────────────────────
+// 요새의 광선과 모성의 난사는 **같은 그림에 다른 색**을 쓴다. 그림이 같은 것은
+// 굴러가는 규칙이 같기 때문이고(같은 sweep · 같은 속도 · 닿는 첫 천체는 체력
+// 불문 소멸), 색이 갈리는 것은 **지구에게만 규칙이 다르기** 때문이다:
+//   · 요새의 광선 → 지구 체력 한 눈금(EARTH_MAX_DMG 1). 세 번까지 버틴다.
+//   · 모성의 난사 → 체력을 아예 안 본다. 닿으면 그 자리에서 끝이다(game.tickDoom).
+// 같은 색으로 두면 그 차이는 맞아 보기 전에 알 길이 없다.
+//
+// 새 색을 만들지는 않았다. 판은 이미 이 둘로 편을 갈라 놓았다 — 요새는 장미,
+// 모성은 자홍이고(폭발의 capital · Markers의 화살표 · 패배 화면 · Icons의 분류색),
+// 난사만 그 표에서 혼자 장미였다.
+// (막대 자체는 LaserView가 그린다 — 그래서 표를 내보낸다. 색이 두 군데에
+//  적혀 있으면 한쪽만 고쳐지고, 그러면 막대와 착탄이 다른 색이 된다.)
+export const LZ_FORT = { core: 0xff2d4d, glow: 0xff4d6d, spark: 0xff6b7f, mist: 0xffd7de, flash: '#ffdde3', warm: '#ffe0e6' }
+export const LZ_DOOM = { core: 0xe879f9, glow: 0xf0abfc, spark: 0xf5a3fc, mist: 0xf5d0fe, flash: '#f7dcff', warm: '#f3d5ff' }
+export const lzOf = (e) => (e && e.doom ? LZ_DOOM : LZ_FORT)
+
 export class Explosions {
   constructor(parts, rig, flash) {
     this.parts = parts
@@ -321,35 +339,35 @@ export class Explosions {
 
   // ─── 레이저 충전 개시 — 본성이 달아오른다 ───────────────────
   laserCharge(e) {
-    const P = this.parts
-    P.shock(e.x, e.y, 120, 0xff4d6d, 0.8, { thin: true, from: 2.8, to: 0.15, alpha: 0.9 })
-    P.burst(e.x, e.y, { n: 60, color: 0xff4d6d, speed: 160, size: 10, ttl: 0.9 })
+    const P = this.parts, C = lzOf(e)
+    P.shock(e.x, e.y, 120, C.glow, 0.8, { thin: true, from: 2.8, to: 0.15, alpha: 0.9 })
+    P.burst(e.x, e.y, { n: 60, color: C.glow, speed: 160, size: 10, ttl: 0.9 })
     this.rig.hit(8)
-    this.flash(0.16, '#ffe0e6')
+    this.flash(0.16, C.warm)
   }
 
   // ─── 레이저 발사 — 총구에서 탄두가 튀어나가는 순간만 ────────
   // 착탄은 별도 이벤트다(laserHit). 광선이 날아가는 데 시간이 걸리므로
   // 예전처럼 발사와 착탄을 한 번에 터뜨리면 거짓말이 된다.
   laserFire(e) {
-    const P = this.parts
-    P.puff(e.x, e.y, { r0: 8, r1: 120, ttl: 0.4, color: 0xff4d6d, alpha: 1 })
-    P.burst(e.x, e.y, { n: 70, color: 0xffd7de, speed: 900, size: 9, ttl: 0.4, spread: 0.5, dir: e.a })
+    const P = this.parts, C = lzOf(e)
+    P.puff(e.x, e.y, { r0: 8, r1: 120, ttl: 0.4, color: C.glow, alpha: 1 })
+    P.burst(e.x, e.y, { n: 70, color: C.mist, speed: 900, size: 9, ttl: 0.4, spread: 0.5, dir: e.a })
     this.rig.hit(14)
-    this.flash(0.32, '#ffdde3')
+    this.flash(0.32, C.flash)
   }
 
   // ─── 레이저 착탄 — 여기서 뭔가가 부서진다 ───────────────────
   laserHit(e) {
-    const P = this.parts, R = Math.max(120, (e.r ?? 30) * 2.6)
-    P.puff(e.x, e.y, { r0: 10, r1: R, ttl: 0.7, color: 0xff2d4d, alpha: 1 })
+    const P = this.parts, C = lzOf(e), R = Math.max(120, (e.r ?? 30) * 2.6)
+    P.puff(e.x, e.y, { r0: 10, r1: R, ttl: 0.7, color: C.core, alpha: 1 })
     P.shock(e.x, e.y, R, 0xffffff, 0.6, { thin: true, from: 0.08, to: 2.6, alpha: 1 })
-    P.shock(e.x, e.y, R, 0xff4d6d, 1.1, { from: 0.1, to: 2.0, delay: 0.06 })
-    P.burst(e.x, e.y, { n: e.sun ? 120 : 260, color: e.sun ? 0xffb247 : 0xff6b7f, speed: 520, size: 16, ttl: 1.6 })
+    P.shock(e.x, e.y, R, C.glow, 1.1, { from: 0.1, to: 2.0, delay: 0.06 })
+    P.burst(e.x, e.y, { n: e.sun ? 120 : 260, color: e.sun ? 0xffb247 : C.spark, speed: 520, size: 16, ttl: 1.6 })
     P.burst(e.x, e.y, { n: 90, color: 0xffffff, speed: 900, size: 9, ttl: 0.6 })
     this.rig.focus(e.x, e.y, 420, 2)
     this.rig.hit(VIS.SHAKE_MAX)
-    this.flash(0.85, '#ffdde3')
+    this.flash(0.85, C.flash)
   }
 
   // ─── 레이저 소진 — 아무것도 못 맞히고 성계를 벗어났다 ───────
