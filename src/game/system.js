@@ -385,14 +385,20 @@ const forcedType = (stage) => (stage === CFG.UNSTABLE_STAGE ? 'shard' : null)
 // 핵은 밀기만 하고 죽이는 것은 충돌이므로, 굴릴 공이 마르면 그건 난이도가
 // 아니라 벽이다(CUE_KEEP 주석). 그래서 판이 도는 동안에도 바닥을 지킨다.
 //
+// 다만 판이 도는 동안의 문턱은 **바닥값(CUE_KEEP)이 아니라 그보다 낮은
+// CUE_DRY**다. 판이 열릴 때처럼 6기까지 계속 채워 봤더니 오히려 나빴다:
+// 붐빌수록 지구가 치여서 7판 클리어율이 8시드에서 5/8 → 2/8로 떨어졌다.
+// 여기서 막으려는 것은 "재고가 넉넉한가"가 아니라 **"칠 공이 아예 없는가"**
+// 하나다 — 계측한 그 판은 굴릴 공 2기로 마지막 한 기를 놓고 436초를 흘렸다.
+//
 // 한 번에 한 기씩만 보낸다 — 한꺼번에 채우면 판이 갑자기 붐비고, 무엇보다
 // 플레이어가 조준하던 그림이 통째로 바뀐다. 보낼 자리가 없으면(정원·자리)
 // 조용히 아무것도 안 한다: 못 보내는 것은 사고가 아니라 그냥 꽉 찬 판이다.
-export function sendCueBall(rng, bodies, earth, stage, tag) {
+export function sendCueBall(rng, bodies, earth, stage, tag, limit = CFG.CUE_DRY) {
   const live = bodies.filter(b => b.alive && b.type !== 'debris' && !b.comet)
   if (live.length >= CFG.SYSTEM_CAP) return null
   const cueBalls = live.filter(b => !b.isEarth && !b.zorg).length
-  if (cueBalls >= CFG.CUE_KEEP) return null
+  if (cueBalls >= limit) return null
   const b = warpBody(rng, bodies, aMaxOf(stage), neutralSpec(rng, stage, tag))
   if (b) b.zorg = false          // 중립으로 굴러온 잔챙이 — 큐볼로 쓴다
   return b
