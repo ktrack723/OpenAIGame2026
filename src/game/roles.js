@@ -6,7 +6,6 @@ import { t } from '../i18n/index.js'
 // 마음 놓고 큐볼로 쓰면 된다.
 //
 //   ☠ 조르그 요새 — 부숴야 할 표적. 체력 1이라 한 번만 제대로 처박으면 된다.
-//   ◎ 조르그 모함 — 4스테이지부터. 광선은 안 쏘지만 부술 때까지 요새를 실어 나른다.
 //   ✷ 초엘리트    — 5스테이지부터. 체력 3. 제 핵으로 중립 행성을 지구에 처박는다.
 //   🔩 금속 행성   — 무겁다. 핵으로 미는 양이 절반으로 깎인다.
 //   🪐 가스 행성   — 터진다. 핵을 맞으면 그 자리에서 유폭한다.
@@ -23,8 +22,6 @@ import { t } from '../i18n/index.js'
 // dvScale은 게임 수치라 언어와 무관하게 여기 남는다.
 export const ROLES = {
   battery: { icon: '☠', color: 0xf43f5e, dvScale: 1 },
-  // 조르그 모함 — 광선은 안 쏘고 성계를 채운다. 이것도 부숴야 판이 끝난다.
-  hive: { icon: '◎', color: 0xe879f9, dvScale: 1 },
   // 초엘리트 조르그 행성 — 5스테이지부터. 광선도 증원도 없다. **당구를 친다.**
   siege: { icon: '✷', color: 0xff3b1f, dvScale: 1 },
   armor: { icon: '🔩', color: 0x94a3b8, dvScale: CFG.ARMOR_DV },

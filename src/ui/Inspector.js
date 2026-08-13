@@ -75,7 +75,7 @@ export class Inspector {
     const g = this.game
     const r = Math.hypot(b.pos.x, b.pos.y)
     const v = Math.hypot(b.vel.x, b.vel.y)
-    const hostile = b.role === 'battery' || b.role === 'hive'
+    const hostile = b.role === 'battery'
     const hp = b.hp ?? CFG.PLANET_HP, hpMax = b.hpMax ?? CFG.PLANET_HP
     const pips = '◆'.repeat(Math.max(0, hp)) + '◇'.repeat(Math.max(0, hpMax - hp))
     const out = []
@@ -83,7 +83,7 @@ export class Inspector {
     const tags = []
     if (hostile) { const m = hostileMark(b); tags.push(['foe', `${m.icon} ${m.label}`]) }
     for (const key of [b.role, ...modsOf(b)]) {
-      if (!key || key === 'battery' || key === 'hive') continue
+      if (!key || key === 'battery') continue
       const R = ROLES[key]
       if (R) tags.push(['tag', `${R.icon} ${roleLabel(key)}`])
     }

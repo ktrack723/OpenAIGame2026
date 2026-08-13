@@ -71,13 +71,13 @@ const DUCK_RISE = 1.1     // 놓고 다시 올라오는 데 (초). 내려갈 때
 // 수십 번 오는 요새 격파의 0.1은 음악을 매번 20dB씩 파 놓는다. 그럴 이유도
 // 없다 — 같은 자리에서 격파음의 피크는 −8.8dBFS이고 음악은 −32~−30dBFS
 // RMS다(bgm.js). 이미 20dB 넘게 위에 있는 소리한테 자리를 더 내줄 것은 없다.
-// 지구가 맞은 자리와 모함 격파는 런에 몇 번 없는 사건이라 원래 깊이를 지킨다.
+// 지구가 맞은 자리와 모성 격파는 런에 몇 번 없는 사건이라 원래 깊이를 지킨다.
 const DUCK = {
   nukeEarth:  { key: 'earth', level: 0.18, fall: 0.5 },   // 내 핵이 지구에 박혔다
   lostEarth:  { key: 'earth', level: 0.15, fall: 0.6 },   // 지구가 부서졌다
   siegeEarth: { key: 'earth', level: 0.22, fall: 0.6 },   // 초엘리트의 한 발이 꽂혔다
-  hive:       { key: 'kill',  level: 0.10, fall: 0.4 },   // 모함 격파 — 런에 한 번
   kill:       { key: 'kill',  level: 0.55, fall: 0.25 },  // 요새 격파 — 판마다 여러 번
+  capital:    { key: 'kill',  level: 0.10, fall: 0.4 },   // 모성 격파 — 런에 한 번
   won:        { key: 'won',   level: 0.40, fall: 1.0 },   // 승리 화면
   over:       { key: 'over',  level: 0.22, fall: 1.4 },   // 패배 화면
 }
@@ -311,9 +311,9 @@ export class AudioSystem {
       // 기준으로 가른다(Explosions.destroy / destroyZorg).
       case 'destroy':
         if (e.earth) { at('destroyEarth', 1, { priority: 2 }); this.ducker.hit(DUCK.lostEarth) }
-        // 모함과 요새는 같은 소리를 쓰지만 음악을 누르는 깊이는 다르다 —
-        // 모함은 런에 한 번이고, 요새는 판마다 여러 번이다.
-        else if (e.zorg) { at('destroyZorg', 1, { priority: 1 }); this.ducker.hit(e.hive ? DUCK.hive : DUCK.kill) }
+        // 모성과 요새는 같은 소리를 쓰지만 음악을 누르는 깊이는 다르다 —
+        // 모성은 런에 한 번이고, 요새는 판마다 여러 번이다.
+        else if (e.zorg) { at('destroyZorg', 1, { priority: 1 }); this.ducker.hit(e.capital ? DUCK.capital : DUCK.kill) }
         else at('destroy', 0.85)
         break
 
@@ -360,10 +360,6 @@ export class AudioSystem {
 
       case 'warp':
         at(e.fort ? 'warpFort' : 'warp', 1, { priority: 1 })
-        break
-
-      case 'hive':
-        at('hive', 0.95, { priority: 1 })
         break
 
       // ── 초엘리트 ──

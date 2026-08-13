@@ -519,7 +519,7 @@ function setUp(g, mode) {
   // (모함은 4스테이지부터라 예고편(=1판)에는 애초에 없지만, 있으면 같이 걷는다.)
   for (let i = g.bodies.length - 1; i >= 0; i--) {
     const b = g.bodies[i]
-    if (b.role === 'hive' || (b.role === 'battery' && b !== cast.fort)) g.bodies.splice(i, 1)
+    if (b.role === 'battery' && b !== cast.fort) g.bodies.splice(i, 1)
   }
   g.targets = [cast.fort]
   g.goal = makeGoal([cast.fort])
@@ -571,7 +571,7 @@ function pickInterceptor(g, cast) {
   return g.bodies
     .filter(b => b.alive && b.type !== 'debris' && !keep.includes(b) && !b.comet
       && b.role !== 'volatile' && b.role !== 'unstable'
-      && b.role !== 'battery' && b.role !== 'hive')
+      && b.role !== 'battery')
     .sort((a, b) => a.radius - b.radius)[0] ?? null
 }
 

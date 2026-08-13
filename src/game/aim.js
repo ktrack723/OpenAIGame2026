@@ -2,8 +2,8 @@ import { fromAngle } from '../core/vector.js'
 import { wrapPi } from '../core/angle.js'
 import { CFG, beltRadius, blastRadius, hitRadiusOf } from './config.js'
 import {
-  buildBodyTrack, cloneBodies, makeStepCache, missilePush, segCircleEntry, segHitsCircle,
-  stepBodies, stepMissile, sweepMeet, trackFrame,
+  blastPushOn, buildBodyTrack, cloneBodies, makeStepCache, missilePush, segCircleEntry,
+  segHitsCircle, stepBodies, stepMissile, sweepMeet, trackFrame, volatilePushOn,
 } from './physics.js'
 import { SHARD_N, effDv, shardCone, shardReach, volatileRadius } from './roles.js'
 import { msg } from '../i18n/index.js'
@@ -121,7 +121,7 @@ export function predictPath(game) {
         // 쏜 발이므로 속력이 같으면 이쪽이 큐다.
         if (Math.hypot(m.vel.x, m.vel.y) >= Math.hypot(meet.vel.x, meet.vel.y)) {
           pts.push(mine)
-          hit = relayInfo(meet, mine, his, game.yieldMt, sim.find(o => o.isEarth))
+          hit = relayInfo(game, meet, mine, his, game.yieldMt, sim.find(o => o.isEarth))
           outcome = 'relay'
           break
         }
@@ -171,7 +171,7 @@ function spentProbe(L, sim, rIn2, beltR2) {
 // 칠 때 쓰던 어휘를 그대로 쓰기 위해서다: 락온 원 · 노란 임펄스 화살표 ·
 // 흰 진로 화살표 · 폭풍 원. 다른 것은 맞는 것이 공이 아니라 **내 탄두**라는
 // 사실 하나뿐이고, 그래서 체력·산탄·회피처럼 탄두에 없는 칸은 비어 있다.
-function relayInfo(L, blast, at, yld, simEarth) {
+function relayInfo(game, L, blast, at, yld, simEarth) {
   const push = missilePush(blast.x, blast.y, at.x, at.y, yld)
   const R = blastRadius(yld)
   return {
@@ -184,6 +184,7 @@ function relayInfo(L, blast, at, yld, simEarth) {
     // 폭풍이 지구를 훑는가 — 공을 칠 때와 같은 경고다. 허공에서 터졌다고
     // 지구가 안 밀리는 게 아니다(game.relay도 같은 폭풍을 터뜨린다).
     earthInBlast: !!simEarth && Math.hypot(simEarth.pos.x - blast.x, simEarth.pos.y - blast.y) < R,
+    earthShove: earthShove(game, simEarth, blastPushOn(simEarth, blast.x, blast.y, yld)),
     vAfter: 0, vEsc: 0, willEject: false,
     role: null, volatileR: 0, shards: 0, shardCone: 0, shardReach: 0, earthInCone: false,
     hp: 0, hpMax: 0, boost: 0,
@@ -325,6 +326,49 @@ export function coarseContact(game, ang, track) {
   return null
 }
 
+// ─── 지구가 밀린다면, 밀린 뒤의 궤도 ────────────────────────────
+// 핵 폭풍은 지구도 민다(blastWave). 가스 행성의 유폭은 더 넓게 민다.
+// 그런데 그 한 번이 이 판을 끝내는 게 아니라 **다음 판을 끝낸다**: 근일점이
+// 깎인 지구는 몇 판 뒤에 조용히 태양으로 떨어지고, 화면에는 그 원인이 없다.
+// (플레이테스트에서 실제로 그렇게 죽었다 — 1판을 클리어하고 2판 8초 만에.)
+//
+// 그래서 **지구가 실제로 밀릴 때만** 밀린 뒤의 궤도를 미리 풀어 준다. 규칙은
+// 이 게임이 늘 지키던 그대로다: 결과가 아니라 **접촉의 직접 효과**만 말한다.
+// 어디로 얼마나 밀리는지, 그래서 근일점이 어디로 내려가는지 — 그 둘이다.
+// 밀지 않으면 null이고, 화면에는 아무것도 안 뜬다.
+//
+// push는 physics의 그 함수들이 돌려준 값 그대로다(blastPushOn/volatilePushOn).
+// 실제로 미는 식과 여기서 그리는 식이 갈리면 그게 제일 나쁜 거짓말이 된다.
+function earthShove(game, earth, push) {
+  if (!earth || !push || push.dv <= 0) return null
+  const vx = earth.vel.x + push.dx * push.dv, vy = earth.vel.y + push.dy * push.dv
+  const now = game.sunOrbit(earth.pos.x, earth.pos.y, earth.vel.x, earth.vel.y)
+  const then = game.sunOrbit(earth.pos.x, earth.pos.y, vx, vy)
+  // 궤도가 **실제로 달라질 때만** 말한다. 폭풍의 가장자리는 Δv 0.004 짜리
+  // 입김도 지구에 얹는데, 그건 근일점을 1 GU 옮긴다 — 표시하면 매 발마다
+  // 경고가 뜨고, 그러면 진짜 위험한 발이 그 소음에 묻힌다. 문턱은 근일점
+  // 이동량으로 잡는다(Δv가 아니라): 같은 Δv라도 어느 방향으로 미느냐에 따라
+  // 궤도가 흔들리는 정도가 다르고, 플레이어가 잃는 것은 근일점 쪽이다.
+  if (then.bound && Math.abs(then.peri - now.peri) < CFG.EARTH_SHOVE_MIN) return null
+  // 그 근일점에 **닿기는 하는가**. 묶인 궤도면 언젠가 반드시 지난다(주기 궤도다).
+  // 탈출 궤도면 갈리는데, 바깥으로 나가는 중이면 영영 안 닿는다 — 그 근일점은
+  // 이미 지나온 가지의 것이다. 계측: Δv 33.9로 바깥으로 민 발은 근일점 215를
+  // 예고했지만 지구는 r 406까지도 안 내려갔고, 2287 GU까지 날아가 벨트에 한 번
+  // 튕겨 돌아왔다(살아서 궤도만 망가졌다). 그 발에 ☠를 붙이면 거짓말이다.
+  const outbound = earth.pos.x * vx + earth.pos.y * vy > 0
+  const reachesPeri = then.bound || !outbound
+  return {
+    dv: push.dv, dx: push.dx, dy: push.dy, radius: push.radius,
+    x: earth.pos.x, y: earth.pos.y, vx, vy,
+    peri: now.peri, peri2: then.peri, bound: then.bound, reachesPeri,
+    // 태양에 닿는 근일점인가 — 이 한 줄이 "이 발로 지구를 잃는다"는 뜻이다.
+    // 문턱은 판이 실제로 지구를 삼키는 반경과 같다(game.bodyBounds).
+    // **묶인 궤도인지는 묻지 않는다**: 안쪽으로 미는 탈출 궤도도 태양을 먼저
+    // 스쳐 지나간다. 실측에서 그 발이 지구를 22초 만에 태양에 넣었다.
+    doomed: reachesPeri && then.peri < CFG.R_STAR + 15,
+  }
+}
+
 // 충돌 한 건의 "큐 정보" — 폭심, 임펄스 방향, 타격 직후 공의 진로
 function impactInfo(game, o, point, simEarth) {
   const isT = game.isTarget(o)
@@ -347,6 +391,13 @@ function impactInfo(game, o, point, simEarth) {
   // 큰 탄두는 폭풍이 지구까지 닿는다 — 쏘기 전에 그것만은 알려준다
   const earthInBlast = !!simEarth && !o.isEarth &&
     Math.hypot(simEarth.pos.x - point.x, simEarth.pos.y - point.y) < R
+  // 지구가 밀리는가 — 밀린다면 밀린 뒤의 궤도까지. 미는 경로가 둘이다:
+  // 보통은 폭풍(blastWave)이고, 가스 행성을 치면 그 자리의 유폭이다
+  // (game.detonate은 가스에 폭풍을 안 쓴다 — 유폭 하나로 대신한다).
+  const shove = !simEarth || o.isEarth ? null
+    : o.role === 'volatile'
+      ? earthShove(game, simEarth, volatilePushOn(simEarth, o, volatileRadius(o)))
+      : earthShove(game, simEarth, blastPushOn(simEarth, point.x, point.y, game.yieldMt))
   // 때린 직후의 속도가 그 자리의 탈출속도를 넘는지 — "세게 치면 날아간다"는
   // 큐의 세기에 대한 정보지 판의 결말이 아니다. 작약량을 고르는 유일한 근거.
   const vAfter = Math.hypot(o.vel.x + dx * dv, o.vel.y + dy * dv)
@@ -377,6 +428,7 @@ function impactInfo(game, o, point, simEarth) {
     dx, dy, dv,                          // 임펄스 방향/크기
     vx: o.vel.x + dx * dv, vy: o.vel.y + dy * dv,   // 타격 직후 공의 속도
     blast: R, earthInBlast, vAfter, vEsc, willEject: dv > 0 && vAfter > vEsc,
+    earthShove: shove,
     role: o.role ?? null,
     volatileR: o.role === 'volatile' ? volatileRadius(o) : 0,
     // 샷건 — 갈래 수 / 부채꼴 반각(rad) / 그리는 사거리. 0이면 이 공은 안 쏜다.

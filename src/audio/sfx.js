@@ -158,11 +158,6 @@ export const BANK = {
     L([1.7, .04, 68, .02, .18, .85, 0, 1.2, -.4, 0, 0, 0, 0, .12, 0, 0, .08, .9, .3, 0, -150], .2),   // LP 300
     L([.7, .08, 330, .03, .10, .5, 3, 1.5, -2, 0, 0, 0, 0, .3, 0, .1, .1, .5, .12, 0, -700], .22),    // LP 1.4k
   ],
-  // 모함 송출 — 폭발이 아니라 **보냈다**는 표시. 위로 올라가는 chirp.
-  hive: [
-    L([.85, .06, 380, .02, .12, .38, 1, 1.6, 0, 0, 620, .06, 0, .1, 0, 0, .09, .7, .06, 0, -1600]),   // LP 3.2k
-    L([.5, .1, 190, .03, .16, .42, 2, 1.2, 3, .5, 0, 0, 0, .25, 6, 0, .08, .6, .1, .3, -800], .02),   // LP 1.6k
-  ],
   // 요새 회피 분사 — 짧은 로켓. 노이즈 한 뭉치.
   boost: [
     L([.8, .1, 260, .01, .13, .26, 4, 1.3, 2, .4, 0, 0, 0, 1.5, 0, .2, .04, .6, .07, .2, -900]),      // LP 1.8k
@@ -363,7 +358,7 @@ const MIX = {
   bumpSoft: 0.26, bump: 0.46, belt: 0.30, boost: 0.30, swing: 0.38, doomBeam: 0.30, shard: 0.34,
   // 한 수의 결과
   launch: 0.62, nuke: 0.80, nukeBelt: 0.56, destroy: 0.58, destroyBig: 0.80,
-  volatile: 0.78, shatter: 0.74, sunFall: 0.72, warp: 0.55, warpFort: 0.68, hive: 0.50,
+  volatile: 0.78, shatter: 0.74, sunFall: 0.72, warp: 0.55, warpFort: 0.68,
   zorgCharge: 0.44, destroyZorg: 0.88, comet: 0.40,
   laserCharge: 0.50, laserFire: 0.70, laserHit: 0.66, laserHitSun: 0.42,
   laserMiss: 0.34, laserIntercept: 0.60, laserAbort: 0.34,

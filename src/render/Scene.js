@@ -27,7 +27,6 @@ const MATS = {
   comet: { rough: 0.18, metal: 0.02, emis: 0.30 },
   earth: { rough: 0.55, metal: 0.10, emis: 0.08 },
   zorg: { rough: 0.28, metal: 0.88, emis: 0.30 },   // 조르그 모성 — 검은 강철
-  hive: { rough: 0.40, metal: 0.75, emis: 0.10 },   // 조르그 모함 — 회로가 대신 빛난다
   siege: { rough: 0.34, metal: 0.82, emis: 0.10 },  // 초엘리트 — 장갑판
   debris: { rough: 1.00, metal: 0.10, emis: 0.00 },
 }
@@ -55,11 +54,10 @@ const PALETTE = {
   earth: [0x3b82f6],       // 이 파랑은 지구 전용이다
   // ── 조르그 함대의 세 등급 ──
   // 셋 다 붉은 계열이다(조르그는 붉다). 갈리는 것은 **명도와 채도**다:
-  // 모성이 가장 어둡고(거의 검은 강철), 초엘리트가 그 위, 모함이 가장 밝다.
+  // 모성이 가장 어둡고(거의 검은 강철), 초엘리트가 그 위다.
   // 그림에서 셋을 갈라 주는 것은 색이 아니라 실루엣이므로(각자의 구조물)
   // 몸통 색은 같은 계열 안에서 밝기만 벌려 둔다.
   zorg: [0x1c0508],        // 조르그 모성 — 빛을 안 되돌린다
-  hive: [0x4e0f1c],        // 조르그 모함 — 셋 중 가장 밝다
   siege: [0x3a0a12],       // 초엘리트 — 그 사이
   debris: [0x8b8f96],
 }
@@ -258,16 +256,14 @@ function fortParts() {
   }
 }
 
-// ─── 조르그 함대의 세 기함 ──────────────────────────────────────
-// 요새는 발사기 하나로 "저건 포대다"를 말한다(fortParts). 그 위 등급 셋은
-// 예전에 **그냥 공이었다** — 모함도, 모성도, 색만 다른 구체였다. 그러면 판에서
-// 제일 중요한 물건 셋이 배경의 암석 행성과 실루엣이 같아진다.
+// ─── 조르그 함대의 두 기함 ──────────────────────────────────────
+// 요새는 발사기 하나로 "저건 포대다"를 말한다(fortParts). 그 위 등급 둘은
+// 예전에 **그냥 공이었다** — 색만 다른 구체였다. 그러면 판에서
+// 제일 중요한 물건들이 배경의 암석 행성과 실루엣이 같아진다.
 //
-// 셋 다 붉은 계열을 지키되(조르그는 붉다) **하는 일이 곧 생김새**여야 한다.
+// 둘 다 붉은 계열을 지키되(조르그는 붉다) **하는 일이 곧 생김새**여야 한다.
 // 데스스타가 데스스타로 읽히는 것은 색이 아니라 그 접시 하나 때문이다:
 //
-//   모함(hive)  — 요새를 실어 나른다 → **격납 아가리**. 열린 만(灣)과 그 안의
-//                 워프 문, 적도를 둘러싼 계류 꽂이 여섯. 뭔가가 여기서 나온다.
 //   초엘리트(siege) — 핵을 쏜다 → **박격 실로 넷**. 몸에서 비스듬히 뻗은 굵은
 //                 통들과 그 아귀의 불. 통은 비어 있고(끝이 열려 있다) 잠금이
 //                 찰수록 그 안이 달아오른다.
@@ -286,8 +282,6 @@ const CAP_TILT = 34 * Math.PI / 180     // 특징면 → 카메라 쪽 기울기
 // 62°면 D가 카메라 쪽을 향해서 넷이 몸통 위에 십자로 퍼진다 —
 // 위에서 내려다본 미사일 발사관 묶음이다.
 const SIEGE_TILT = 62 * Math.PI / 180
-const HIVE_MAW = 0.62                   // 격납 아가리 반지름
-const HIVE_PODS = 6                     // 계류 꽂이 수
 const SIEGE_SILOS = 4                   // 박격 실로 수
 // 실로 굵기·길이. 처음엔 0.17 × 1.15로 잡았는데 그러면 통 넷이 몸통보다
 // 부피가 커서 화면에 **통만** 보였다(계측용 스크린샷). 요새의 프롱이 초점까지
@@ -310,12 +304,7 @@ function capitalParts() {
   const plate = new THREE.BoxGeometry(1, 1, 1)
   return {
     tube, spike, plate,
-    // 모함 — 아가리 두 겹과 그 안의 문
-    maw: new THREE.TorusGeometry(HIVE_MAW, 0.075, 10, 52),
-    mawIn: new THREE.TorusGeometry(HIVE_MAW * 0.62, 0.05, 8, 40),
-    gate: new THREE.CircleGeometry(HIVE_MAW * 0.74, 40),
-    // 적도를 감는 띠 — 모함은 얇게(계류 레일), 모성은 두껍게(강철 띠)
-    rail: new THREE.TorusGeometry(1.0, 0.045, 8, 64),
+    // 적도를 감는 강철 띠 — 모성
     girdle: new THREE.TorusGeometry(1.05, 0.15, 12, 72),
     // 초엘리트 — 실로 뿌리를 감는 장갑 목걸이와 아귀의 불
     collar: new THREE.TorusGeometry(0.72, 0.11, 10, 48),
@@ -700,7 +689,7 @@ const SKY = [
     star: { tint: 0xffd79a, mix: 0.26, gain: 1.40 },
   },
   {
-    // 4판 — **용골자리 성운 NGC 3372.** 모함이 오는 판. 에타 카리나가 뿜어낸
+    // 4판 — **용골자리 성운 NGC 3372.** 에타 카리나가 뿜어낸
     // 모래시계(lobes 2)와 주황·자홍이 이 성운의 인상이고, 하늘이 여기서
     // 확실히 **뜨거운 쪽으로** 넘어간다 — 다음이 붉음이라는 예고다.
     name: 'Carina NGC 3372',
@@ -1825,12 +1814,11 @@ void main() {
   // 값을 fx에 적어 두는 이유: 워프인·조준 물들임이 자체발광을 잠깐 덮었다가
   // 되돌리는데, 되돌릴 자리가 한 군데여야 요새의 회로가 그때 꺼지지 않는다.
   emissiveFor(b, pi, spec) {
-    // 조르그가 만든 것에는 회로 불빛이 들어온다 — 요새는 붉게, 모함은 자주로.
+    // 조르그가 만든 것에는 회로 불빛이 들어온다 — 요새는 붉게.
     // (같은 지도를 쓰되 색만 다르다. 색 하나로 "저건 다른 물건"이 읽힌다.)
     if (b.role === 'battery') return { tone: 0xff2b3f, base: 0.95, map: this.circuitFor(pi) }
-    if (b.role === 'hive') return { tone: 0xff2a55, base: 1.05, map: this.circuitFor(pi + 7) }
     // 초엘리트 — 회로가 아니라 **용광로 이음매**처럼 붉게 탄다. 같은 지도를
-    // 쓰되 색이 주홍이라 모함(자홍)과 갈린다.
+    // 쓰되 색이 주홍이라 요새(장미)와 갈린다.
     if (b.role === 'siege') return { tone: 0xff3b1f, base: 1.05, map: this.circuitFor(pi + 13) }
     // 모성 — 부술 수 없는 물건이라 role이 없다. 회로가 제일 어둡게 깔린다:
     // 이놈의 빛은 몸통이 아니라 외눈에서 나온다(attachDoomFx).
@@ -1899,7 +1887,6 @@ void main() {
     if (b.role === 'battery') this.attachFortFx(fx)
     // 기함 셋 — 저마다 다른 구조물이 선다(capitalParts 주석).
     // 모성은 role이 없다(부술 수 없는 물건이라 태그를 안 붙였다) — mothership으로 묻는다.
-    else if (b.role === 'hive') this.attachHiveFx(fx)
     else if (b.role === 'siege') this.attachSiegeFx(fx)
     else if (b.mothership) this.attachDoomFx(fx)
     return fx
@@ -2011,39 +1998,6 @@ void main() {
     return m
   }
 
-  // ── 모함 — 격납 아가리 ──
-  attachHiveFx(fx) {
-    const G = this.capitalGeo, grp = new THREE.Group()
-    const M = capitalMats(0x480d1c, 0xff2a55, 0xffd0cf)
-    const { D, U, V } = this.capFrame()
-    const add = (geo, mat) => { const m = new THREE.Mesh(geo, mat); grp.add(m); return m }
-    // 아가리 두 겹 — 겉 테와 안 테. 위에서 보면 이게 곧 격납구다.
-    this.ringOnAxis(grp, G.maw, M.steel, HIVE_MAW, D)
-    this.ringOnAxis(grp, G.mawIn, M.steel, HIVE_MAW * 0.62, D, 0.06)
-    // 워프 문 — 아가리 안쪽을 채우는 원판. 요새를 실어 낼 때 여기가 터진다.
-    const gate = this.ringOnAxis(grp, G.gate, M.fire, HIVE_MAW * 0.74, D, 0.05)
-    gate.renderOrder = 9
-    // 계류 레일 — 적도를 감는 얇은 고리. 탑다운에서 원으로 보인다.
-    add(G.rail, M.steel)
-    // 계류 꽂이 여섯 — 레일 위에 박힌 블록. **여기에 요새가 물려 있었다**는
-    // 그림이고, 아가리와 함께 "실어 나르는 배"를 만드는 나머지 절반이다.
-    const pods = []
-    for (let i = 0; i < HIVE_PODS; i++) {
-      const a = i / HIVE_PODS * Math.PI * 2
-      const p = add(G.plate, M.steel)
-      p.position.set(Math.cos(a) * 1.02, Math.sin(a) * 1.02, 0)
-      p.scale.set(0.34, 0.17, 0.17)
-      p.rotation.z = a
-      pods.push(p)
-      const e = add(G.ember, M.hot)          // 꽂이의 신호등
-      e.position.set(Math.cos(a) * 1.2, Math.sin(a) * 1.2, 0)
-      e.scale.setScalar(0.34)
-      pods.push(e)
-    }
-    this.scene.add(grp)
-    fx.cap = { grp, mats: M, hot: [gate], swell: [0.62, 0.42], spin: 0.22 }
-  }
-
   // ── 초엘리트 — 박격 실로 ──
   attachSiegeFx(fx) {
     const G = this.capitalGeo, grp = new THREE.Group()
@@ -2126,7 +2080,6 @@ void main() {
 
   // 기함이 얼마나 달아올랐는가(0~1)와 어디를 보고 있는가(각).
   // 값의 출처가 등급마다 다르다 — 그게 곧 그 물건이 무엇을 세는 시계인지다:
-  //   모함     — 다음 증원까지. 문이 밝아지면 곧 뭔가 나온다.
   //   초엘리트 — 잠금 진행도. 아귀가 하얗게 타면 곧 쏜다.
   //   모성     — 늘 최대. 이미 쏘고 있다.
   capAim(b) {
@@ -2144,11 +2097,6 @@ void main() {
       // 것은 큐볼이므로 물고 있는 동안만 거길 본다.
       const t = aim && aim.alive ? aim : e
       return { a: Math.atan2(t.pos.y - b.pos.y, t.pos.x - b.pos.x), u }
-    }
-    if (b.role === 'hive') {
-      const span = g.hiveSent ? CFG.HIVE_PERIOD : CFG.HIVE_FIRST
-      const u = Math.min(1, Math.max(0, (g.hiveT ?? 0) / Math.max(1, span)))
-      return { a: null, u: 0.25 + 0.75 * u * u }
     }
     return { a: null, u: 1 }        // 모성
   }
@@ -2298,7 +2246,7 @@ void main() {
           const grow = b.warp > 0 ? 0.05 + 0.95 * (1 - Math.pow(b.warp, 3)) : 1
           C.grp.position.set(b.pos.x, b.pos.y, 0)
           C.grp.scale.setScalar(r * grow)
-          // 겨누는 놈은 그쪽을 보고(초엘리트), 아닌 놈은 저 혼자 돈다(모함·모성).
+          // 겨누는 놈은 그쪽을 보고(초엘리트), 아닌 놈은 저 혼자 돈다(모성).
           if (a !== null) C.grp.rotation.z = a
           else C.grp.rotation.z += C.spin * dt
           const beat = 1 + 0.16 * Math.sin(this.lockT * 7.5)
@@ -2727,8 +2675,16 @@ void main() {
               { fade: false, opacity: 0.32, z: 0, tailWidth: 1 })
         }
         this.aim.show(pred)
-      }
-    } else this.aim.hide()
+        // ── 지구가 밀리면, 밀린 뒤의 궤도를 미리 그린다 ──
+        // 이 발의 폭풍(또는 가스 유폭)이 지구에 닿을 때만 뜬다. 판 위의 어느
+        // 천체도 아닌 선이라 색으로 갈라 둔다: 살 만하면 호박색, 근일점이
+        // 태양에 닿으면 붉은색 — 그때는 이 한 발이 곧 런의 끝이다.
+        const shove = pred.hit?.earthShove
+        this.orbits.ghost(shove ? { x: shove.x, y: shove.y } : null,
+          shove ? { x: shove.vx, y: shove.vy } : null, g.aMax,
+          shove?.doomed ? 0xf87171 : 0xfbbf24)
+      } else this.orbits.ghost(null)
+    } else { this.aim.hide(); this.orbits.ghost(null) }
   }
 
 }

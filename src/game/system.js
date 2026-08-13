@@ -68,7 +68,7 @@ function freeOrbit(rng, bodies, aMax, rNew, nearBand = 0, band = null) {
   // 그렇다고 판정 원 합을 그대로 요구하면 지구 궤도 대역이 통째로 막힌다
   // (계측: 대역 738 GU 중 빈 자리가 31 GU) — 안쪽 판은 원래 그만큼 빽빽하다.
   // 그래서 **큰 이웃일 때만** 조인다: 판정 원 합의 0.6배와 예전 값 중 큰 쪽.
-  // 목성·토성·모함처럼 판정 원이 100 GU를 넘는 것들만 실제로 걸린다.
+  // 목성·토성·초엘리트처럼 판정 원이 100 GU를 넘는 것들만 실제로 걸린다.
   const slots = orbiting.map(b => {
     const r = Math.hypot(b.pos.x, b.pos.y)
     return { r, sep: Math.max(26 + rNew * 2.5, (hitNew + hitRadiusOf(b)) * 0.6) }
@@ -270,14 +270,13 @@ function warpBody(rng, bodies, aMax, spec) {
 // 둘 다 핵 한 방에 제 사건으로 죽어 표적 구실을 못 한다.
 const FORT_TYPES = ['rock', 'rock', 'iron']   // 요새는 암석이 기본, 가끔 금속(안 밀리는 표적)
 // 큐볼로 굴러오는 중립 천체 종류 — 태그 넷(금속·가스·얼음·불안정)이 여기서
-// 나온다. 요새·모함·초엘리트는 증원 경로에서만 붙고, 혜성은 벨트 밖에서만
+// 나온다. 요새·초엘리트는 증원 경로에서만 붙고, 혜성은 벨트 밖에서만
 // 들어온다(comet.js).
 const NEUTRAL_TYPES = ['rock', 'ice', 'ice', 'iron', 'gas', 'shard']
 
 // ── 배역서 ──────────────────────────────────────────────────────
-// 요새 한 기와 중립 한 기를 만드는 규칙. 판이 열릴 때(reinforce)와 모함이
-// 보충으로 보낼 때(summonFort·summonCue)가 **같은 규칙**을 써야 한다 —
-// 갈라 두면 "판이 열릴 때 온 요새"와 "중간에 온 요새"가 다른 물건이 된다.
+// 요새 한 기와 중립 한 기를 만드는 규칙. 판이 열릴 때 오는 것은 전부 여기를
+// 지난다 — 요새든 큐볼이든 "어디서 왔든 같은 물건"이어야 화면이 안 갈린다.
 // 질량은 판이 거듭될수록 무거워진다 — 무거우면 핵으로도 공으로도 덜 밀린다.
 // STAGE_CAP에서 멎는다: 판에 끝이 없으므로 안 멎으면 20판쯤의 "가장 무거운
 // 중립"이 목성 두 배가 되어 당구가 성립하지 않는다.
@@ -294,7 +293,7 @@ const fortMuFor = (rng, stage) =>
 const zorgName = (rng, tag) => `Zorg ${ZORG_NAMES[rng.int(0, ZORG_NAMES.length - 1)]}-${tag}`
 
 // outer = 바깥 대역에 세우는가. 부르는 쪽이 정한다 — 판이 열릴 때(reinforce)는
-// **마릿수로** 섞어 안팎이 반드시 함께 오게 하고, 모함이 보충으로 보낼 때는
+// **마릿수로** 섞어 안팎이 반드시 함께 오게 하고, 자리를 못 찾으면
 // 같은 비율로 추첨한다. 규칙 자체(대역·옆자리 폭)는 여기 한 곳에만 둔다.
 const canSpawnOuter = (stage) => stage >= CFG.FORT_OUTER_STAGE
 function fortSpec(rng, earth, stage, tag, heavy, outer = false) {
@@ -341,9 +340,7 @@ const forcedType = (stage) => (stage === CFG.UNSTABLE_STAGE ? 'shard' : null)
 const dressFort = (b) => { if (b && b.type === 'iron') b.mods = ['armor']; return b }
 
 // ── 요새 한 기를 실제로 세운다 ──────────────────────────────────
-// **판이 열릴 때(reinforce)와 모함이 보충할 때(summonFort)가 이 함수 하나를
-// 같이 쓴다.** 갈라 두면 "판이 열릴 때 온 요새"와 "중간에 온 요새"가 다른
-// 물건이 되는데, 화면에서 둘은 구분되지 않으므로 그건 그냥 규칙이 두 개인 것이다.
+// 판이 열릴 때(reinforce) 오는 요새는 전부 이 함수를 지난다.
 //
 // 바깥에 세울 요새는 **안쪽이라는 물러설 자리**가 있다. 그래서 바깥 시도는
 // 도달 검사를 끝까지 지키고(맞힐 수 없는 자리면 그냥 버린다), 안쪽 시도만
@@ -351,12 +348,9 @@ const dressFort = (b) => { if (b && b.type === 'iron') b.mods = ['armor']; retur
 // 그래서 "바깥 요새"는 언제나 **닿을 수 있는** 바깥 요새다(계측: 720발 전수
 // 조사에서 한 발도 안 꽂히는 요새가 안팎 모두 0기).
 //
-// verifyInner — 안쪽 자리까지 도달 검사를 돌릴 것인가. **부르는 쪽의 시간
-// 예산이 다르기 때문에** 나뉜다: 판 전환(reinforce)은 어차피 막이 내려가 있어
-// 수백 ms를 써도 되지만, 모함의 보충(summonFort)은 판이 굴러가는 중에 프레임
-// 안에서 돈다 — 거기서 검사를 다 돌리면 중앙 50ms·최대 173ms짜리 멈칫이
-// 생긴다(계측). 안쪽 자리는 원래 가까워서 검사를 통과하는 자리이므로
-// (720발 전수조사에서 0기), 여기서 아끼는 것이 잃는 것보다 크다.
+// verifyInner — 안쪽 자리까지 도달 검사를 돌릴 것인가. 판 전환은 막이 내려가
+// 있어 수백 ms를 써도 되므로 참으로 부른다. (판이 굴러가는 중에 요새를 세우는
+// 길은 이제 없다.)
 function placeFort(rng, pool, earth, aMax, stage, tag, heavy, wantOuter, verifyInner) {
   for (const outer of wantOuter ? [true, false] : [false]) {
     const spec = fortSpec(rng, earth, stage, tag, heavy, outer)
@@ -373,39 +367,8 @@ function placeFort(rng, pool, earth, aMax, stage, tag, heavy, wantOuter, verifyI
   return null
 }
 
-// ── 조르그 모함 ─────────────────────────────────────────────────
-// 궤도 **바깥**에 앉는다. 요새 대역(지구 궤도 0.55~1.6배)보다 멀어서
-// 한 발로 닿기 어렵고, 그래서 "지금 저것부터 칠 것인가"가 판단이 된다.
-const hiveBand = (earth) => {
-  const rE = Math.hypot(earth.pos.x, earth.pos.y)
-  return [rE * CFG.HIVE_BAND[0], rE * CFG.HIVE_BAND[1]]
-}
-
-function makeHive(rng, bodies, aMax, earth) {
-  const band = hiveBand(earth)
-  // 제약을 하나씩 풀며 자리를 찾되, 마지막 폴백은 **대역을 푸는 게 아니라
-  // 이웃 간격을 푼다**(rNew를 작게 줘서 요구 간격을 낮춘다). 대역을 풀었더니
-  // 모함이 지구 궤도의 3.6배 밖에 앉아 "저기까지 공을 굴려라"가 됐다(계측) —
-  // 이웃에 좀 붙는 건 오히려 낫다. 어차피 공을 맞아야 부서지는 물건이다.
-  // 그래도 자리가 없으면 이번 판에는 안 온다(다음 판에 다시 시도한다).
-  const orb = freeOrbit(rng, bodies, aMax, CFG.HIVE_R, CFG.HIVE_NEAR_BAND, band)
-    ?? freeOrbit(rng, bodies, aMax, CFG.HIVE_R, 0, band)
-    ?? freeOrbit(rng, bodies, aMax, CFG.HIVE_R, 0, [band[0] * 0.8, band[1] * 1.15])
-    ?? freeOrbit(rng, bodies, aMax, CFG.HIVE_R * 0.3, 0, [band[0] * 0.8, band[1] * 1.15])
-  if (!orb) return null
-  const b = makeBody({
-    id: nextId(), name: `Zorg ${ZORG_NAMES[rng.int(0, ZORG_NAMES.length - 1)]} Prime`,
-    type: 'hive', mu: CFG.HIVE_MU, radius: CFG.HIVE_R,
-    pos: orb.pos, vel: orb.vel, hp: CFG.HIVE_HP,
-    zorg: true, warp: 1,
-  })
-  b.role = 'hive'; b.isTarget = true
-  return b
-}
-
 // ── 초엘리트 조르그 행성 ────────────────────────────────────────
-// 모함과 정반대 자리에 앉는다. 모함은 궤도 **바깥**의 좁은 대역에 서서
-// "멀리 있는 두 번째 목표"였지만, 이놈은 **안쪽**이다 — 큐볼을 골라 지구로
+// 궤도 **안쪽**에 앉는다 — 큐볼을 골라 지구로
 // 처박는 것이 하는 일 전부이므로(siege.js) 굴릴 공이 널린 지구 궤도
 // 언저리에 있어야 그 수 자체가 성립한다.
 //
@@ -419,7 +382,7 @@ const siegeBand = (earth) => {
 
 function makeSiege(rng, bodies, aMax, earth) {
   const band = siegeBand(earth)
-  // 제약을 하나씩 푼다 — 모함과 같은 순서이고 마지막 폴백도 같다(대역이 아니라
+  // 제약을 하나씩 푼다 — 마지막 폴백은 대역이 아니라
   // 이웃 간격을 푼다). 자리가 없으면 이번 판에는 안 온다(다음 판에 다시 시도).
   const orb = freeOrbit(rng, bodies, aMax, CFG.SIEGE_R, CFG.SIEGE_NEAR_BAND, band)
     ?? freeOrbit(rng, bodies, aMax, CFG.SIEGE_R, 0, band)
@@ -435,22 +398,6 @@ function makeSiege(rng, bodies, aMax, earth) {
     zorg: true, warp: 1,
   })
   b.role = 'siege'; b.isTarget = true
-  return b
-}
-
-// 모함이 한 기 보낸다 — 판이 열릴 때와 같은 규칙으로 만들고, 자리도 같은
-// 제약(밀 수 있는 공 옆자리·지구에서 닿는 자리)으로 찾는다.
-export function summonFort(rng, bodies, earth, stage, tag) {
-  // 안팎 비율은 판이 열릴 때와 같다 — 다만 한 기씩 오므로 마릿수가 아니라 추첨이다.
-  const outer = canSpawnOuter(stage) && rng.next() < CFG.FORT_OUTER_FRAC
-  // verifyInner=false — 이 경로는 판이 굴러가는 중에 프레임 안에서 돈다(위 주석)
-  return placeFort(rng, bodies, earth, aMaxOf(stage), stage, tag, false, outer, false)
-}
-// earth는 안 쓰지만 자리는 지킨다 — 부르는 쪽(game.stepHive)이 summonFort와
-// 이 함수를 한 삼항식에서 갈라 부르므로, 인자가 어긋나면 그 줄이 읽히지 않는다.
-export function summonCue(rng, bodies, earth, stage, tag) {
-  const b = warpBody(rng, bodies, aMaxOf(stage), neutralSpec(rng, stage, tag))
-  if (b) b.zorg = false            // 굴러온 잔챙이 — 큐볼로 쓴다
   return b
 }
 
@@ -479,16 +426,15 @@ export function reinforce(rng, bodies, earth, stage) {
   // 그 대가는 판을 만드는 것들이 치렀다(24시드 계측):
   //   · 12판 평균 천체 30기 중 새 요새는 3.5기 — 마릿수 곡선(8기)이 room에
   //     잘려 **후반이 오히려 쉬워졌다.**
-  //   · 모함은 제 자리(궤도 바깥 좁은 대역)를 못 찾아 4판 88% → 12판 25%로
-  //     강림률이 무너졌다. 제일 공들인 물건이 후반에 사라진 셈이다.
+  //   · 초엘리트도 제 자리(궤도 안쪽 좁은 대역)를 못 찾는 판이 생겼다.
   //
-  // 이제 기준은 하나다: **굴릴 공이 모자란가.** 모함이 보충을 결정할 때
-  // (stepHive) 그리고 혜성이 주기를 당길 때(comet.js) 쓰는 것과 같은 문턱
-  // (HIVE_KEEP_CUE)이라, 성계를 채우는 **세 경로가 같은 질문을 한다.**
+  // 이제 기준은 하나다: **굴릴 공이 모자란가.** 혜성이 주기를 당길 때
+  // (comet.js) 쓰는 것과 같은 문턱(CUE_KEEP)이라, 성계를 채우는 **두 경로가
+  // 같은 질문을 한다.**
   // 태그 구경은 **못 박은 한 판**(UNSTABLE_STAGE)으로 충분하다 — 그 판만은
   // 굴릴 공이 넉넉해도 한 기를 세운다(정원이 남아 있는 한).
   const cueBalls = live.filter(b => !b.isEarth && !b.zorg).length
-  let neutral = cueBalls < CFG.HIVE_KEEP_CUE
+  let neutral = cueBalls < CFG.CUE_KEEP
     ? Math.min(CFG.REINF_NEUTRAL, cueBalls < 2 ? 2 : 1)
     : 0
   const forced = forcedType(stage)
@@ -497,25 +443,8 @@ export function reinforce(rng, bodies, earth, stage) {
 
   const added = []
 
-  // ── 조르그 모함 ── **제일 먼저 세운다.**
-  // 4스테이지부터, 판에 한 기도 없으면 한 기 온다. 이놈이 살아 있는 동안에는
-  // 요새가 계속 다시 차오르므로(game.stepHive), 판을 끝내려면 결국 여기를
-  // 끊어야 한다. 자리는 요새 대역 **바깥**이라 한 발로 닿기 어렵다.
-  //
-  // 순서가 규칙이다. 모함 대역(1.65~2.15 rE)은 바깥 요새 대역(1.6~2.4 rE)에
-  // 거의 통째로 덮여 있는데, 요새를 먼저 놓으면 그 자리를 요새가 가져가고
-  // 모함은 **자리를 못 찾아 아예 안 온다.** 요새에게는 물러설 자리가 넷
-  // (제 대역 / 반대 대역 / 옆자리 없이 / 안팎 합친 대역) 있지만 모함에게는
-  // 제 대역 하나뿐이므로, 제약이 심한 쪽이 먼저 앉아야 한다.
-  // (계측 24시드: 요새를 먼저 놓으면 4판 강림률 96% · 5~12판 75~92%로 들쭉날쭉
-  //  했고, 순서를 뒤집으니 4판부터 12판까지 전 구간 100%가 됐다.)
-  if (stage >= CFG.HIVE_STAGE && !live.some(b => b.role === 'hive')) {
-    const h = makeHive(rng, bodies, aMax, earth)
-    if (h) added.push(h)
-  }
-
-  // ── 초엘리트 ── 모함 다음, 요새보다 먼저.
-  // 순서가 규칙인 이유는 모함과 같다. 초엘리트 대역(0.85~1.65 rE)은 안쪽 요새
+  // ── 초엘리트 ── **제일 먼저 세운다.**
+  // 순서가 규칙이다. 초엘리트 대역(0.85~1.65 rE)은 안쪽 요새
   // 대역(0.55~1.6 rE)에 거의 통째로 덮여 있는데, 판정 원이 92.8 GU나 되는
   // 덩치라 요새 예닐곱 기가 먼저 앉은 뒤에는 들어갈 틈이 남지 않는다.
   // 물러설 자리가 넷인 요새와 달리 이놈에게는 제 대역 하나뿐이므로,
@@ -555,7 +484,6 @@ export function reinforce(rng, bodies, earth, stage) {
   return {
     added,
     fortresses: added.filter(b => b.role === 'battery'),
-    hives: added.filter(b => b.role === 'hive'),
     sieges: added.filter(b => b.role === 'siege'),
     aMax,
   }

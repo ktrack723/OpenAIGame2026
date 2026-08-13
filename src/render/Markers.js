@@ -28,8 +28,6 @@ const LABEL_H = 26   // 라벨 표시 높이(CSS px) — 줌과 무관하게 일
 const ARROW_PX = 13
 const EARTH_TONE = 0x60a5fa   // 지구 — 파랑(공 테두리와 같은 색)
 const FOE_TONE = 0xf43f5e     // 조르그 요새 — 붉은색(표적 테두리와 같은 색)
-const HIVE_TONE = 0xe879f9    // 조르그 모함 — 자주(배지와 같은 색). 요새와 갈린다
-const HIVE_SCALE = 1.5        // 모함 화살표만 조금 크다 — 저건 다른 물건이다
 const COMET_TONE = 0x7dd3fc   // 혜성 — 얼음빛. 표적이 아니라 **손님**이라는 게 색으로 갈린다
 
 function labelSprite(text, color, bg) {
@@ -85,8 +83,8 @@ export class Markers {
   foeArrow(b) {
     let a = this.foeArrows.get(b.id)
     if (!a) {
-      a = arrowMesh(b.comet ? COMET_TONE : b.role === 'hive' ? HIVE_TONE : FOE_TONE)
-      a.userData.scale = b.role === 'hive' ? HIVE_SCALE : 1
+      a = arrowMesh(b.comet ? COMET_TONE : FOE_TONE)
+      a.userData.scale = 1
       this.scene.add(a); this.foeArrows.set(b.id, a)
     }
     return a
