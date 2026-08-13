@@ -901,8 +901,19 @@ export class Game {
       // 쓰면 원일점이 문턱 바로 아래로 내려오는 순간 멎어서, 이심률 0.39짜리
       // 길쭉한 타원으로 남는다(계측에서 실제로 그랬다) — 그건 원궤도가 아니다.
       const wild = !o.bound || o.apo > beltR * CFG.ORBIT_KEEP_APO
-      if (!b.keeping && !wild) continue
-      if (b.keeping && o.bound && o.e <= CFG.ORBIT_KEEP_E_OK) { b.keeping = 0; continue }
+      if (!b.keeping && !wild) { b.keepT = 0; continue }
+      if (b.keeping && o.bound && o.e <= CFG.ORBIT_KEEP_E_OK) { b.keeping = 0; b.keepT = 0; continue }
+      // ── 즉발이 아니다 ────────────────────────────────────────
+      // 조건이 참이 되는 그 프레임에 바로 태우면, 잘 친 한 방이 **화면에
+      // 보이기도 전에** 되감긴다: 공이 크게 밀려 나가는 그림이 이 게임의
+      // 보상인데 그 순간을 판이 지워 버린다. 그리고 밀려 나간 공이 다른 공을
+      // 맞히러 가는 중일 수도 있다 — 그 몇 초가 곧 당구다.
+      // 그래서 "벽에 박는 궤도"가 이만큼 이어진 뒤에야 점화한다. 도중에
+      // 궤도가 제자리로 돌아오면(다른 충돌·다음 한 발) 시계는 0으로 돌아간다.
+      if (!b.keeping) {
+        b.keepT = (b.keepT ?? 0) + dt
+        if (b.keepT < CFG.ORBIT_KEEP_DELAY) continue
+      }
       // **판 안쪽에서만** 태운다. 제일 바깥에서 태우면 그 자리에 원궤도가 생겨
       // 벨트 옆에 주차해 버린다 — 판이 벌어지는 곳은 안쪽이므로, 안쪽을 지날 때만
       // 잡아서 거기로 내려앉게 한다. 로제트를 그리는 공은 한 바퀴에 한 번은
@@ -915,7 +926,7 @@ export class Game {
       const tx = -b.pos.y / r * vc * spin, ty = b.pos.x / r * vc * spin
       const dx = tx - b.vel.x, dy = ty - b.vel.y
       const d = Math.hypot(dx, dy)
-      if (d < 1e-6) { b.keeping = 0; continue }
+      if (d < 1e-6) { b.keeping = 0; b.keepT = 0; continue }
       const step = Math.min(d, CFG.ORBIT_KEEP_DV * dt)
       b.vel.x += dx / d * step; b.vel.y += dy / d * step
       // 화면에서 "쟤가 지금 스스로 돌아오는 중"으로 읽히게 궤도선을 밝힌다.
