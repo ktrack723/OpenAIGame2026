@@ -62,7 +62,7 @@ export const ja = {
   'lcd.warn.blast': '⚠ 爆風半径に地球',
   'lcd.warn.earthPush': '⚠ 地球が押される Δv{dv} — 近日点 {a}→{b} GU',
   'lcd.warn.earthSun': '☠ 地球が太陽へ落ちる — この一発でランが終わる',
-  'lcd.warn.earthOut': '⚠ 地球が脱出軌道へ押し出される Δv{dv} — ベルトまで行って戻る',
+  'lcd.warn.earthOut': '⚠ 地球が脱出軌道へ押し出される Δv{dv} — ベルトに弾かれて戻るが軌道は大きく伸びる',
   'lcd.warn.spray': '⚠ 扇の中に地球 — 散弾が我が家へ飛ぶ',
   'lcd.warn.armor': '重い — インパルス {pct}%',
   'lcd.warn.boost': '⚠ スラスター — 気づけば避ける',

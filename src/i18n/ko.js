@@ -68,7 +68,7 @@ export const ko = {
   'lcd.warn.blast': '⚠ 폭풍 반경에 지구',
   'lcd.warn.earthPush': '⚠ 지구가 밀린다 Δv{dv} — 근일점 {a}→{b} GU',
   'lcd.warn.earthSun': '☠ 지구가 태양으로 떨어진다 — 이 발을 쏘면 런이 끝난다',
-  'lcd.warn.earthOut': '⚠ 지구가 탈출 궤도로 밀린다 Δv{dv} — 벨트까지 갔다 온다',
+  'lcd.warn.earthOut': '⚠ 지구가 탈출 궤도로 밀린다 Δv{dv} — 벨트에 튕겨 돌아오되 궤도가 크게 늘어진다',
   'lcd.warn.spray': '⚠ 부채꼴 안에 지구 — 산탄이 우리 집으로 간다',
   'lcd.warn.armor': '무겁다 — 임펄스 {pct}%',
   'lcd.warn.boost': '⚠ 추진기 — 알아채면 비켜선다',

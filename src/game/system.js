@@ -103,8 +103,20 @@ function freeOrbit(rng, bodies, aMax, rNew, nearBand = 0, band = null, sepMul = 
   // band = [lo, hi] 가 주어지면 그 반경대 안에서만 자리를 찾는다
   const aLo = Math.max(aFloor, Math.min(band ? band[0] : CFG.A_MIN * 1.15, aHi * 0.92))
   const rWall = beltRadius(aMax) - CFG.BELT_THICK
+  // ── 지구의 차선은 비운다 ──────────────────────────────────────
+  // 아래 겹침 검사는 **지금 거기 있는가**만 본다(지구 판정 원의 5배). 그런데
+  // 궤도 반경이 지구와 같으면 지금 반대편에 있어도 언젠가는 반드시 만난다 —
+  // 워프 이심률이 최대 0.07이라 a=670에서 반경이 ±47 GU를 오가고, 지구도 제
+  // 몫만큼 흔들리기 때문이다. 그 만남은 지구 체력 3점 중 1점이고(EARTH_MAX_DMG),
+  // 무엇보다 **궤도를 갈아 버린다**: 계측에서 그렇게 한 대 맞은 지구가 근일점
+  // 680 → 1622로 튕겨 나갔고, 다음 판이 열리자마자 25초 만에 세 대를 더 맞고
+  // 끝났다(msg.fail.earthCrush). 판이 만든 천체가 판을 끝내면 그건 난이도가
+  // 아니다 — 플레이어가 손쓸 수 있는 자리가 없다.
+  const earth = live.find(b => b.isEarth)
+  const earthR = earth ? Math.hypot(earth.pos.x, earth.pos.y) : 0
   for (let tries = 0; tries < 240; tries++) {
     const a = aLo + rng.next() * Math.max(1, aHi - aLo)
+    if (earthR > 0 && Math.abs(a - earthR) < CFG.EARTH_LANE) continue
     // 궤도 반경이 기존 공들과 최소 이만큼은 벌어져야 서로 안 스친다.
     let ok = true
     for (const s of slots) if (Math.abs(a - s.r) < s.sep) { ok = false; break }
@@ -364,6 +376,28 @@ function neutralSpec(rng, stage, tag, forceType = null) {
 // 순서만 정해 두면 된다 — 겹치면 앞의 것이 이긴다.
 const forcedType = (stage) => (stage === CFG.UNSTABLE_STAGE ? 'shard' : null)
 
+// ── 판 도중의 굴릴 공 보충 ──────────────────────────────────────
+// CUE_KEEP은 **바닥값**인데, 판이 열릴 때 한 번만 채우면 바닥이 아니라 출발선이다.
+// 계측(시드101)이 그 차이를 보여 준다 — 판마다 10기로 열지만:
+//   1판 14→5 · 2판 10→4 · 3판 10→4 · 4판 10→2
+// 130초면 바닥을 뚫고, 그다음부터는 남은 표적을 죽일 방법 자체가 없다.
+// 4판은 마지막 한 기를 놓고 t=286s부터 시한(722s)까지 436초를 그냥 흘렸다.
+// 핵은 밀기만 하고 죽이는 것은 충돌이므로, 굴릴 공이 마르면 그건 난이도가
+// 아니라 벽이다(CUE_KEEP 주석). 그래서 판이 도는 동안에도 바닥을 지킨다.
+//
+// 한 번에 한 기씩만 보낸다 — 한꺼번에 채우면 판이 갑자기 붐비고, 무엇보다
+// 플레이어가 조준하던 그림이 통째로 바뀐다. 보낼 자리가 없으면(정원·자리)
+// 조용히 아무것도 안 한다: 못 보내는 것은 사고가 아니라 그냥 꽉 찬 판이다.
+export function sendCueBall(rng, bodies, earth, stage, tag) {
+  const live = bodies.filter(b => b.alive && b.type !== 'debris' && !b.comet)
+  if (live.length >= CFG.SYSTEM_CAP) return null
+  const cueBalls = live.filter(b => !b.isEarth && !b.zorg).length
+  if (cueBalls >= CFG.CUE_KEEP) return null
+  const b = warpBody(rng, bodies, aMaxOf(stage), neutralSpec(rng, stage, tag))
+  if (b) b.zorg = false          // 중립으로 굴러온 잔챙이 — 큐볼로 쓴다
+  return b
+}
+
 // 만들어 놓고 붙일 것 — 금속 요새는 장갑 태그를 겹쳐 얹는다.
 const dressFort = (b) => { if (b && b.type === 'iron') b.mods = ['armor']; return b }
 
@@ -461,10 +495,17 @@ export function reinforce(rng, bodies, earth, stage) {
   // 같은 질문을 한다.**
   // 태그 구경은 **못 박은 한 판**(UNSTABLE_STAGE)으로 충분하다 — 그 판만은
   // 굴릴 공이 넉넉해도 한 기를 세운다(정원이 남아 있는 한).
+  // **바닥까지 채운다.** 예전에는 모자라면 한 기(둘 미만이면 두 기)만 보냈는데,
+  // 그건 바닥값이 아니라 인사치레였다 — 계측이 그 차이를 이렇게 보여 준다:
+  //   · 표적만 지우고 넘긴 판: 굴릴 공이 1~7판 내내 14~15기로 그대로다.
+  //   · 봇이 실제로 굴린 판:   14 → 4 → 2 → 0기. 3판에서 성계가 말랐다.
+  // 1판 하나를 깨는 데 굴릴 공 11기가 없어진다(사인별: 충돌 5 · 유폭 4 · 태양 2).
+  // 요새를 죽이는 유일한 길이 공을 처박는 것이고 그때 공도 같이 죽으므로,
+  // 판을 진짜로 굴리면 재고는 이 속도로 준다. 거기에 한 기씩 채워 넣으면
+  // 산수가 안 맞는다 — 그리고 재고가 마르면 남은 요새를 죽일 방법 자체가 없어진다
+  // (자동 플레이 15판이 전부 2~5판에서 끝났고, 그중 아홉이 시한 초과였다).
   const cueBalls = live.filter(b => !b.isEarth && !b.zorg).length
-  let neutral = cueBalls < CFG.CUE_KEEP
-    ? Math.min(CFG.REINF_NEUTRAL, cueBalls < 2 ? 2 : 1)
-    : 0
+  let neutral = Math.min(CFG.REINF_NEUTRAL, Math.max(0, CFG.CUE_KEEP - cueBalls))
   const forced = forcedType(stage)
   if (forced) neutral = Math.max(neutral, 1)
   neutral = Math.min(neutral, Math.max(0, room - fort))

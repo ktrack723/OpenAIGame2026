@@ -10,7 +10,7 @@ import { hasRole, roleOf, shardReach, volatileRadius } from './roles.js'
 import { makeGoal } from './objectives.js'
 import { msg, nameOf } from '../i18n/index.js'
 import { bearing } from '../core/angle.js'
-import { createSystem, reinforce } from './system.js'
+import { createSystem, reinforce, sendCueBall } from './system.js'
 import { stepComets } from './comet.js'
 import { makeBody } from './body.js'
 import { chargeLeft, impactLeft, makeDoom, makeLaser, propagate, stepDoom, stepLaser, stepSpent, LASER_CHARGE, LASER_SPENT, LASER_TRAVEL } from './laser.js'
@@ -389,6 +389,28 @@ export class Game {
   // 첫 판에서 제일 먼저 봐야 할 장면을 오버레이 뒤에서 놓치는 것이다.
   // 그래서 튜토리얼을 닫는 순간부터 카운트다운이 시작된다.
   get warpPending() { return this.warpHold || this.bodies.some(b => (b.warpIn ?? 0) > 0) }
+  // ─── 굴릴 공의 바닥을 판 도중에도 지킨다 ─────────────────────
+  // system.sendCueBall이 "지금 모자란가"를 판단하고, 여기서는 **언제 묻는가**만
+  // 정한다. 판이 열릴 때 채우는 것만으로는 130초면 바닥을 뚫는다(그쪽 주석의
+  // 계측). 굴릴 공이 없으면 남은 표적을 죽일 방법이 아예 없으므로, 그 상태로
+  // 시한을 흘려보내는 것은 난이도가 아니라 판이 멈춘 것이다.
+  //
+  // 워프인은 개막과 같은 연출을 그대로 탄다(warp/warpIn) — 갑자기 생기지 않고
+  // 걸어 들어온다. 다만 **개막 시계(spawnEnd)는 안 건드린다**: 저건 "막을 언제
+  // 걷는가"라서, 판 도중의 보충이 막을 다시 내리면 조작이 멈춘다.
+  stepCueSupply(dt) {
+    // 개막 중·판이 끝난 뒤·모성이 온 뒤에는 보내지 않는다 — 그때의 판은
+    // 플레이어가 손대는 판이 아니다.
+    if (this.won || this.lost || this.doom || this.warpCurtain || this.warpPending) return
+    this.cueT = (this.cueT ?? 0) + dt
+    if (this.cueT < CFG.CUE_CHECK) return
+    this.cueT = 0
+    const b = sendCueBall(this.rng, this.bodies, this.earth, this.stage, `${this.stage}c${this.cueN = (this.cueN ?? 0) + 1}`)
+    if (!b) return
+    b.alive = false; b.warp = 1; b.warpIn = CFG.WARP_LEAD
+    this.bodies.push(b)
+  }
+
   stepWarpIns(dtReal) {
     if (this.warpHold) return
     for (const b of this.bodies) {
@@ -652,6 +674,7 @@ export class Game {
     stepBodies(this.bodies, dt)
     this.stepDodge(dt)
     stepComets(this, dt)
+    this.stepCueSupply(dt)
     this.tickSieges(dt)
     this.stepFoeShots(dt)
     for (const m of this.missiles) {

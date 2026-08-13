@@ -62,7 +62,7 @@ export const zhHant = {
   'lcd.warn.blast': '⚠ 地球在衝擊波半徑內',
   'lcd.warn.earthPush': '⚠ 地球被推動 Δv{dv} — 近日點 {a}→{b} GU',
   'lcd.warn.earthSun': '☠ 地球將墜入太陽 — 這一發會結束本局',
-  'lcd.warn.earthOut': '⚠ 地球被推上逃逸軌道 Δv{dv} — 飛到帶邊再折回',
+  'lcd.warn.earthOut': '⚠ 地球被推上逃逸軌道 Δv{dv} — 會被帶邊彈回，但軌道大幅拉長',
   'lcd.warn.spray': '⚠ 地球在扇形裡 — 霰彈會打回老家',
   'lcd.warn.armor': '很重 — 衝量只有 {pct}%',
   'lcd.warn.boost': '⚠ 推進器 — 察覺就會閃避',

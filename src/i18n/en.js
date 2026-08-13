@@ -62,7 +62,7 @@ export const en = {
   'lcd.warn.blast': '⚠ Earth inside the blast radius',
   'lcd.warn.earthPush': '⚠ Earth gets shoved Δv{dv} — perihelion {a}→{b} GU',
   'lcd.warn.earthSun': '☠ Earth falls into the sun — this shot ends the run',
-  'lcd.warn.earthOut': '⚠ Earth shoved onto an escape orbit Δv{dv} — out to the belt and back',
+  'lcd.warn.earthOut': '⚠ Earth pushed onto an escape orbit Δv{dv} — the belt bounces it back, far wider',
   'lcd.warn.spray': '⚠ Earth inside the cone — the shot goes home',
   'lcd.warn.armor': 'Heavy — impulse {pct}%',
   'lcd.warn.boost': '⚠ Thruster — it dodges once it notices',
