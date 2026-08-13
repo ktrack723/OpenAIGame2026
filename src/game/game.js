@@ -374,11 +374,16 @@ export class Game {
     if (this.paused) return 0
     if (this.lost || this.won) return 0   // 클리어 후에는 시계를 세운다
     // ── 모성이 온 뒤 ──
-    // **이 판만은 안 멈춘다.** 조준 모드로 들어가도 난사는 계속 온다(느려질 뿐이다).
-    // 0으로 두면 조준 모드로 난사를 얼려 놓고 느긋하게 겨눌 수 있는데, 그러면
-    // 마지막 장면이 그냥 한 판 더가 된다. 배속을 올리는 것도 막는다 — 저쪽의
-    // 시간이다. 진행 버튼(SHIFT)을 누르는 동안에만 제 속도로 흐른다.
-    if (this.doom) return this.mode === 'aim' ? (this.advancing ? 1 : CFG.DOOM_AIM_SCALE) : 1
+    // **이 판만은 안 멈춘다.** 조준 모드로 들어가도 난사는 계속 온다. 0으로 두면
+    // 조준 모드로 난사를 얼려 놓고 느긋하게 겨눌 수 있는데, 그러면 마지막 장면이
+    // 그냥 한 판 더가 된다. 배속을 올리는 것도 막는다 — 저쪽의 시간이다.
+    //
+    // 그리고 **제 속도로 흐른다.** 예전에는 조준 모드만 절반 속도였는데
+    // (DOOM_AIM_SCALE 0.5), 그 값이 노린 것은 "급하되 손이 떨릴 만큼은 아니게"
+    // 였지만 실제로 한 일은 이 장면 전체를 두 배로 늘리는 것이었다 —
+    // 16시드 계측으로 워프인에서 지구 소멸까지 3.9초가 7.9초가 됐다. 슬로모션은
+    // 한 박자를 강조할 때 쓰는 것이지 판 하나에 통째로 거는 것이 아니다.
+    if (this.doom) return 1
     if (this.mode === 'aim') {
       // 기본은 정지. 진행 버튼(SHIFT)을 누르고 있는 동안만 흐른다.
       if (!this.advancing) return 0
@@ -1884,7 +1889,7 @@ export class Game {
 
   // 조준 가능 = 조준 모드일 것. 관측 모드에서는 조준선도 발사대도 사라진다.
   // (모성이 와 있어도 조준은 열려 있다 — 다만 그동안 판이 안 멈춘다.
-  //  effTimeScale의 DOOM_AIM_SCALE 참고.)
+  //  effTimeScale의 doom 분기 참고. 느려지지도 않는다.)
   get canAim() {
     return this.mode === 'aim' && !this.won && !this.lost && this.earth.alive
   }

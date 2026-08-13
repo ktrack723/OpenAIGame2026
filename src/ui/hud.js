@@ -500,9 +500,14 @@ const failWhy = (reason, game) => reason === 'TIME_UP' ? ''
   : reason === 'EARTH_LOST' ? t('over.why.EARTH_LOST')
   : tx(game.message)
 
-// 패배 화면을 올리기까지 기다리는 실시간(ms). 지구 화구가 피었다 잦아드는
-// 시간이다 — 이보다 짧으면 자기가 어떻게 죽었는지 못 보고 패널만 본다.
-const OVER_DELAY = 2200
+// 패배 화면을 올리기까지 기다리는 실시간(ms). 지구 화구가 **피는** 시간이다 —
+// 0이면 자기가 어떻게 죽었는지 못 보고 패널만 본다.
+//
+// 2200이던 값이다. 근거는 "화구가 피었다 잦아들 때까지"였는데, 잦아드는 쪽은
+// 볼 필요가 없다: 터지는 순간에 이미 다 읽히고(섬광 + 화면 흔들림), 남은 1초는
+// 잔해가 흩어지는 것을 패널 없이 보고 있는 시간이었다. 패널 자체가 0.5초에
+// 걸쳐 떠오르므로(style.css의 goin) 그 뒤로도 화구는 계속 보인다.
+const OVER_DELAY = 1200
 
 const CTRL_IDS = ['#fire', '#findPrev', '#findNext']
 
@@ -516,7 +521,7 @@ export function updateHud(el, game) {
   const cine = !!game.cinematic
   // 모성이 와 있어도 조준 패널은 걷지 않는다 — 저것을 부수는 유일한 길이
   // 공을 던지는 것이라(game.doomBroken), 패널을 감추면 그 길이 닫힌다.
-  // 그 대신 판이 안 멈춘다(effTimeScale의 DOOM_AIM_SCALE).
+  // 그 대신 판이 안 멈춘다(effTimeScale의 doom 분기 — 느려지지도 않는다).
   const observing = (game.mode === 'observe' && !game.runOver) || cine
   // 관측 바(조준 모드 · 배속)는 **플레이어의 것**이다. 그래서 예고편이 도는
   // 동안에는 안 띄운다 — 누를 수 없는 버튼이 화면 아래에 앉아 있으면 지금
