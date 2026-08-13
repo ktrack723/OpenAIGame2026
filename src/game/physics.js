@@ -1,6 +1,6 @@
 import { CFG, R_SCALE, blastRadius, contactDist, nukeDv, radiusOf } from './config.js'
 import { cloneBody, makeBody } from './body.js'
-import { effDv } from './roles.js'
+import { effDv, roleOf } from './roles.js'
 import { clone, vec } from '../core/vector.js'
 
 // ─── T1-1: N체 가속도 — 태양(원점 고정) + 행성 상호작용 (§4.2) ───
@@ -254,16 +254,36 @@ export function blastWave(bodies, blastX, blastY, yld, skip) {
   const R = blastRadius(yld), out = []
   for (const o of bodies) {
     if (!o.alive || o === skip) continue
-    let dx = o.pos.x - blastX, dy = o.pos.y - blastY
-    const d = Math.hypot(dx, dy)
-    if (d > R || d < 1e-6) continue
-    const falloff = 1 - d / R
-    const dv = effDv(o, yld) * CFG.BLAST_PUSH * falloff * falloff
-    o.vel.x += dx / d * dv; o.vel.y += dy / d * dv
+    const p = blastPushOn(o, blastX, blastY, yld)
+    if (!p) continue
+    o.vel.x += p.dx * p.dv; o.vel.y += p.dy * p.dv
     o.trailFlash = 1.5
-    out.push({ body: o, dv })
+    out.push({ body: o, dv: p.dv })
   }
   return { radius: R, pushed: out }
+}
+
+// 폭풍이 **이 공 하나**를 얼마나 미는가. 밀지 않으면 null.
+// blastWave가 실제로 미는 값과, 조준 화면이 "지구가 얼마나 밀리는가"를 미리
+// 보여줄 때 쓰는 값이 **같은 식이어야** 한다(aim.earthShove) — 갈라 두면
+// 화면이 예고한 궤도와 실제로 밀린 궤도가 다른, 제일 나쁜 종류의 거짓말이 된다.
+export function blastPushOn(o, blastX, blastY, yld) {
+  const R = blastRadius(yld)
+  const dx = o.pos.x - blastX, dy = o.pos.y - blastY
+  const d = Math.hypot(dx, dy)
+  if (d > R || d < 1e-6) return null
+  const falloff = 1 - d / R
+  return { dx: dx / d, dy: dy / d, dv: effDv(o, yld) * CFG.BLAST_PUSH * falloff * falloff, radius: R }
+}
+
+// 가스 행성의 유폭이 **이 공 하나**를 얼마나 미는가. 밀지 않으면 null.
+// 위와 같은 이유로 game.volatileBlast와 이 함수가 한 식을 본다.
+export function volatilePushOn(o, b, R) {
+  const dx = o.pos.x - b.pos.x, dy = o.pos.y - b.pos.y
+  const d = Math.hypot(dx, dy)
+  if (d > R || d < 1e-6) return null
+  const f = 1 - d / R
+  return { dx: dx / d, dy: dy / d, dv: CFG.VOLATILE_IMPULSE * f * f / o.mu * (roleOf(o)?.dvScale ?? 1), radius: R }
 }
 
 // ─── 파편 생성 (§6.1): n = clamp(4+⌊μ/150⌋, 4, 9), 총질량 55% ───

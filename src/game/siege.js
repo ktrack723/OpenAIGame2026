@@ -5,7 +5,7 @@ import { effDv } from './roles.js'
 
 // ─── 초엘리트 조르그 행성 — 저쪽도 당구를 친다 ──────────────────
 //
-// 5스테이지부터 성계에 한 기 앉는다. 하는 일은 요새(광선)와도 모함(증원)과도
+// 5스테이지부터 성계에 한 기 앉는다. 하는 일은 요새(광선)와도
 // 다르다: **핵미사일로 중립 행성을 골라 지구에 처박는다.** 플레이어가 판
 // 내내 해 온 그 수를 그대로 되돌려 주는 물건이다.
 //
@@ -43,7 +43,7 @@ export const SIEGE_FLY = 'fly'
 // 큐볼 자격 — **밀리는 공이어야** 이 수가 성립한다. 요새가 옆자리를 고를 때
 // 쓰는 것과 같은 문턱을 쓴다(CFG.FORT_CUE_MIN_DV): 목성·토성처럼 무거운
 // 공은 6Mt로는 꿈쩍도 안 하므로 골라도 헛수다.
-// 조르그가 제 편(요새·모함·다른 초엘리트)을 치지는 않는다 — 그건 당구가
+// 조르그가 제 편(요새·다른 초엘리트)을 치지는 않는다 — 그건 당구가
 // 아니라 자해다. 파편은 공이 아니고, 모성은 아무것도 안 통한다.
 //
 // 가스(유폭)와 불안정(파열)도 뺀다. 밀리는 대신 **다른 일**을 하는 공이라,
@@ -56,7 +56,7 @@ function candidates(game, from) {
   const out = []
   for (const b of game.bodies) {
     if (!b.alive || b === from || b.isEarth) continue
-    if (b.zorg || b.role === 'battery' || b.role === 'hive' || b.role === 'siege') continue
+    if (b.zorg || b.role === 'battery' || b.role === 'siege') continue
     if (b.type === 'debris' || b.mothership) continue
     if (b.role === 'volatile' || b.role === 'unstable') continue
     if ((b.warpIn ?? 0) > 0) continue
@@ -134,7 +134,7 @@ function trial(cue, earth, ang, dv, horizon) {
 // 천체 둘이고, 그 앞에 후보마다 미래로 한 번씩 굴린다(2700스텝 × 1체).
 // 이 함수가 도는 프레임은 **중앙 17ms · 최대 64ms**다(10시드 계측, 36회).
 // 프레임 하나를 그만큼 붙잡는 셈인데 이 주기는 200초에 한 번이라 화면에서는
-// 안 보인다(모함의 보충도 같은 급의 멈칫을 낸다 — system.placeFort 주석).
+// 안 보인다(판 전환의 자리 찾기도 같은 급의 비용이다 — system.placeFort 주석).
 // 후보를 셋으로 자르는 것이 그 예산의 전부라 여기를 늘리려면 다시 재야 한다.
 export function solveCarom(game, from) {
   const pool = candidates(game, from).slice(0, 3)

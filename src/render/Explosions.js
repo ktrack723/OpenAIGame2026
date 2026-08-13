@@ -36,8 +36,7 @@ export class Explosions {
       else if (e.kind === 'swing') {
         this.parts.shock(e.x, e.y, Math.max(24, (e.r ?? 10) * CFG.SWING_ZONE * 0.5), 0x67e8f9, 0.6)
         this.parts.burst(e.x, e.y, { n: 26, color: 0x67e8f9, speed: 110, size: 8, ttl: 0.7 })
-      } else if (e.kind === 'hive') this.hive(e)
-      else if (e.kind === 'siegeLock') this.siegeLock(e)
+      } else if (e.kind === 'siegeLock') this.siegeLock(e)
       else if (e.kind === 'siegeFire') this.siegeFire(e)
       else if (e.kind === 'siegeNuke') this.siegeNuke(e)
       else if (e.kind === 'siegePush') this.siegePush(e)
@@ -56,21 +55,6 @@ export class Explosions {
     q.length = 0
   }
 
-  // ─── 조르그 모함의 송출 ──────────────────────────────────────
-  // 폭발이 아니라 **보냈다**는 표시다. 모함 자리에서 자주색 고리가 한 번
-  // 퍼지고(= 여기서 나갔다), 도착지에도 같은 색 고리가 뜬다(= 저기로 갔다).
-  // 실제 워프인 연출(warp)은 그 뒤 도착 시각에 따로 뜨므로 여기서는 둘을
-  // **잇는 것**만 한다 — 화면 밖이라도 "또 하나 왔다"가 색으로 읽힌다.
-  hive(e) {
-    const P = this.parts, C = 0xe879f9, R = Math.max(50, e.r ?? 60)
-    P.shock(e.x, e.y, R * 2.2, C, 0.7)
-    P.puff(e.x, e.y, { r0: R * 0.4, r1: R * 1.5, ttl: 0.5, color: C, alpha: 0.5 })
-    P.burst(e.x, e.y, { n: 40, color: C, speed: 150, size: 9, ttl: 0.8 })
-    if (e.tx !== undefined) {
-      P.shock(e.tx, e.ty, 90, C, 0.8)
-      P.burst(e.tx, e.ty, { n: 26, color: C, speed: 90, size: 8, ttl: 0.7 })
-    }
-  }
 
   // ─── 초엘리트의 한 수 ────────────────────────────────────────
   // 셋 다 조르그 것이므로 **주홍**으로 묶는다. 내 핵의 화구는 흰빛에서
@@ -495,9 +479,9 @@ export class Explosions {
   // 폭발의 문법(밖으로 퍼지는 화구·충격파)을 여기서는 하나도 안 쓴다 —
   // 써 버리면 0.45초 뒤의 진짜 폭발이 두 번째 폭발로 읽힌다.
   //
-  // 색은 조르그의 것이다: 요새는 장미(제 회로 불빛과 같은 색), 모함·모성은 자주.
+  // 색은 조르그의 것이다: 요새는 장미(제 회로 불빛과 같은 색), 모성은 자주.
   zorgCharge(e) {
-    const P = this.parts, C = e.hive ? 0xe879f9 : 0xff2b3f
+    const P = this.parts, C = e.capital ? 0xe879f9 : 0xff2b3f
     const R = Math.max(60, (e.r ?? 30) * 1.6)
     // ① 안으로 조여드는 링 둘 — 힘이 모인다(from > to = 수축)
     P.shock(e.x, e.y, R, 0xffffff, 0.40, { thin: true, from: 3.0, to: 0.12, alpha: 1 })
@@ -515,7 +499,7 @@ export class Explosions {
         _pc.setHex(Math.random() < 0.4 ? 0xffffff : C), 6 + Math.random() * 6, 0.38, 0.2)
     }
     this.rig.focus(e.x, e.y, R * 3.4, 1.4)
-    this.flash(0.12, e.hive ? '#ffe6ff' : '#ffdfe6')
+    this.flash(0.12, e.capital ? '#ffe6ff' : '#ffdfe6')
   }
 
   // ─── 조르그 폭파 — 빛기둥이 판을 가른다 ──────────────────────
@@ -523,9 +507,9 @@ export class Explosions {
   //   기둥이 있다 / 색이 장미·자주다 / 파편 대신 금속 조각이 곧게 날아간다.
   // 화면 구석에서 터져도 "저건 조르그였다"가 형태와 색으로 읽혀야 한다.
   destroyZorg(e) {
-    const P = this.parts, C = e.hive ? 0xe879f9 : 0xff2b3f
+    const P = this.parts, C = e.capital ? 0xe879f9 : 0xff2b3f
     const R = Math.max(80, (e.r ?? 30) * 3.6)
-    this.flash(0.9, e.hive ? '#ffe6ff' : '#ffe0e8')
+    this.flash(0.9, e.capital ? '#ffe6ff' : '#ffe0e8')
     // ① 흰 코어가 터진다
     P.puff(e.x, e.y, { r0: R * 0.28, r1: R * 1.35, ttl: 0.24, color: 0xffffff, alpha: 1 })
     P.puff(e.x, e.y, { r0: R * 0.15, r1: R * 2.3, ttl: 1.2, color: C, alpha: 0.95, delay: 0.05 })

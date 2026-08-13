@@ -149,10 +149,10 @@ export function stepComets(game, dt) {
 
   game.cometT += dt
   const cues = game.bodies.filter(b => b.alive && !b.isEarth && !b.zorg && !b.comet && b.type !== 'debris').length
-  // 굴릴 공이 모자라면 주기가 당겨진다 — 모함이 보충을 결정할 때 쓰는 것과
-  // 같은 문턱(HIVE_KEEP_CUE)이라 성계를 채우는 세 경로가 같은 질문을 한다.
+  // 굴릴 공이 모자라면 주기가 당겨진다 — 판이 열릴 때 증원을 정하는 것과
+  // 같은 문턱(CUE_KEEP)이라 성계를 채우는 두 경로가 같은 질문을 한다.
   const wait = (game.cometN ? CFG.COMET_PERIOD : CFG.COMET_FIRST)
-    * (cues < CFG.HIVE_KEEP_CUE ? CFG.COMET_RUSH : 1)
+    * (cues < CFG.CUE_KEEP ? CFG.COMET_RUSH : 1)
   if (game.cometT < wait) return
   game.cometT = 0
   if (live.length >= CFG.COMET_MAX) return
