@@ -38,13 +38,15 @@ export const ITEMS = [
   },
   {
     id: 'thruster',
-    have: (g) => g.thrusters,
-    max: () => CFG.THRUST_MAX,
-    // **판을 안 가린다.** 지구는 첫 판부터 한 발을 쥐고 시작하므로(THRUST_START)
-    // 1스테이지에서 이미 써 버렸을 수 있다 — 그때 진열대에 없으면 "다 쓰면
-    // 끝"이 되어 버린다. 쓴 만큼 5원에 되채우는 것이 이 물건의 값이다.
-    ok: (g) => g.thrusters < CFG.THRUST_MAX,
-    buy: (g) => { g.thrusters++ },
+    // **횟수가 아니라 빈도를 판다.** 예전에는 5원에 한 발을 되채우는 소모품이라
+    // 판마다 같은 값을 다시 치러야 했고, 계측 15판에서 상점 구매가 거의 전부
+    // 이것이었다(수리를 산 런은 한 판도 없었다) — 하나가 진열대를 독점하면
+    // 그건 선택지가 아니라 통행료다. 이제 분사는 주기로 돌아오고(THRUST_COOLDOWN),
+    // 여기서 사는 것은 그 주기를 한 칸 줄이는 **영구 업글**이다.
+    have: (g) => g.buys.thruster,
+    max: () => CFG.BUY_MAX,
+    ok: (g) => g.buys.thruster < CFG.BUY_MAX,
+    buy: (g) => { g.buys.thruster++ },
   },
 ]
 
