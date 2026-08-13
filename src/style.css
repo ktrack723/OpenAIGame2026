@@ -735,8 +735,10 @@ button:disabled{opacity:.32;cursor:not-allowed;box-shadow:none}
    분사 불꽃(Explosions.earthBurn)과 같은 주황이라 누른 버튼의 색이 그대로
    화면에서 타오른다. 옆의 배속 버튼은 금색(--am)이라 나란히 놓아도 안 섞인다.
 
-   상태가 둘이고, 그 둘이 이 버튼의 전부다:
-     · 잠김 — 추진기는 있는데 아무도 안 겨눈다. 흐릿하게 앉아만 있는다.
+   상태가 셋이고, 그 셋이 이 버튼의 전부다:
+     · cooling — 아직 안 찼다. 남은 초를 그대로 띄우고 색을 죽인다. 재고가
+       아니라 **주기**이므로 버튼이 사라지지는 않는다(사라지면 "다 썼다"로 읽힌다).
+     · 잠김 — 다 찼는데 아무도 안 겨눈다. ● 하나로 흐릿하게 앉아만 있는다.
      · armed — 조르그가 조준을 걸었고 지금 이대로면 맞는다. 불이 들어오고
        맥동한다. 즉 이건 재고 표시가 아니라 **경보**다(hud.js가 canThrust로 켠다).
    상위 .spdbtn 규칙이 :hover에서 금색을 덮어쓰므로 여기서 같은 깊이로 되받는다. */
@@ -746,6 +748,9 @@ button:disabled{opacity:.32;cursor:not-allowed;box-shadow:none}
 .thrbtn .spdv{color:#ff9a3c;text-shadow:0 0 12px #ff7a1855}
 .thrbtn .spdlbl{color:#a35f1e}
 .thrbtn:disabled{opacity:.34}
+/* 차오르는 중 — 숫자는 읽히되 "지금 쓸 수 있다"로는 안 보이게 한 단계 죽인다 */
+.thrbtn.cooling .spdv{color:#9a6636;text-shadow:none}
+.thrbtn.cooling .spdlbl{color:#6d431c}
 .thrbtn:hover,.thrbtn:focus-visible{
   background:linear-gradient(180deg,rgba(42,20,5,.94),rgba(24,11,2,.94));box-shadow:0 12px 40px #000a}
 .thrbtn.armed{border-color:#ff7a18;

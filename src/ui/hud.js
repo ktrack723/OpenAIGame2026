@@ -173,7 +173,7 @@ export function makeHud(game, view) {
 <span class="aimsub" id="obsSub">${t('ui.aim.sub')}</span></button>
 <button class="spdbtn" id="obsSpd" title="${t('ui.speed.tip')}"><span class="spdv" id="obsSpdV">2×</span>
 <span class="spdlbl">${t('ui.speed')}</span></button>
-<button class="spdbtn thrbtn" id="obsThr" hidden><span class="spdv" id="obsThrV">0</span>
+<button class="spdbtn thrbtn" id="obsThr"><span class="spdv" id="obsThrV">●</span>
 <span class="spdlbl">${t('ui.thrust')}</span></button>`
   document.body.appendChild(obsBar)
   obsBar.querySelector('#toAim').onclick = () => game.setMode('aim')
@@ -625,24 +625,24 @@ export function updateHud(el, game) {
     btn.classList.toggle('alarm', alarm)
     const spd = game.obsSpeedLabel
     if (bar._spd !== spd) { bar._spd = spd; bar.querySelector('#obsSpdV').textContent = spd }
-    // 추진기 — 재고가 0이면 **버튼 자체가 없다.** 못 누르는 버튼이 앉아 있으면
-    // 그건 지금 쓸 수 있다는 거짓말이다.
+    // 추진기 — 이제 재고가 아니라 **주기**다(game.thrustCool). 그래서 버튼은
+    // 사라지지 않는다: 없어진 게 아니라 차오르는 중이고, 얼마나 남았는지가
+    // 곧 "이번 광선을 분사로 넘길 수 있는가"의 답이라 화면에 늘 있어야 한다.
     // (obsBar의 버튼들은 veil 잠금 루프가 안 닿으므로 여기서 직접 잠근다.)
     //
-    // 재고가 있어도 **겨눠지기 전까지는 잠겨 있다**(canThrust). 그래서 이 버튼은
-    // 두 상태로 읽힌다: 흐릿하면 "가진 건 있는데 지금 쓸 데가 없다", 주황으로
-    // 불이 들어오면 "지금 이대로면 맞는다 — 지금 눌러라". armed 클래스가 그 불이다.
+    // 다 차 있어도 **겨눠지기 전까지는 잠겨 있다**(canThrust). 그래서 이 버튼은
+    // 세 상태로 읽힌다: 숫자가 돌면 "차오르는 중", 흐릿한 ●는 "준비됐는데 쓸
+    // 데가 없다", 주황 불(armed)은 "지금 이대로면 맞는다 — 지금 눌러라".
     const thr = bar.querySelector('#obsThr')
-    const showThr = game.thrusters > 0
-    if (thr._show !== showThr) { thr._show = showThr; thr.hidden = !showThr }
-    // 불은 **숨은 동안에도** 끈다. 재고가 0이 되는 순간(=마지막 한 발을 태운
-    // 그 순간)은 언제나 armed 상태이므로, 안에서만 끄면 켜진 채로 숨는다 —
-    // 다음에 하나를 사서 버튼이 돌아올 때 그 잔불을 물려받는다.
-    // canThrust는 재고 0이면 이미 거짓이라 여기서 따로 안 본다.
+    if (thr._show !== true) { thr._show = true; thr.hidden = false }
     const armed = game.canThrust
     if (thr._armed !== armed) { thr._armed = armed; thr.classList.toggle('armed', armed); thr.disabled = !armed }
-    if (showThr && thr._n !== game.thrusters) {
-      thr._n = game.thrusters; thr.querySelector('#obsThrV').textContent = `${game.thrusters}`
+    // 남은 초는 1초 단위로만 다시 쓴다 — 매 프레임 DOM을 건드리면 그것만으로 무겁다.
+    const coolLeft = Math.ceil(game.thrustLeft)
+    if (thr._n !== coolLeft) {
+      thr._n = coolLeft
+      thr.querySelector('#obsThrV').textContent = coolLeft > 0 ? `${coolLeft}` : '●'
+      thr.classList.toggle('cooling', coolLeft > 0)
     }
     return   // 패널이 숨겨져 있으므로 나머지 갱신은 통째로 건너뛴다
   }

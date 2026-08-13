@@ -60,11 +60,12 @@ export class Game {
     this.pol = 0            // 잔액
     this.polEarned = 0      // 총 획득 — 패배 화면이 "이번 런에 얼마나 벌었나"를 말한다
     this.polFlash = 0       // 획득 표시 펄스(실시간 초)
-    this.buys = { speed: 0, yield: 0 }
-    // 추진기는 **한 발을 쥐고 시작한다.** 상점에서만 얻는 물건이면 첫 판에서는
+    this.buys = { speed: 0, yield: 0, thruster: 0 }
+    // 추진기는 **충전된 채로 시작한다.** 상점에서만 얻는 물건이면 첫 판에서는
     // 존재조차 모르는 채로 첫 광선을 맞는데, 이건 레이저에 대한 네 가지 대응
-    // 중 하나다 — 한 번은 써 보고 나서 살지 말지를 정하는 게 맞다.
-    this.thrusters = CFG.THRUST_START
+    // 중 하나다 — 한 번은 써 보고 나서 값을 알아야 한다.
+    // 재고가 아니라 **주기**다(CFG.THRUST_COOLDOWN): 태우면 이 시계가 차오른다.
+    this.thrustCool = 0
     // 상한은 **CFG가 아니라 런 상태**다. CFG.YIELD_MAX는 판 생성이 "밀 수 있는
     // 큐볼인가"를 재는 데 쓰므로(system.js), 그걸 올리면 난이도 곡선이 빌드에
     // 따라 흔들린다. 클램프는 HUD 스테퍼 두 곳뿐이라 여기서 주는 편이 싸다.
@@ -690,6 +691,9 @@ export class Game {
     this.stepDodge(dt)
     stepComets(this, dt)
     this.stepCueSupply(dt)
+    this.stepOrbitKeep(dt)
+    // 분사 주기 — 인게임 시계로 찬다(조준 중에는 멈춘다. 시한과 같은 시계다).
+    if (this.thrustCool > 0) this.thrustCool = Math.max(0, this.thrustCool - dt)
     this.tickSieges(dt)
     this.stepFoeShots(dt)
     for (const m of this.missiles) {
@@ -853,13 +857,66 @@ export class Game {
   //
   // 그래서 원뿔곡선 반통경(p = h²/μ)으로 세 종류를 한 식에 담는다:
   // q = p/(1+e) 는 타원·포물선·쌍곡선에서 모두 맞다(타원이면 a(1−e)와 같다).
+  // apo(원일점)와 e(이심률)도 같이 준다 — 궤도 복원(stepOrbitKeep)이 "이 궤도가
+  // 판의 벽에 박는가"를 묻는 데 쓴다. 탈출 궤도면 원일점은 없다(Infinity).
   sunOrbit(x, y, vx, vy) {
     const r = Math.hypot(x, y) || CFG.EPS
     const inv = 2 / r - (vx * vx + vy * vy) / CFG.MU_STAR   // 1/a — 0 이하면 탈출 궤도다
     const h = x * vy - y * vx
     const p = h * h / CFG.MU_STAR
     const e = Math.sqrt(Math.max(0, 1 - p * inv))
-    return { bound: inv > 0, peri: p / (1 + e) }
+    return { bound: inv > 0, peri: p / (1 + e), apo: inv > 0 ? p / Math.max(1e-9, 1 - e) : Infinity, e }
+  }
+
+  // ─── 궤도 복원 — 판 밖으로 튀어나간 공을 제 궤도로 되돌린다 ────
+  // 핵을 몇 번 맞은 공은 궤도가 통째로 늘어져 카이퍼 벨트에 박기 시작한다.
+  // 벨트는 튕겨 보내기만 하므로(physics.beltBounce) 그 공은 벽과 태양 사이를
+  // 오가며 별 모양 로제트를 그리는데, 그 상태의 공은 **판에서 쓸 수가 없다**:
+  // 어디에 있을지 예측이 안 되고, 지나가며 아무거나 들이받는다. 지구가 그렇게
+  // 되면 더 나쁘다 — 판마다 다른 자리에서 시작하니 성계가 통째로 뒤집힌다.
+  //
+  // 그래서 조르그의 것과 지구는 **스스로 원궤도를 되찾는다.** 조르그 행성은
+  // 애초에 워프로 들어온 물건이라 자체 추진이 이상하지 않고, 지구는 이미
+  // 추진기를 달고 있다(earthThrust). 중립 천체는 안 건드린다 — 저건 판이
+  // 원래 깔아 둔 태양계이고, 밀어서 굴리는 것이 이 게임의 전부다.
+  //
+  // 판정은 **벽에 박는 궤도인가** 하나다: 원일점이 벨트를 넘거나 탈출 궤도.
+  // 안쪽으로 파고드는 궤도(태양 낙하)는 안 건드린다 — 그건 플레이어가 만든
+  // 결과이고, 공을 태양에 넣는 것은 이 판의 정당한 수다.
+  stepOrbitKeep(dt) {
+    const beltR = this.beltR
+    for (const b of this.bodies) {
+      if (!b.alive || b.type === 'debris' || b.comet) continue
+      if (!b.isEarth && !b.zorg) continue
+      if ((b.warpIn ?? 0) > 0) continue
+      const r = Math.hypot(b.pos.x, b.pos.y) || CFG.EPS
+      const o = this.sunOrbit(b.pos.x, b.pos.y, b.vel.x, b.vel.y)
+      // ── 켜는 조건과 끄는 조건이 다르다(히스테리시스) ──
+      // 켜는 것은 "벽에 박는가", 끄는 것은 "원궤도가 됐는가"다. 같은 문턱을
+      // 쓰면 원일점이 문턱 바로 아래로 내려오는 순간 멎어서, 이심률 0.39짜리
+      // 길쭉한 타원으로 남는다(계측에서 실제로 그랬다) — 그건 원궤도가 아니다.
+      const wild = !o.bound || o.apo > beltR * CFG.ORBIT_KEEP_APO
+      if (!b.keeping && !wild) continue
+      if (b.keeping && o.bound && o.e <= CFG.ORBIT_KEEP_E_OK) { b.keeping = 0; continue }
+      // **판 안쪽에서만** 태운다. 제일 바깥에서 태우면 그 자리에 원궤도가 생겨
+      // 벨트 옆에 주차해 버린다 — 판이 벌어지는 곳은 안쪽이므로, 안쪽을 지날 때만
+      // 잡아서 거기로 내려앉게 한다. 로제트를 그리는 공은 한 바퀴에 한 번은
+      // 반드시 이 띠를 지나므로 시간이 걸릴 뿐 반드시 걸린다.
+      if (r > beltR * CFG.ORBIT_KEEP_BAND) continue
+      // 지금 자리의 **원궤도 속도**로 조금씩 되돌린다. 다 되돌리면 v가 목표와
+      // 같아져 스스로 멎는다 — 따로 끄는 조건이 필요 없다.
+      const vc = Math.sqrt(CFG.MU_STAR / r)
+      const spin = (b.pos.x * b.vel.y - b.pos.y * b.vel.x) >= 0 ? 1 : -1
+      const tx = -b.pos.y / r * vc * spin, ty = b.pos.x / r * vc * spin
+      const dx = tx - b.vel.x, dy = ty - b.vel.y
+      const d = Math.hypot(dx, dy)
+      if (d < 1e-6) { b.keeping = 0; continue }
+      const step = Math.min(d, CFG.ORBIT_KEEP_DV * dt)
+      b.vel.x += dx / d * step; b.vel.y += dy / d * step
+      // 화면에서 "쟤가 지금 스스로 돌아오는 중"으로 읽히게 궤도선을 밝힌다.
+      b.keeping = 1
+      b.trailFlash = Math.max(b.trailFlash ?? 0, 0.6)
+    }
   }
 
   // 이 Δv로 밀고도 요새가 살아남는가 — 위 궤도 원소로 답한다.
@@ -935,8 +992,16 @@ export class Game {
   // 게이트가 아니라 **세기**다: 분사는 확실히 비켜날 때까지 스스로 커진다
   // (burnDv). 그래서 이 버튼은 "지금 누르면 산다"가 아니라 **"지금 누를 수
   // 있다"**를 뜻하게 됐고, 그건 버튼이 원래 해야 하는 말이다.
+  // 지금 분사까지 남은 시간(인게임 초). 0이면 준비됨 — HUD가 이 숫자를 띄운다.
+  get thrustLeft() { return Math.max(0, this.thrustCool) }
+  // 이번 런의 분사 주기 — 상점 업글 한 칸마다 짧아진다(바닥은 THRUST_COOL_MIN).
+  get thrustPeriod() {
+    return Math.max(CFG.THRUST_COOL_MIN,
+      CFG.THRUST_COOLDOWN - (this.buys.thruster ?? 0) * CFG.THRUST_COOL_STEP)
+  }
+
   get canThrust() {
-    if (!(this.thrusters > 0
+    if (!(this.thrustCool <= 0
       && this.mode === 'observe' && !this.doom && !this.won && !this.lost
       && this.earth.alive && !this.warpCurtain)) return false
     // 이미 나간 빛(TRAVEL)은 조준이 아니라 결과다 — 그때는 태울 데가 없다.
@@ -1088,9 +1153,9 @@ export class Game {
     const dv = this.burnDv(L)
     e.vel.x += nx * dv; e.vel.y += ny * dv
     e.trailFlash = 2.0
-    this.thrusters--
+    this.thrustCool = this.thrustPeriod
     this.addFx({ kind: 'earthBurn', x: e.pos.x, y: e.pos.y, r: hitRadiusOf(e), a: Math.atan2(-ny, -nx) })
-    this.message = msg('msg.earthBurn', { n: this.thrusters, dv: dv.toFixed(1) })
+    this.message = msg('msg.earthBurn', { n: Math.round(this.thrustCool), dv: dv.toFixed(1) })
     return true
   }
 
