@@ -649,7 +649,7 @@ export function updateHud(el, game) {
           : '')
       : game.laserFlying
         ? t('ui.obs.fly', { left: game.laserImpactLeft.toFixed(1) })
-      // 초엘리트의 잠금 — 광선보다 **뒤에** 둔다. 둘이 겹칠 때 급한 쪽은
+      // 투석기의 잠금 — 광선보다 **뒤에** 둔다. 둘이 겹칠 때 급한 쪽은
       // 광선이다(선은 못 되치지만 공은 되칠 수 있다). 그래도 판에서 이 줄이
       // 유일하게 "몇 초 뒤에 공이 온다"를 말하므로 시계는 반드시 뜬다.
       : game.siegeLocking

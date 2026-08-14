@@ -25,7 +25,7 @@ const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v)
 const MUSIC_ENABLED = true
 
 // 판이 바뀌면 곡도 바뀐다. 어느 판에서 바뀌는지는 게임이 정한다 —
-// **초엘리트가 서는 그 판**이다(CFG.SIEGE_STAGE). 하늘이 검붉어지는 판도,
+// **투석기가 서는 그 판**이다(CFG.SIEGE_STAGE). 하늘이 검붉어지는 판도,
 // 태양이 주홍으로 넘어가는 판도 같다(render/Scene.emberFor). 소리와 그림이
 // 다른 판에서 바뀌면 그건 연출이 아니라 두 개의 사고다.
 const trackFor = (stage) => (stage >= CFG.SIEGE_STAGE ? 'starforge' : 'dorian')
@@ -75,7 +75,7 @@ const DUCK_RISE = 1.1     // 놓고 다시 올라오는 데 (초). 내려갈 때
 const DUCK = {
   nukeEarth:  { key: 'earth', level: 0.18, fall: 0.5 },   // 내 핵이 지구에 박혔다
   lostEarth:  { key: 'earth', level: 0.15, fall: 0.6 },   // 지구가 부서졌다
-  siegeEarth: { key: 'earth', level: 0.22, fall: 0.6 },   // 초엘리트의 한 발이 꽂혔다
+  siegeEarth: { key: 'earth', level: 0.22, fall: 0.6 },   // 투석기의 한 발이 꽂혔다
   kill:       { key: 'kill',  level: 0.55, fall: 0.25 },  // 요새 격파 — 판마다 여러 번
   capital:    { key: 'kill',  level: 0.10, fall: 0.4 },   // 모성 격파 — 런에 한 번
   won:        { key: 'won',   level: 0.40, fall: 1.0 },   // 승리 화면
@@ -362,7 +362,7 @@ export class AudioSystem {
         at(e.fort ? 'warpFort' : 'warp', 1, { priority: 1 })
         break
 
-      // ── 초엘리트 ──
+      // ── 투석기 ──
       // 잠금은 경보다(요새의 충전과 같은 자리). 발사와 기폭은 사건이다.
       case 'siegeLock':
         at('siegeLock', 1, { priority: 1 })
@@ -449,7 +449,7 @@ export class AudioSystem {
         if (game.laserChargingCount > 1) danger = 0.65   // 배열을 훑으므로 물렸을 때만 묻는다
       }
       if (game.laserFlying) danger = Math.max(danger, 0.78)
-      // 초엘리트의 잠금은 광선의 충전과 같은 자리다 — 저쪽이 지구를 물었다.
+      // 투석기의 잠금은 광선의 충전과 같은 자리다 — 저쪽이 지구를 물었다.
       // 다만 조금 낮게 잡는다: 대응할 수 있는 수가 셋이나 있고(siege.js),
       // 무엇보다 발사되고 나서도 공이 오는 데 수십 초가 남는다.
       if (game.siegeLocking) danger = Math.max(danger, 0.46)
