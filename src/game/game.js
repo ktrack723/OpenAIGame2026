@@ -904,8 +904,8 @@ export class Game {
       // 쓰면 원일점이 문턱 바로 아래로 내려오는 순간 멎어서, 이심률 0.39짜리
       // 길쭉한 타원으로 남는다(계측에서 실제로 그랬다) — 그건 원궤도가 아니다.
       const wild = !o.bound || o.apo > beltR * CFG.ORBIT_KEEP_APO
-      if (!b.keeping && !wild) { b.keepT = 0; continue }
-      if (b.keeping && o.bound && o.e <= CFG.ORBIT_KEEP_E_OK) { b.keeping = 0; b.keepT = 0; continue }
+      if (!b.keeping && !wild) { b.keepT = 0; b.keepFx = 0; continue }
+      if (b.keeping && o.bound && o.e <= CFG.ORBIT_KEEP_E_OK) { b.keeping = 0; b.keepT = 0; b.keepFx = 0; continue }
       // ── 즉발이 아니다 ────────────────────────────────────────
       // 조건이 참이 되는 그 프레임에 바로 태우면, 잘 친 한 방이 **화면에
       // 보이기도 전에** 되감긴다: 공이 크게 밀려 나가는 그림이 이 게임의
@@ -929,12 +929,28 @@ export class Game {
       const tx = -b.pos.y / r * vc * spin, ty = b.pos.x / r * vc * spin
       const dx = tx - b.vel.x, dy = ty - b.vel.y
       const d = Math.hypot(dx, dy)
-      if (d < 1e-6) { b.keeping = 0; b.keepT = 0; continue }
+      if (d < 1e-6) { b.keeping = 0; b.keepT = 0; b.keepFx = 0; continue }
       const step = Math.min(d, CFG.ORBIT_KEEP_DV * dt)
       b.vel.x += dx / d * step; b.vel.y += dy / d * step
       // 화면에서 "쟤가 지금 스스로 돌아오는 중"으로 읽히게 궤도선을 밝힌다.
       b.keeping = 1
       b.trailFlash = Math.max(b.trailFlash ?? 0, 0.6)
+      // ── 그리고 실제로 **분사를 보여 준다** ────────────────────
+      // 궤도선이 밝아지는 것만으로는 아무도 못 읽는다. 이건 판 위의 물건이
+      // 스스로 힘을 쓰는 유일한 장면이므로, 힘을 쓰는 그 자리에 불꽃이 있어야
+      // 한다. 다만 한 방짜리 연출(earthBurn·boost)과는 반대로 **작게 여러 번**이다:
+      // 저쪽은 플레이어가 누른 한 번의 사건이고, 이쪽은 수십 초에 걸친 자세
+      // 제어라 같은 크기로 터뜨리면 화면이 그걸로 덮인다.
+      // 방향은 배기 방향 — 미는 쪽의 반대다. 그래야 "저쪽으로 밀려고 이쪽으로
+      // 뿜는다"가 그림 하나로 읽힌다.
+      b.keepFx = (b.keepFx ?? 0) - dt
+      if (b.keepFx <= 0) {
+        b.keepFx = CFG.ORBIT_KEEP_PUFF
+        this.addFx({
+          kind: 'keepBurn', x: b.pos.x, y: b.pos.y, r: hitRadiusOf(b),
+          a: Math.atan2(-dy / d, -dx / d), zorg: !!b.zorg,
+        })
+      }
     }
   }
 

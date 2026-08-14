@@ -60,6 +60,7 @@ export class Explosions {
       else if (e.kind === 'siegePush') this.siegePush(e)
       else if (e.kind === 'boost') this.boost(e)
       else if (e.kind === 'earthBurn') this.earthBurn(e)
+      else if (e.kind === 'keepBurn') this.keepBurn(e)
       else if (e.kind === 'pol') this.pol(e)
       else if (e.kind === 'bump') this.bump(e)
       else if (e.kind === 'belt') this.belt(e)
@@ -194,6 +195,37 @@ export class Explosions {
     P.shock(e.x, e.y, R, 0xff7a18, 1.0, { from: 0.14, to: 3.0, delay: 0.1, alpha: 0.65 })
     this.rig.hit(10)
     this.flash(0.16, '#ffe0bf')
+  }
+
+  // ─── 자세 제어 분사 (궤도 복원) ──────────────────────────────
+  // 위의 earthBurn·boost와 **같은 물건인데 반대로 만든 연출**이다. 저 둘은
+  // 한 번의 사건이라 화면을 흔들고 섬광을 터뜨리지만, 이건 수십 초에 걸쳐
+  // 조금씩 잡는 자세 제어라 같은 크기로 터뜨리면 화면이 그걸로 덮인다.
+  // 그래서 여기에는 셋이 없다: 화면 흔들림(rig.hit) · 섬광(flash) · 충격파(shock).
+  // 남는 것은 작은 배기 화염 하나뿐이고, 그게 0.9초마다 한 번씩 반복된다
+  // (game.stepOrbitKeep). 여러 번 뿜는 그림 자체가 "지금 스스로 잡는 중"이다.
+  //
+  // 색은 판의 규칙 그대로다 — 조르그는 분홍, 지구는 주황. 그래서 화면 어디서
+  // 불꽃이 나든 **누구의 엔진인지**가 색 하나로 읽힌다.
+  keepBurn(e) {
+    // 크기 기준은 **판 전체를 보고 있을 때 읽히는가**다. 처음엔 판정 원의
+    // 0.6배로 잡았는데, 성계 전체가 2500 GU를 넘는 화면에서는 점 하나로 사라졌다
+    // — 이 연출의 목적이 "쟤가 지금 스스로 잡는 중"을 알리는 것이므로 안 보이면
+    // 없는 것과 같다. 그래도 earthBurn(입자 220 · 속도 560)의 1/6 규모다.
+    const P = this.parts, R = Math.max(30, (e.r ?? 20) * 1.1)
+    const core = e.zorg ? 0xff5c9e : 0xff7a18
+    const hot = e.zorg ? 0xffd7ec : 0xffdcb0
+    // ── 노즐은 **몸통 밖**이다 ────────────────────────────────
+    // 처음엔 천체 중심에서 뿜었는데 화면에 아무것도 안 나왔다. 이유는 속도였다:
+    // 250 GU/s로 0.2초면 50 GU를 가는데 지구 판정 반경이 44 GU라, 입자가 행성
+    // 그림 뒤에서 태어나 그 안에서 죽었다. earthBurn이 보이는 건 560~1250 GU/s로
+    // 단번에 몸통을 벗어나기 때문이다. 그래서 둘 다 고친다 — 배기 방향으로
+    // 반경만큼 밀어낸 자리에서, 몸통을 벗어날 속도로 뿜는다.
+    const ox = e.x + Math.cos(e.a) * (e.r ?? 20) * 0.95
+    const oy = e.y + Math.sin(e.a) * (e.r ?? 20) * 0.95
+    P.puff(ox, oy, { r0: R * 0.12, r1: R * 0.8, ttl: 0.42, color: hot, alpha: 0.7 })
+    P.burst(ox, oy, { n: 34, color: core, speed: 520, size: 11, ttl: 0.8, spread: 0.42, dir: e.a, drag: 0.5 })
+    P.burst(ox, oy, { n: 16, color: hot, speed: 760, size: 7, ttl: 0.5, spread: 0.22, dir: e.a })
   }
 
   // ─── 정치자금 획득 ───────────────────────────────────────────
