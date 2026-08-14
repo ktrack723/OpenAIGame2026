@@ -28,7 +28,7 @@ export const ko = {
   'ui.obs.charge': '⚠ 레이저 T-{left}s · 빗나감 {miss} GU{verdict}',
   'ui.obs.charge.safe': ' — 지금은 산다', 'ui.obs.charge.hit': ' — 지금은 맞는다',
   'ui.obs.fly': '⚠ 레이저 비행 중 — 도달까지 {left}s',
-  'ui.obs.siege': '✷ 초엘리트 장전 T-{left}s — 물린 공을 치워라',
+  'ui.obs.siege': '✷ 투석기 장전 T-{left}s — 물린 공을 치워라',
   'ui.obs.siegeFly': '✷ 조르그 핵 비행 중 — 맞으면 그 공이 지구로 온다',
 
   // ── 작전 줄 · 계기 칩 ─────────────────────────────────────────
@@ -83,7 +83,7 @@ export const ko = {
   'goal.rule': '조르그 요새(☠)를 전부 없애라. 체력 1 — 제대로 한 번 처박으면 끝난다.',
   'goal.heavy': '이번 판에는 대형 요새(◇◇)가 섞여 있다 — 체력 2라 두 번 처박아야 한다.',
   'goal.boost': '이번 판부터 요새가 추진기를 달고 온다 — 꽂히는 탄을 알아채면 비켜선다. 횟수 제한은 없다. 늦게 알아채게 쳐라.',
-  'goal.siege': '그리고 초엘리트(✷)가 서 있다 — 체력 3. 이놈은 광선이 아니라 **핵으로 당구를 친다**: 중립 행성 하나를 골라 지구에 처박는다. 조준선이 뜨면 그 공을 치워라.',
+  'goal.siege': '그리고 투석기(✷)가 서 있다 — 체력 3. 이놈은 광선이 아니라 **핵으로 당구를 친다**: 중립 행성 하나를 골라 지구에 처박는다. 조준선이 뜨면 그 공을 치워라.',
   'cause.collision': '충돌 파괴', 'cause.sun': '항성 처분',
   'cause.blast': '유폭', 'cause.laser': '조르그 레이저에 관통',
   'cause.burst': '파열', 'cause.shrapnel': '산탄 피격',
@@ -106,7 +106,7 @@ export const ko = {
   'cat.zorg': '조르그 모성', 'cat.zorg.mech': '시한이 끝나면 온다 — 핵은 안 통한다. 체력 10, 공을 여러 번 처박아야 부서진다. 자홍색 난사는 지구 체력을 안 본다 — 닿으면 그걸로 끝이다',
   'cat.debris': '잔해', 'cat.debris.mech': '튕겨 다닌다 — 미사일을 조기 격발시킨다. 벨트·태양에서만 사라진다',
   'cat.shardAmmo': '산탄', 'cat.shardAmmo.mech': '불안정 행성이 쏜 탄 — 체력 1처럼 판정된다. 닿으면 그 자리에서 끝',
-  'cat.siege': '초엘리트 조르그', 'cat.siege.mech': '핵으로 당구를 친다 — 행성을 지구에 처박는다',
+  'cat.siege': '조르그 투석기', 'cat.siege.mech': '핵으로 당구를 친다 — 행성을 지구에 처박는다',
   'cat.hostile': '조르그 요새',
 
   // ── 태그 ──────────────────────────────────────────────────────
@@ -115,9 +115,9 @@ export const ko = {
   'role.battery.heavy': '◇◇ 대형 — 체력 2. 한 번으로는 안 부서진다.',
   'role.battery.boost': '⇢ 추진기 — 꽂히는 탄을 알아채면 몇 초 뒤 옆으로 비켜선다. 횟수 제한은 없다. 늦게 물린 궤도(가까이서 쏜 탄·막판에 꺾인 탄)만 그대로 맞는다.',
   'role.battery.aim': '조르그 요새 — 이 한 방으로 끝난다',
-  'role.siege': '초엘리트 조르그',
+  'role.siege': '조르그 투석기',
   'role.siege.brief': '✷ 광선도 증원도 없다. **네가 하는 것과 똑같은 짓을 한다** — 중립 행성 하나를 골라 제 핵으로 밀어 지구에 처박는다. 잠금 중에는 조준선과 밀려갈 방향이 판 위에 그려지고, 그동안 대응이 넷이다: 그 공을 먼저 치우기 · 이놈을 끊기(발사 취소) · 날아오는 공을 되치기 · 지구 추진기. 체력 3.',
-  'role.siege.aim': '초엘리트 — 체력 3, 세 번 처박아야 한다',
+  'role.siege.aim': '투석기 — 체력 3, 세 번 처박아야 한다',
   'role.armor': '금속 행성',
   'role.armor.brief': '🔩 무겁다. 핵 임펄스가 {pct}%만 먹는다 — 밀리긴 하지만 절반이다.',
   'role.armor.aim': '금속 행성 — 무거워서 밀리는 양이 {pct}%다',
@@ -216,10 +216,10 @@ export const ko = {
   'toast.capture': '포획됨 — 너무 느렸다 (강제 추락)',
   'toast.noAngle': '이 발사 속도로는 닿는 각도가 없다 — 속도를 바꿔라',
   'toast.boost': '{name} 회피 기동',
-  'toast.siegeDown': '초엘리트 격파 — 당구가 그쳤다 ({count})',
-  'toast.siege.lock': '초엘리트가 {cue}을(를) 물었다 — 그 공이 지구로 온다',
-  'toast.siege.graze': '초엘리트가 {cue}을(를) 물었다 — 지구를 스쳐 갈 각이다',
-  'toast.siege.lost': '초엘리트의 큐볼이 사라졌다 — 조준이 무의미해졌다',
+  'toast.siegeDown': '투석기 격파 — 당구가 그쳤다 ({count})',
+  'toast.siege.lock': '투석기가 {cue}을(를) 물었다 — 그 공이 지구로 온다',
+  'toast.siege.graze': '투석기가 {cue}을(를) 물었다 — 지구를 스쳐 갈 각이다',
+  'toast.siege.lost': '투석기의 큐볼이 사라졌다 — 조준이 무의미해졌다',
   'toast.siege.abort': '{name} 격파 — 핵 발사 취소',
   'toast.laser.charge': '{name} 조준 개시 — {sec}초 뒤 발사. 조준점에서 비켜나라',
   'toast.laser.abort': '{name} 격파 — 조준 해제',
@@ -256,7 +256,7 @@ export const ko = {
     '신호 끊김. 저쪽은 끝까지 떠들고 있었다.',
   ],
   'gnd.siegeDown': [
-    '초엘리트 침묵. 실로가 열린 채로 멎었다.',
+    '투석기 침묵. 실로가 열린 채로 멎었다.',
     '지구로 굴러올 예정이던 것들, 전부 취소됐다.',
   ],
   'gnd.siegeLock': [

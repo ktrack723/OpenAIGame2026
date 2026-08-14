@@ -3,7 +3,7 @@ import { cloneBodies, segCircleEntry, segHitsCircle, stepBodies } from './physic
 import { propagate } from './laser.js'
 import { effDv } from './roles.js'
 
-// ─── 초엘리트 조르그 행성 — 저쪽도 당구를 친다 ──────────────────
+// ─── 조르그 투석기 — 저쪽도 당구를 친다 ──────────────────
 //
 // 5스테이지부터 성계에 한 기 앉는다. 하는 일은 요새(광선)와도
 // 다르다: **핵미사일로 중립 행성을 골라 지구에 처박는다.** 플레이어가 판
@@ -12,10 +12,10 @@ import { effDv } from './roles.js'
 // 상태는 넷이다: 조용함 → **잠금**(조준선이 보인다) → **비행** → 기폭.
 //
 // ① 잠금 — 큐볼 하나를 고르고 그 공의 어느 살을 칠지까지 정한다. 조준선이
-//    초엘리트에서 그 살까지 그려지고, 밀려갈 방향도 같이 보인다(화면 쪽 일).
+//    투석기에서 그 살까지 그려지고, 밀려갈 방향도 같이 보인다(화면 쪽 일).
 //    이 구간이 곧 **대응 시간**이다(CFG.SIEGE_LOCK_TIME). 대응은 넷 다 이미 배운 수다:
 //      · 큐볼을 먼저 쳐서 치워 놓는다 — 조준이 통째로 무의미해진다
-//      · 잠금 중에 초엘리트를 끊는다 — 발사가 취소된다(요새 광선과 같은 규칙)
+//      · 잠금 중에 투석기를 끊는다 — 발사가 취소된다(요새 광선과 같은 규칙)
 //      · 밀려 오는 공을 되친다 — 궤도를 틀면 지구를 스쳐 지나간다
 //      · 지구 추진기로 비켜선다 — 회랑이 아니라 궤도를 피하는 것이라 더 쉽다
 //
@@ -43,7 +43,7 @@ export const SIEGE_FLY = 'fly'
 // 큐볼 자격 — **밀리는 공이어야** 이 수가 성립한다. 요새가 옆자리를 고를 때
 // 쓰는 것과 같은 문턱을 쓴다(CFG.FORT_CUE_MIN_DV): 목성·토성처럼 무거운
 // 공은 6Mt로는 꿈쩍도 안 하므로 골라도 헛수다.
-// 조르그가 제 편(요새·다른 초엘리트)을 치지는 않는다 — 그건 당구가
+// 조르그가 제 편(요새·다른 투석기)을 치지는 않는다 — 그건 당구가
 // 아니라 자해다. 파편은 공이 아니고, 모성은 아무것도 안 통한다.
 //
 // 가스(유폭)와 불안정(파열)도 뺀다. 밀리는 대신 **다른 일**을 하는 공이라,
@@ -171,7 +171,7 @@ export function caromPoint(cue, ang, at = cue.pos) {
   return { x: at.x - Math.cos(ang) * r, y: at.y - Math.sin(ang) * r }
 }
 
-// from = 이 포를 실은 초엘리트. 그놈이 죽으면 같이 없어진다(game.syncSieges).
+// from = 이 포를 실은 투석기. 그놈이 죽으면 같이 없어진다(game.syncSieges).
 export function makeSiegeGun(rng, from, nextAt = CFG.SIEGE_FIRST) {
   return {
     state: SIEGE_IDLE,
@@ -238,7 +238,7 @@ export function stepSiegeGun(S, game, dt) {
   return null
 }
 
-// 발사가 취소됐다 — 잠금 중에 초엘리트가 부서졌을 때 game이 부른다.
+// 발사가 취소됐다 — 잠금 중에 투석기가 부서졌을 때 game이 부른다.
 export function abortSiegeGun(S) {
   if (S.state !== SIEGE_LOCK) return false
   S.state = SIEGE_IDLE; S.t = 0; S.nextAt = CFG.SIEGE_PERIOD; S.cue = null
@@ -298,7 +298,7 @@ export function stepSiegeShot(m, game, dt) {
     // 쏘는 것"이 아니라 "행성을 지구에 처박는 것"이고(핵은 원래 행성을 못
     // 부순다 — 이 게임의 전제), 그래서 이 탄은 배정된 그 공에만 무장돼 있다.
     //
-    // 규칙으로 못 박은 이유가 하나 더 있다. 초엘리트 대역은 지구 궤도
+    // 규칙으로 못 박은 이유가 하나 더 있다. 투석기 대역은 지구 궤도
     // 언저리라 탄의 직선 경로에 지구가 걸리는 일이 흔한데, 9Mt가 지구에
     // 직격하면 Δv 15.6이다 — 지구 궤도 속도(21)의 74%다. 계측에서 그 한 방이
     // 근일점을 태양까지 끌어내려 400초 뒤에 판이 끝났고, 화면에는 그 인과가

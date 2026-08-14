@@ -28,7 +28,7 @@ const OBS_SPEEDS = [1, 2, 4, 8]
 const NO_CREDIT = new Set(['laser'])
 
 // 조르그 하나를 부순 값. 등급은 **체력 상한 하나**로 갈린다 — 요새는 전부
-// 체력 1이고, 그보다 단단한 것은 대형 요새(2)와 초엘리트뿐이다. 별도의 등급
+// 체력 1이고, 그보다 단단한 것은 대형 요새(2)와 투석기뿐이다. 별도의 등급
 // 표를 두지 않는 이유는 그 표가 곧 두 번째 진실이 되기 때문이다: 새 조르그가
 // 생겼을 때 한쪽만 고치면 값이 조용히 틀어진다. 체력은 이미 화면에 보인다.
 const polFor = (b) => ((b.hpMax ?? 1) > 1 ? CFG.POL_FORT_ELITE : CFG.POL_FORT)
@@ -82,8 +82,8 @@ export class Game {
     this.bodies.length = 0; this.bodies.push(...sys.bodies)   // 배열 정체성 유지
     this.earth = sys.earth
     this.lasers = []          // 살아 있는 포대 하나당 하나 (syncLasers가 명단을 관리한다)
-    this.sieges = []          // 살아 있는 초엘리트 하나당 포 하나 (syncSieges)
-    this.foeShots = []        // 초엘리트가 쏜 탄. 내 탄(missiles)과 따로 산다 — 아래 주석
+    this.sieges = []          // 살아 있는 투석기 하나당 포 하나 (syncSieges)
+    this.foeShots = []        // 투석기가 쏜 탄. 내 탄(missiles)과 따로 산다 — 아래 주석
     this.pairCool.clear()
     this.loadStage()
   }
@@ -95,7 +95,7 @@ export class Game {
   // this.time은 step()에서만 누적되고, step()은 effTimeScale()>0일 때만 돈다.
   // → 조준만 하고 있으면 시계가 멈춰 있고, 관측하거나(플레이어가 고른 배속)
   //   조준 중에 시간 진행 버튼을 누르고 있을 때만 줄어든다.
-  // 초엘리트가 온 판은 목표가 하나 더 — 그만큼 더 준다.
+  // 투석기가 온 판은 목표가 하나 더 — 그만큼 더 준다.
   // (판이 열릴 때 정해 두고 안 바꾼다. 부순 순간 시계가 줄어들면
   //  "부쉈더니 손해"가 되는데, 그건 이 물건이 주려는 판단이 아니다.)
   // 시한은 **이번 판에 세워진 표적 수**를 센다(TIME_PER_THREAT). 판 번호만 보던
@@ -157,7 +157,7 @@ export class Game {
     this.openT = 0
     // 개막 동안 카메라가 따라다닐 명단. 도착 순서대로다(카메라가 그 순서로 민다).
     this.arrivals = added
-    // 표적 = 조르그 요새 + 초엘리트. 이것들만 전멸시키면 판이 끝난다.
+    // 표적 = 조르그 요새 + 투석기. 이것들만 전멸시키면 판이 끝난다.
     this.targets = this.bodies.filter(b => (b.alive || (b.warpIn ?? 0) > 0) && this.isTarget(b))
     this.goal = makeGoal(this.targets)
     this.siegeHere = this.targets.some(b => b.role === 'siege')
@@ -165,7 +165,7 @@ export class Game {
     this.cometT = 0; this.cometN = 0
     // 포대 명단은 판마다 새로 짠다 — 시차(순번)를 처음부터 다시 세워야 하고,
     // 새 판이 시작하자마자 지난 판의 충전이 이어져 발사되면 안 된다.
-    // 초엘리트의 포와 그 탄도 같은 이유로 같이 비운다: 판이 열리는 순간에
+    // 투석기의 포와 그 탄도 같은 이유로 같이 비운다: 판이 열리는 순간에
     // 지난 판의 조준이 살아 있으면 개막부터 지구로 공이 굴러온다.
     this.lasers.length = 0
     this.sieges.length = 0
@@ -208,7 +208,7 @@ export class Game {
   // 이 판에 깔린 태그 목록(패널 범례용).
   // **아직 워프해 들어오는 중인 것도 센다** — 이 함수는 loadStage에서 불리는데
   // 그 시점의 증원은 전부 alive=false(도착 대기)라, 살아 있는 것만 세면 방금
-  // 도착한 요새·초엘리트의 칩이 범례에서 통째로 빠진다.
+  // 도착한 요새·투석기의 칩이 범례에서 통째로 빠진다.
   presentRoles() {
     const set = new Set()
     for (const b of this.bodies) {
@@ -243,7 +243,7 @@ export class Game {
   get target() {
     return this.targets.find(t => t.alive) || this.targets[0] || this.earth
   }
-  // 위협 = 조르그 요새 + 초엘리트. 이것들만 전멸시키면 판이 끝난다.
+  // 위협 = 조르그 요새 + 투석기. 이것들만 전멸시키면 판이 끝난다.
   get aliveFortresses() { return this.bodies.filter(b => b.alive && b.role === 'battery').length }
   get aliveSieges() { return this.bodies.filter(b => b.alive && b.role === 'siege').length }
   get aliveThreats() { return this.aliveFortresses + this.aliveSieges }
@@ -443,7 +443,7 @@ export class Game {
       // 포대는 요새가 실제로 **도착한 뒤에** 생긴다. loadStage 시점에는 살아 있는
       // 요새가 0이라(전부 워프 대기 중) 거기서 명단을 짜면 영영 비어 있다.
       if (b.role === 'battery') this.syncLasers()
-      // 초엘리트의 포도 같은 이유로 도착 후에 생긴다.
+      // 투석기의 포도 같은 이유로 도착 후에 생긴다.
       if (b.role === 'siege') this.syncSieges()
     }
   }
@@ -497,8 +497,8 @@ export class Game {
   // 지금 살아 있는 포대 수 — 주기를 정하는 값이다(laser.nextPeriod).
   get batteryCount() { return Math.max(1, this.aliveFortresses) }
 
-  // ─── 초엘리트 명단 ───────────────────────────────────────────
-  // 살아 있는 초엘리트 하나당 포 하나. 요새의 광선과 같은 구조다(syncLasers) —
+  // ─── 투석기 명단 ───────────────────────────────────────────
+  // 살아 있는 투석기 하나당 포 하나. 요새의 광선과 같은 구조다(syncLasers) —
   // 새로 도착한 놈에게 포를 달아 주고, 부서진 놈의 포는 걷어낸다.
   //
   // 다만 **잠금 중에 부서지면 그 발은 취소된다**(abortSiegeGun). 요새의 광선이
@@ -527,7 +527,7 @@ export class Game {
     }
   }
 
-  // 지금 잠금 중인 초엘리트의 포 — HUD 경보가 "지금 뭐가 오는가"를 묻는 자리.
+  // 지금 잠금 중인 투석기의 포 — HUD 경보가 "지금 뭐가 오는가"를 묻는 자리.
   // 여럿일 수 있으므로 남은 시간이 짧은 쪽을 준다.
   get siegeGun() {
     let best = null
@@ -541,11 +541,11 @@ export class Game {
   get siegeLeft() { const S = this.siegeGun; return S ? siegeLeft(S) : 0 }
   get siegeFlying() { return this.foeShots.some(m => m.alive) }
 
-  // ─── 초엘리트의 한 수 ────────────────────────────────────────
+  // ─── 투석기의 한 수 ────────────────────────────────────────
   // 상태기 자체는 siege.js에 있고 여기서는 그 결과를 판에 옮긴다.
   tickSieges(dt) {
     if (this.won || this.lost || this.doom) return
-    // 명단을 먼저 맞춘다 — 부서진 초엘리트의 포는 여기서 빠지고, 잠금 중이었다면
+    // 명단을 먼저 맞춘다 — 부서진 투석기의 포는 여기서 빠지고, 잠금 중이었다면
     // 그 발이 취소된다(tickLaser가 syncLasers를 먼저 부르는 것과 같은 자리).
     this.syncSieges()
     for (const S of this.sieges.slice()) {
@@ -570,7 +570,7 @@ export class Game {
     }
   }
 
-  // ─── 초엘리트의 탄 ───────────────────────────────────────────
+  // ─── 투석기의 탄 ───────────────────────────────────────────
   // 내 탄(missiles)과 배열을 따로 두는 이유는 규칙이 다르기 때문이다:
   // 이쪽은 중력을 안 받고(유도탄), 마릿수 제한이 없고, 무엇보다
   // **내 발사 차례를 막지 않는다**(flying은 missiles만 센다). 한 배열에
@@ -1614,7 +1614,7 @@ export class Game {
   // **꽉 찬 지구를 그 한 번에 지웠다.** 그건 이 게임이 스스로 적어 둔 규칙과
   // 어긋난다(CFG.PLANET_HP 주석: "지구도 한 번 스쳤다고 끝나지 않는다").
   //
-  // 계측으로 드러난 자리이기도 하다. 초엘리트가 가벼운 소행성을 9Mt로 밀면
+  // 계측으로 드러난 자리이기도 하다. 투석기가 가벼운 소행성을 9Mt로 밀면
   // Δv가 117이라 지구에 닿을 때 상대속도가 160을 넘는데, 10시드 무입력
   // 시뮬에서 **첫 한 수에 지구가 3 → 0으로 죽는** 판이 둘 있었다(t≈220).
   // 경고는 62초 있었지만 눈금이 하나도 안 남으므로, 플레이어는 "위험했다"를
@@ -1722,7 +1722,7 @@ export class Game {
     // 자금·목표 갱신·문구를 전부 건너뛴다 — 이 화면의 문장은 하나뿐이다.
     if (this.doom) return
     const wasFort = this.isTarget(b)
-    // 일반 조르그 행성이 2, 엘리트 이상(대형 요새·초엘리트)이 3. 중립 행성은 0 —
+    // 일반 조르그 행성이 2, 엘리트 이상(대형 요새·투석기)이 3. 중립 행성은 0 —
     // 판을 정리한 것이지 판돈을 회수한 게 아니다.
     if (wasFort && !NO_CREDIT.has(cause)) this.addPol(polFor(b), b.pos.x, b.pos.y)
     const label = { name: nameOf(b), cause: msg(`cause.${cause}`) }
@@ -1732,7 +1732,7 @@ export class Game {
       //  거기서도 안 걷는다 — 쏜 뒤에 부순 건 늦은 것이다.)
       this.goal.update(this.aliveThreats)
       this.message = msg('msg.kill.goal', { ...label, title: msg('goal.title'), count: this.goal.label() })
-      // 초엘리트가 부서지는 건 요새 하나가 부서지는 것과 다른 사건이다 —
+      // 투석기가 부서지는 건 요새 하나가 부서지는 것과 다른 사건이다 —
       // 그 순간부터 지구로 공이 굴러오지 않는다. 그래서 문구를 갈라 준다.
       const down = b.role === 'siege' ? 'toast.siegeDown' : 'toast.fortDown'
       this.setToast(msg(down, { count: this.goal.label() }))

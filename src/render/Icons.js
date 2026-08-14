@@ -39,7 +39,7 @@ export const CATEGORY = Object.fromEntries(Object.entries(CAT_STYLE).map(([k, v]
   get mech() { return t(`cat.${k}.mech`) },
 }]))
 export const HOSTILE = { icon: '☠', color: '#ff5c6a', get label() { return t('cat.hostile') } }
-// 초엘리트도 반드시 부숴야 하지만 요새는 아니다. 표식이 둘로 갈려야
+// 투석기도 반드시 부숴야 하지만 요새는 아니다. 표식이 둘로 갈려야
 // "저기서 뭐가 날아오는가"를 화면만 보고 답할 수 있다 — 해골은 광선,
 // 이 붉은 별표는 **날아오는 공**이다.
 export const SIEGE_MARK = { icon: '✷', color: '#ff5a2b', get label() { return t('cat.siege') } }
