@@ -903,7 +903,29 @@ export class Game {
       // 켜는 것은 "벽에 박는가", 끄는 것은 "원궤도가 됐는가"다. 같은 문턱을
       // 쓰면 원일점이 문턱 바로 아래로 내려오는 순간 멎어서, 이심률 0.39짜리
       // 길쭉한 타원으로 남는다(계측에서 실제로 그랬다) — 그건 원궤도가 아니다.
-      const wild = !o.bound || o.apo > beltR * CFG.ORBIT_KEEP_APO
+      // ── 되돌릴 궤도가 둘이다 ─────────────────────────────────
+      // 오랫동안 하나만 봤다: **바깥으로 튕겨 나가는 궤도**(벽에 박는다).
+      // 그런데 판을 잃는 쪽은 반대편이었다. 계측(3판, 첫 발 뒤 70초):
+      // 상대속도 160짜리 충돌 한 번이 지구에 Δv를 얹었고 — 반발계수가 1이라
+      // 궤도 속도(21 GU/s)에 맞먹는 크기다 — 체력은 규칙대로 **한 칸만**
+      // 깎였는데(EARTH_MAX_DMG) 40초 뒤 근일점이 코로나로 내려가 태양이
+      // 지구를 가져갔다. 체력 눈금을 하나로 자른 이유가 "한 번의 실수가 런을
+      // 끝내지 않게"인데, 같은 충돌의 **운동에너지 쪽**에는 그 규칙이 없었다.
+      // 화면도 거짓말을 한다: 체력은 2로 멀쩡한데 런은 이미 끝나 있다.
+      //
+      // 그래서 근일점이 코로나 선(R_STAR × ORBIT_KEEP_PERI) 안으로 내려오면
+      // 그것도 되돌릴 궤도로 본다. 그 선은 성계가 궤도를 깔 때 쓰는 바로 그
+      // 값이다(config.aFloorFor) — 판이 "여기는 궤도가 아니다"라고 이미
+      // 정해 둔 자리이므로, 자세 제어가 개입하는 자리도 거기여야 한다.
+      //
+      // **지구만이다.** 조르그가 태양으로 떨어지는 것은 사고가 아니라
+      // 플레이어가 그렇게 민 결과다 — 거기에 개입하면 잘 친 한 수를 무른다.
+      // 나가는 중인 탈출 궤도의 근일점은 **이미 지나온 가지의 것**이라 영영 안
+      // 닿는다(aim.earthShove의 reachesPeri와 같은 판정). 그 경우는 여기 안 든다 —
+      // 그건 바깥으로 튀는 궤도이고, 그쪽은 위의 원일점 조건이 이미 잡는다.
+      const inbound = b.pos.x * b.vel.x + b.pos.y * b.vel.y < 0
+      const falling = b.isEarth && (o.bound || inbound) && o.peri < CFG.R_STAR * CFG.ORBIT_KEEP_PERI
+      const wild = !o.bound || o.apo > beltR * CFG.ORBIT_KEEP_APO || falling
       if (!b.keeping && !wild) { b.keepT = 0; b.keepFx = 0; continue }
       if (b.keeping && o.bound && o.e <= CFG.ORBIT_KEEP_E_OK) { b.keeping = 0; b.keepT = 0; b.keepFx = 0; continue }
       // ── 즉발이 아니다 ────────────────────────────────────────
@@ -913,7 +935,11 @@ export class Game {
       // 맞히러 가는 중일 수도 있다 — 그 몇 초가 곧 당구다.
       // 그래서 "벽에 박는 궤도"가 이만큼 이어진 뒤에야 점화한다. 도중에
       // 궤도가 제자리로 돌아오면(다른 충돌·다음 한 발) 시계는 0으로 돌아간다.
-      if (!b.keeping) {
+      // …**떨어지는 중일 때는 예외다.** 뜸의 이유는 "잘 친 한 방이 화면에 보이기
+      // 전에 되감기지 않게"인데, 태양으로 떨어지는 지구는 잘 친 한 방이 아니라
+      // 사고다. 계측: 충돌 뒤 r 650에서 삼킴 반경(210)까지 자유낙하가 15초 남짓
+      // 이라, 6초를 세고 나서 평소 세기로 밀면 이미 늦는다.
+      if (!b.keeping && !falling) {
         b.keepT = (b.keepT ?? 0) + dt
         if (b.keepT < CFG.ORBIT_KEEP_DELAY) continue
       }
@@ -921,7 +947,9 @@ export class Game {
       // 벨트 옆에 주차해 버린다 — 판이 벌어지는 곳은 안쪽이므로, 안쪽을 지날 때만
       // 잡아서 거기로 내려앉게 한다. 로제트를 그리는 공은 한 바퀴에 한 번은
       // 반드시 이 띠를 지나므로 시간이 걸릴 뿐 반드시 걸린다.
-      if (r > beltR * CFG.ORBIT_KEEP_BAND) continue
+      // (떨어지는 중인 지구에는 이 띠를 안 건다 — 어차피 안쪽으로 가는 중이고,
+      //  바깥에서 시작한 낙하를 띠에 들어올 때까지 두면 그동안 속도가 붙는다.)
+      if (!falling && r > beltR * CFG.ORBIT_KEEP_BAND) continue
       // 지금 자리의 **원궤도 속도**로 조금씩 되돌린다. 다 되돌리면 v가 목표와
       // 같아져 스스로 멎는다 — 따로 끄는 조건이 필요 없다.
       const vc = Math.sqrt(CFG.MU_STAR / r)
@@ -930,7 +958,10 @@ export class Game {
       const dx = tx - b.vel.x, dy = ty - b.vel.y
       const d = Math.hypot(dx, dy)
       if (d < 1e-6) { b.keeping = 0; b.keepT = 0; b.keepFx = 0; continue }
-      const step = Math.min(d, CFG.ORBIT_KEEP_DV * dt)
+      // 세기도 갈린다. 평소(0.35)는 "무르지 않을 만큼 느리게"가 값의 근거인데,
+      // 떨어지는 지구에는 그 근거가 없다 — 무르는 게 목적이다. 낙하가 15초라
+      // 그 안에 궤도 속도(21 GU/s)만큼을 되돌릴 수 있어야 한다.
+      const step = Math.min(d, (falling ? CFG.ORBIT_KEEP_DV_SOS : CFG.ORBIT_KEEP_DV) * dt)
       b.vel.x += dx / d * step; b.vel.y += dy / d * step
       // 화면에서 "쟤가 지금 스스로 돌아오는 중"으로 읽히게 궤도선을 밝힌다.
       b.keeping = 1

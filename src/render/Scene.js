@@ -1021,7 +1021,9 @@ export class SceneView {
     // 부스러기이고 하나는 지금 날아가는 탄이다. 셋을 다 다르게 만든다:
     //   모양 — 뭉툭한 사면체 vs **앞이 뾰족한 다트**(진행 방향으로 눕힌다)
     //   색   — 무채색 회색 vs 연두(불안정 행성의 색). 자체발광까지 얹는다
-    //   크기 — 화면 최소 지름 16px vs 26px
+    // 크기는 **가르는 데 안 쓴다**(VIS.MIN_SHARD_PX 주석). 다트는 길이가 지름의
+    // 1.2배(2.4 × 반지름)라 같은 최소 크기에서도 잔해보다 길게 보이는데, 거기에
+    // 큰 값까지 주면 일곱 갈래가 판을 통째로 덮는다.
     // 다트는 +x를 향하도록 만들어 둔다(속도 방향으로 회전시켜 쓴다).
     const dart = new THREE.ConeGeometry(0.55, 2.4, 4)
     dart.rotateZ(-Math.PI / 2); dart.translate(0.35, 0, 0)
@@ -1126,9 +1128,9 @@ export class SceneView {
 
   // 찾기용 최소 크기 — 공이 아니라 **표식에만** 적용한다(외곽 링·체력 호·조준 물들임).
   markerRadius(b) {
-    // 산탄은 잔해보다 **크게** 그린다. 판정 반경은 둘이 비슷한데(둘 다 debris라
-    // 제 반지름 그대로다) 화면에서 하는 일이 다르다: 잔해는 배경이고 산탄은
-    // 지금 읽어야 하는 탄이다. 색·모양에 크기까지 얹어야 한눈에 갈린다.
+    // 산탄은 잔해보다 **작게** 그린다. 판정 반경은 둘이 비슷한데(둘 다 debris라
+    // 제 반지름 그대로다) 그림은 다트가 더 길게 나오므로(shardGeo), 최소 크기까지
+    // 크게 주면 일곱 갈래가 판을 덮는다. 갈리는 일은 모양과 색이 맡는다.
     const minPx = b.shard ? VIS.MIN_SHARD_PX : b.type === 'debris' ? VIS.MIN_DEBRIS_PX : VIS.MIN_PLANET_PX
     return Math.max(hitRadiusOf(b), minPx * 0.5 * this.rig.worldPerPx)
   }
