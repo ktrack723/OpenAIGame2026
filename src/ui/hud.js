@@ -150,6 +150,20 @@ export function makeHud(game, view) {
   document.body.appendChild(toast)
   el._toast = toast
 
+  // ── 시한 테두리 경보 ──
+  // 남은 시간이 눈금 아래로 떨어지면 **화면 가장자리가 달아오른다.**
+  // 숫자는 이미 패널에 있지만(clockV) 그 패널은 관측 모드에서 통째로 사라지고,
+  // 남는 것은 버튼 하나에 접힌 한 줄뿐이다 — 정작 시계가 빨리 도는 화면에서
+  // 시계가 제일 안 보였다. 시한이 끝나는 것은 판이 끝나는 것이므로(모성이 온다)
+  // **화면 어디를 보고 있든** 읽혀야 한다.
+  //
+  // 가운데는 완전히 비운다. 이건 판을 덮는 막이 아니라 판 둘레에 켜지는 등이다 —
+  // 마지막 1분에 조준선이 안 보이면 그건 경보가 아니라 방해다.
+  const edge = document.createElement('div')
+  edge.className = 'timeedge'; edge.hidden = true
+  document.body.appendChild(edge)
+  el._edge = edge
+
   // ── 정치자금 표시 ──
   // **칩 줄에 넣지 않는다.** 칩 여섯 칸은 매 프레임 innerHTML 한 덩어리로 통째
   // 교체되는데(ZOOM·TIME이 계속 바뀐다) 그러면 붙여 둔 애니메이션이 매번 처음부터
@@ -592,6 +606,25 @@ export function updateHud(el, game) {
     pol._glow = glow
     pol.style.setProperty('--glow', glow.toFixed(2))
     pol.classList.toggle('gain', glow > 0)
+  }
+
+  // ── 시한 테두리 ──
+  // 정치자금과 같은 이유로 **관측 조기 리턴보다 위**에 있다: 시계가 제일 빨리
+  // 도는 것이 관측 모드인데 거기서 안 돌면 경보가 정작 필요한 화면에서 죽는다.
+  // 눈금은 토스트와 같은 표를 쓴다(CFG.TIME_WARN_MARKS · game.warnTime).
+  //
+  // **판이 멎어 있으면 맥동도 멎는다.** 조준 모드에서는 시계가 안 흐르는데
+  // (effTimeScale 0) 테두리만 계속 두근거리면 "서두르라"는 거짓말이 된다 —
+  // 그때는 같은 색으로 가만히 켜져만 있다. 색이 상태를, 맥동이 흐름을 말한다.
+  const marks = CFG.TIME_WARN_MARKS
+  const edge = el._edge
+  const edgeOn = !game.doom && !game.runOver && !game.won && !game.lost && !game.bare
+    && game.timeLeft <= marks[0]
+  const edgeCls = !edgeOn ? '' : `${game.timeLeft <= marks[1] ? 'crit' : 'warn'}${game.effTimeScale() ? '' : ' held'}`
+  if (el._edgeCls !== edgeCls) {
+    el._edgeCls = edgeCls
+    edge.hidden = !edgeOn
+    edge.className = `timeedge ${edgeCls}`
   }
 
   if (observing) {

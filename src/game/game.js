@@ -687,7 +687,10 @@ export class Game {
     const n = this.batteryCount
     for (const L of this.lasers) stepSpent(L, dtFrame, n)
     this.fadeSpentShots(dtFrame)
-    let acc = Math.min(0.1, dtFrame) * this.effTimeScale()
+    // SIM_RATE — 배속 라벨(1·2·4·8×) 위에 한 겹 더 곱하는 기본 속도.
+    // 여기 한 줄에만 걸린다: 위의 연출 시계들(워프인·회피 쿨·꼬리)은 실시간
+    // 그대로 흐르고, **인게임 시계만** 빨라진다.
+    let acc = Math.min(0.1, dtFrame) * this.effTimeScale() * CFG.SIM_RATE
     while (acc >= CFG.DT) { this.step(CFG.DT); acc -= CFG.DT }
   }
 
@@ -1270,10 +1273,12 @@ export class Game {
   // 지금 충전 중인 포대 수 — 둘 이상이면 경보에 그 사실을 붙인다
   get laserChargingCount() { return this.lasers.filter(L => L.state === LASER_CHARGE).length }
 
-  // 시한이 줄고 있다는 걸 토스트로 못 박는다 (남은 60/30/10초)
+  // 시한이 줄고 있다는 걸 토스트로 못 박는다. 눈금은 화면 테두리 경보와
+  // **같은 표**를 쓴다(CFG.TIME_WARN_MARKS) — 둘이 갈리면 테두리는 달아올랐는데
+  // 아무 말도 없는 순간이 생긴다.
   warnTime() {
     if (this.won || this.lost || this.doom) return
-    const marks = [60, 30, 10], left = this.timeLeft
+    const marks = CFG.TIME_WARN_MARKS, left = this.timeLeft
     while (this.timeWarn < marks.length && left <= marks[this.timeWarn]) {
       const s = marks[this.timeWarn]
       this.timeWarn++
@@ -1955,7 +1960,7 @@ export class Game {
   doomBroken() {
     if (!this.doom) return
     this.doom = null                       // 총구가 멎는다(tickDoom이 더 안 돈다)
-    this.timeWarn = 3                      // 시한 경고는 이미 다 울렸다
+    this.timeWarn = CFG.TIME_WARN_MARKS.length   // 시한 경고는 이미 다 울렸다
     this.setToast(msg('toast.doomDown'))
     this.message = msg('msg.doomDown')
     this.win(true)
