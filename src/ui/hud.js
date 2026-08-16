@@ -150,6 +150,20 @@ export function makeHud(game, view) {
   document.body.appendChild(toast)
   el._toast = toast
 
+  // ── 시한 테두리 경보 ──
+  // 남은 시간이 눈금 아래로 떨어지면 **화면 가장자리가 달아오른다.**
+  // 숫자는 이미 패널에 있지만(clockV) 그 패널은 관측 모드에서 통째로 사라지고,
+  // 남는 것은 버튼 하나에 접힌 한 줄뿐이다 — 정작 시계가 빨리 도는 화면에서
+  // 시계가 제일 안 보였다. 시한이 끝나는 것은 판이 끝나는 것이므로(모성이 온다)
+  // **화면 어디를 보고 있든** 읽혀야 한다.
+  //
+  // 가운데는 완전히 비운다. 이건 판을 덮는 막이 아니라 판 둘레에 켜지는 등이다 —
+  // 마지막 1분에 조준선이 안 보이면 그건 경보가 아니라 방해다.
+  const edge = document.createElement('div')
+  edge.className = 'timeedge'; edge.hidden = true
+  document.body.appendChild(edge)
+  el._edge = edge
+
   // ── 정치자금 표시 ──
   // **칩 줄에 넣지 않는다.** 칩 여섯 칸은 매 프레임 innerHTML 한 덩어리로 통째
   // 교체되는데(ZOOM·TIME이 계속 바뀐다) 그러면 붙여 둔 애니메이션이 매번 처음부터
@@ -173,7 +187,7 @@ export function makeHud(game, view) {
 <span class="aimsub" id="obsSub">${t('ui.aim.sub')}</span></button>
 <button class="spdbtn" id="obsSpd" title="${t('ui.speed.tip')}"><span class="spdv" id="obsSpdV">2×</span>
 <span class="spdlbl">${t('ui.speed')}</span></button>
-<button class="spdbtn thrbtn" id="obsThr" hidden><span class="spdv" id="obsThrV">0</span>
+<button class="spdbtn thrbtn" id="obsThr"><span class="spdv" id="obsThrV">●</span>
 <span class="spdlbl">${t('ui.thrust')}</span></button>`
   document.body.appendChild(obsBar)
   obsBar.querySelector('#toAim').onclick = () => game.setMode('aim')
@@ -292,6 +306,15 @@ export function makeHud(game, view) {
 
   addEventListener('keydown', (e) => {
     if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return
+    // ── 자동반복은 발사가 아니다 ──
+    // 키를 누르고 있으면 브라우저가 33ms마다 keydown을 다시 보낸다. 예전에는
+    // 그래도 아무 일이 없었다 — 둘째 발부터는 "비행 중"으로 막혔기 때문이다.
+    // 자리가 둘이 되면서 그 잠금이 풀렸고, **SPACE를 누르고 있으면 두 발이
+    // 통째로 나간다**(계측: 3초 홀드에 3발). 그 두 발은 총구 앞에서 만나 서로를
+    // 부순다 — 누른 사람은 한 발을 쐈다고 생각하는데 판에서는 두 발이 사라진다.
+    // 발사는 **누른 횟수**여야 한다. 나머지 키는 눌러 두는 게 자연스러우므로
+    // (각도 스테퍼·시간 진행) 여기서만 걸러 낸다.
+    if (e.repeat && e.code === 'Space') { e.preventDefault(); return }
     // 개막 중에는 키도 같이 잠근다. 화면에서 패널을 걷고 버튼을 disabled로
     // 만들어도 키보드는 그대로 살아 있어서, 막 뒤에서 SPACE로 발사하거나
     // SHIFT로 시간을 흘려보낼 수 있었다 — 막이 있으나 마나였다.
@@ -389,15 +412,49 @@ export function makeHud(game, view) {
 //   · 2차 충돌 — "이 공이 저 공에 맞는다"는 절대 안 알려준다. 그걸 읽는 게 게임이다.
 //   · 판의 승패 예측, 점수 예상, 최적 각도 추천.
 //   · 확률·추정치. LCD에 뜨는 숫자는 전부 결정론적 계산 결과다.
+// ─── 지구가 밀린다는 한 줄 ─────────────────────────────────────
+// 폭풍이 지구에 닿을 때만 뜬다(aim.earthShove). 판 위에는 같은 값으로 그린
+// **밀린 뒤의 궤도**가 이미 떠 있고(Scene.orbits.ghost), 여기서는 그 선을
+// 숫자로 못 박는다: 얼마나 밀리고, 근일점이 어디로 내려가는가.
+// 근일점이 태양에 닿으면 문장이 바뀐다 — 그건 경고가 아니라 사망 선고다.
+function earthLine(h) {
+  const e = h && h.earthShove
+  if (!e) return ''
+  if (e.doomed) return t('lcd.warn.earthSun')
+  // 탈출 궤도로 밀린 지구는 **성계를 못 떠난다** — 벨트가 벽이라 거기서 튕겨
+  // 돌아온다(계측: 2287 GU까지 나갔다가 한 번 튕기고 생환). 그러니 ☠가 아니라
+  // 경고다. 근일점 숫자도 안 적는다 — 그 가지에는 닿지 않으므로 거짓말이 된다.
+  if (!e.reachesPeri) return t('lcd.warn.earthOut', { dv: e.dv.toFixed(1) })
+  return t('lcd.warn.earthPush', { dv: e.dv.toFixed(1), a: e.peri.toFixed(0), b: e.peri2.toFixed(0) })
+}
+
 function predLine(game, p) {
+  const line = predOutcome(game, p)
+  // 지구가 밀리는 발이면 그 줄을 **제일 앞에** 세운다. 이 판에서 잃을 수 있는
+  // 것 중에 지구보다 큰 것이 없다.
+  const earth = earthLine(p.hit)
+  if (earth) {
+    line[3] = [earth, line[3]].filter(Boolean).join(' · ')
+    if (p.hit.earthShove.doomed) line[0] = 'bad'
+    else if (line[0] === 'hit') line[0] = 'warn'
+  }
+  // 이 발은 날아가는 도중에 **밀린다** — 먼저 쏜 탄이 큐이고 이쪽이 공이다.
+  // 꺾이는 자리는 예측선이 이미 그리고 있으므로 여기서는 한 마디만 덧붙인다.
+  if (p.nudged) line[3] = [t('lcd.nudged'), line[3]].filter(Boolean).join(' · ')
+  return line
+}
+
+function predOutcome(game, p) {
   const h = p.hit
   const role = h && h.role ? ROLES[h.role] : null
   const badge = role ? ` [${role.icon}${roleLabel(h.role)}]` : ''
   const name = h ? nameOf(h) : ''
   switch (p.outcome) {
     case 'earth': return ['bad', t('lcd.tag.abort'), t('lcd.abort'), t('lcd.abort.sub')]
+    // 체력을 같이 보여 준다 — 유폭이 더 이상 그 공을 죽이지 않으므로
+    // "몇 번 더 터뜨릴 수 있나"가 이 태그를 쓰는 계획의 전부다.
     case 'volatile': return ['hit', t('lcd.tag.chain'), `${name}${badge}`,
-      t('lcd.chain.sub', { aim: roleAim(h.role), r: h.volatileR.toFixed(0) })]
+      t('lcd.chain.sub', { aim: roleAim(h.role), r: h.volatileR.toFixed(0), hp: h.hp, hpMax: h.hpMax })]
     // 샷건 — 2층(직접 결과)에 들어가는 값은 **갈래 수와 총구 방향** 둘뿐이다.
     // 그 부채꼴 안에서 무엇이 맞는지는 안 말한다(2차 충돌은 안 알려준다는 규칙).
     // 다만 지구가 그 안에 서 있는 것만은 3층 경고로 못 박는다 — 판을 통째로
@@ -407,6 +464,15 @@ function predLine(game, p) {
         aim: roleAim(h.role), n: h.shards, dir: dirOf(h.dx, h.dy),
         deg: (h.shardCone * 2 * 180 / Math.PI).toFixed(0),
       }) + (h.earthInCone ? ` · ${t('lcd.warn.spray')}` : '')]
+    // 탄이 탄을 친다 — 밀리는 것은 **날고 있는 내 탄두**다. 2층에 들어가는
+    // 값은 공을 칠 때와 같다(충격 방향 · Δv · 바뀐 진로). 체력이 없는 물건이라
+    // ◆ 한 칸만 빠진다. 그 뒤에 저 탄이 무엇에 닿는지는 여기서도 안 말한다 —
+    // 접촉까지만 말하는 규칙은 맞는 것이 탄두라고 달라지지 않는다.
+    case 'relay': return [h.earthInBlast ? 'warn' : 'hit', t('lcd.tag.relay'), name,
+      t('lcd.relay.sub', {
+        push: dirOf(h.dx, h.dy), dv: h.dv.toFixed(1),
+        course: dirOf(h.vx, h.vy), speed: Math.hypot(h.vx, h.vy).toFixed(0),
+      }) + (h.earthInBlast ? ` · ${t('lcd.warn.blast')}` : '')]
     case 'debris': return ['warn', t('lcd.tag.debris'), t('lcd.debris'), '']
     case 'sun': return ['warn', t('lcd.tag.solar'), t('lcd.solar'), t('lcd.solar.sub')]
     // 벨트 기폭 — 판 밖으로 나가는 발이다. 공은 쿠션에 튕기지만 탄두는 거기서 끝난다.
@@ -448,9 +514,14 @@ const failWhy = (reason, game) => reason === 'TIME_UP' ? ''
   : reason === 'EARTH_LOST' ? t('over.why.EARTH_LOST')
   : tx(game.message)
 
-// 패배 화면을 올리기까지 기다리는 실시간(ms). 지구 화구가 피었다 잦아드는
-// 시간이다 — 이보다 짧으면 자기가 어떻게 죽었는지 못 보고 패널만 본다.
-const OVER_DELAY = 2200
+// 패배 화면을 올리기까지 기다리는 실시간(ms). 지구 화구가 **피는** 시간이다 —
+// 0이면 자기가 어떻게 죽었는지 못 보고 패널만 본다.
+//
+// 2200이던 값이다. 근거는 "화구가 피었다 잦아들 때까지"였는데, 잦아드는 쪽은
+// 볼 필요가 없다: 터지는 순간에 이미 다 읽히고(섬광 + 화면 흔들림), 남은 1초는
+// 잔해가 흩어지는 것을 패널 없이 보고 있는 시간이었다. 패널 자체가 0.5초에
+// 걸쳐 떠오르므로(style.css의 goin) 그 뒤로도 화구는 계속 보인다.
+const OVER_DELAY = 1200
 
 const CTRL_IDS = ['#fire', '#findPrev', '#findNext']
 
@@ -464,7 +535,7 @@ export function updateHud(el, game) {
   const cine = !!game.cinematic
   // 모성이 와 있어도 조준 패널은 걷지 않는다 — 저것을 부수는 유일한 길이
   // 공을 던지는 것이라(game.doomBroken), 패널을 감추면 그 길이 닫힌다.
-  // 그 대신 판이 안 멈춘다(effTimeScale의 DOOM_AIM_SCALE).
+  // 그 대신 판이 안 멈춘다(effTimeScale의 doom 분기 — 느려지지도 않는다).
   const observing = (game.mode === 'observe' && !game.runOver) || cine
   // 관측 바(조준 모드 · 배속)는 **플레이어의 것**이다. 그래서 예고편이 도는
   // 동안에는 안 띄운다 — 누를 수 없는 버튼이 화면 아래에 앉아 있으면 지금
@@ -537,6 +608,25 @@ export function updateHud(el, game) {
     pol.classList.toggle('gain', glow > 0)
   }
 
+  // ── 시한 테두리 ──
+  // 정치자금과 같은 이유로 **관측 조기 리턴보다 위**에 있다: 시계가 제일 빨리
+  // 도는 것이 관측 모드인데 거기서 안 돌면 경보가 정작 필요한 화면에서 죽는다.
+  // 눈금은 토스트와 같은 표를 쓴다(CFG.TIME_WARN_MARKS · game.warnTime).
+  //
+  // **판이 멎어 있으면 맥동도 멎는다.** 조준 모드에서는 시계가 안 흐르는데
+  // (effTimeScale 0) 테두리만 계속 두근거리면 "서두르라"는 거짓말이 된다 —
+  // 그때는 같은 색으로 가만히 켜져만 있다. 색이 상태를, 맥동이 흐름을 말한다.
+  const marks = CFG.TIME_WARN_MARKS
+  const edge = el._edge
+  const edgeOn = !game.doom && !game.runOver && !game.won && !game.lost && !game.bare
+    && game.timeLeft <= marks[0]
+  const edgeCls = !edgeOn ? '' : `${game.timeLeft <= marks[1] ? 'crit' : 'warn'}${game.effTimeScale() ? '' : ' held'}`
+  if (el._edgeCls !== edgeCls) {
+    el._edgeCls = edgeCls
+    edge.hidden = !edgeOn
+    edge.className = `timeedge ${edgeCls}`
+  }
+
   if (observing) {
     // 버튼 하나에 접어 넣는 최소 정보: 배속 · 남은 시한 · 레이저 경보
     const left = game.timeLeft
@@ -544,13 +634,22 @@ export function updateHud(el, game) {
     const sub = game.doom
       ? t('ui.obs.doom')
       : game.laserCharging
+        // 추진기를 누를 수 있는 순간에는 **그 값**을 같이 적는다 — 이 줄이
+        // 관측 모드에서 유일하게 읽히는 줄이고, 추진기는 지구를 제일 크게
+        // 미는 물건이다(누적 여덟 번이면 태양행 · game.burnPreview 주석).
         ? t('ui.obs.charge', {
           left: game.laserLeft.toFixed(0), miss: game.laserMiss.toFixed(0),
           verdict: t(game.laserSafe ? 'ui.obs.charge.safe' : 'ui.obs.charge.hit'),
-        })
+        }) + (game.burnPreview
+          ? ' · ' + (game.burnPreview.doomed ? t('alarm.burn.sun')
+            : t('alarm.burn', {
+              dv: game.burnPreview.dv.toFixed(1),
+              a: game.burnPreview.peri.toFixed(0), b: game.burnPreview.peri2.toFixed(0),
+            }))
+          : '')
       : game.laserFlying
         ? t('ui.obs.fly', { left: game.laserImpactLeft.toFixed(1) })
-      // 초엘리트의 잠금 — 광선보다 **뒤에** 둔다. 둘이 겹칠 때 급한 쪽은
+      // 투석기의 잠금 — 광선보다 **뒤에** 둔다. 둘이 겹칠 때 급한 쪽은
       // 광선이다(선은 못 되치지만 공은 되칠 수 있다). 그래도 판에서 이 줄이
       // 유일하게 "몇 초 뒤에 공이 온다"를 말하므로 시계는 반드시 뜬다.
       : game.siegeLocking
@@ -564,24 +663,24 @@ export function updateHud(el, game) {
     btn.classList.toggle('alarm', alarm)
     const spd = game.obsSpeedLabel
     if (bar._spd !== spd) { bar._spd = spd; bar.querySelector('#obsSpdV').textContent = spd }
-    // 추진기 — 재고가 0이면 **버튼 자체가 없다.** 못 누르는 버튼이 앉아 있으면
-    // 그건 지금 쓸 수 있다는 거짓말이다.
+    // 추진기 — 이제 재고가 아니라 **주기**다(game.thrustCool). 그래서 버튼은
+    // 사라지지 않는다: 없어진 게 아니라 차오르는 중이고, 얼마나 남았는지가
+    // 곧 "이번 광선을 분사로 넘길 수 있는가"의 답이라 화면에 늘 있어야 한다.
     // (obsBar의 버튼들은 veil 잠금 루프가 안 닿으므로 여기서 직접 잠근다.)
     //
-    // 재고가 있어도 **겨눠지기 전까지는 잠겨 있다**(canThrust). 그래서 이 버튼은
-    // 두 상태로 읽힌다: 흐릿하면 "가진 건 있는데 지금 쓸 데가 없다", 주황으로
-    // 불이 들어오면 "지금 이대로면 맞는다 — 지금 눌러라". armed 클래스가 그 불이다.
+    // 다 차 있어도 **겨눠지기 전까지는 잠겨 있다**(canThrust). 그래서 이 버튼은
+    // 세 상태로 읽힌다: 숫자가 돌면 "차오르는 중", 흐릿한 ●는 "준비됐는데 쓸
+    // 데가 없다", 주황 불(armed)은 "지금 이대로면 맞는다 — 지금 눌러라".
     const thr = bar.querySelector('#obsThr')
-    const showThr = game.thrusters > 0
-    if (thr._show !== showThr) { thr._show = showThr; thr.hidden = !showThr }
-    // 불은 **숨은 동안에도** 끈다. 재고가 0이 되는 순간(=마지막 한 발을 태운
-    // 그 순간)은 언제나 armed 상태이므로, 안에서만 끄면 켜진 채로 숨는다 —
-    // 다음에 하나를 사서 버튼이 돌아올 때 그 잔불을 물려받는다.
-    // canThrust는 재고 0이면 이미 거짓이라 여기서 따로 안 본다.
+    if (thr._show !== true) { thr._show = true; thr.hidden = false }
     const armed = game.canThrust
     if (thr._armed !== armed) { thr._armed = armed; thr.classList.toggle('armed', armed); thr.disabled = !armed }
-    if (showThr && thr._n !== game.thrusters) {
-      thr._n = game.thrusters; thr.querySelector('#obsThrV').textContent = `${game.thrusters}`
+    // 남은 초는 1초 단위로만 다시 쓴다 — 매 프레임 DOM을 건드리면 그것만으로 무겁다.
+    const coolLeft = Math.ceil(game.thrustLeft)
+    if (thr._n !== coolLeft) {
+      thr._n = coolLeft
+      thr.querySelector('#obsThrV').textContent = coolLeft > 0 ? `${coolLeft}` : '●'
+      thr.classList.toggle('cooling', coolLeft > 0)
     }
     return   // 패널이 숨겨져 있으므로 나머지 갱신은 통째로 건너뛴다
   }
@@ -653,8 +752,15 @@ export function updateHud(el, game) {
     const nCharge = game.laserChargingCount
     el.querySelector('#laserT').textContent = t('alarm.charge.t', { left: game.laserLeft.toFixed(1) })
       + (nCharge > 1 ? t('alarm.multi', { n: nCharge }) : '')
+    // 추진기 값 — 이 버튼은 광선을 피하는 대신 **지구 궤도를 판다.** 계측에서
+    // 한 번에 근일점이 평균 56 GU 내려가고 누적이라, 여덟 번이면 다른 무엇과도
+    // 상관없이 지구를 잃는다. 그 값을 누르기 전에 여기서 말한다(game.burnPreview).
+    const burn = game.burnPreview
     el.querySelector('#laserWhy').textContent = t(game.laserSafe ? 'alarm.safe' : 'alarm.hit',
       { miss: game.laserMiss.toFixed(0), need: hitRadiusOf(game.earth).toFixed(0) })
+      + (burn ? ' · ' + (burn.doomed ? t('alarm.burn.sun')
+        : t('alarm.burn', { dv: burn.dv.toFixed(1), a: burn.peri.toFixed(0), b: burn.peri2.toFixed(0) })) : '')
+    lm.classList.toggle('bad', !!burn?.doomed)
   } else if (game.laserFlying) {
     lm.hidden = false
     lm.classList.remove('ok')
@@ -680,14 +786,20 @@ export function updateHud(el, game) {
     el.querySelector('#lcdSub').textContent = sub
       || t('lcd.default', { yield: game.yieldMt, impulse: CFG.NUKE_IMPULSE, blast: blastRadius(game.yieldMt).toFixed(0) })
     fireBtn.classList.toggle('danger', p.outcome === 'earth')
-    fireBtn.disabled = game.inFlight || veil
-    fireBtn.querySelector('.ftext').textContent = game.inFlight ? t('ui.fire.reload')
-      : p.outcome === 'earth' ? t('ui.fire.abort') : t('ui.fire')
+    // 막히는 것은 "탄이 날고 있을 때"가 아니라 **자리가 다 찼을 때**다
+    // (game.salvoFull). 한 발이 날고 있어도 다음 한 발은 쏠 수 있고,
+    // 그 두 번째 발로 첫 발을 치는 것이 이 게임의 새 수다.
+    // 시한이 지나면 새 발은 없다 — 이미 나간 발이 마지막이다(game.pastDeadline).
+    fireBtn.disabled = game.salvoFull || game.pastDeadline || veil
+    fireBtn.querySelector('.ftext').textContent = game.pastDeadline ? t('ui.fire.deadline', { n: game.flying })
+      : game.salvoFull ? t('ui.fire.reload', { max: CFG.MAX_INFLIGHT })
+        : p.outcome === 'earth' ? t('ui.fire.abort') : t('ui.fire')
   } else {
     lcd.className = 'lcd off'
     el.querySelector('#lcdTag').textContent = t(game.runOver ? 'lcd.dead' : 'lcd.hold')
     el.querySelector('#lcdText').textContent = t(game.runOver ? 'lcd.dead.sub' : 'lcd.hold.sub')
-    el.querySelector('#lcdSub').textContent = game.inFlight ? t('lcd.inflight') : ''
+    el.querySelector('#lcdSub').textContent = game.inFlight
+      ? t('lcd.inflight', { n: game.flying, max: CFG.MAX_INFLIGHT }) : ''
     fireBtn.classList.remove('danger')
     fireBtn.querySelector('.ftext').textContent = t('ui.fire')
   }

@@ -69,11 +69,6 @@ export function makeLaser(rng, from, nextAt = CFG.LASER_FIRST, earth = null) {
     miss: 0,           // 광선 중심선에서 지구까지의 예상 수직거리
     safe: false,       // miss가 지구 판정 반경을 넘었나 = 지금 이대로면 사는가
     refresh: 0,        // 조준점 재계산 타이머
-    // 지구가 지금 추진기를 태우면 이 광선을 피하는가(game.dodgeWorks). 예측이
-    // 비싸서 캐시해 두는 값이고, dodgeT는 그 답을 푼 인게임 시각이다.
-    // **여기에 미리 달아 둔다** — 나중에 붙이면 광선 객체의 hidden class가
-    // 갈라진다(body.js의 makeBody가 같은 이유로 필드를 한자리에 모아 둔다).
-    dodgeT: null, dodgeOk: false,
     // 조준점을 밖에서 고정한다(오프닝 예고편이 쓴다). 참이면 ax/ay를 그대로
     // 믿고 지구 예측을 건너뛴다 — 빗나감(miss/safe) 계산은 그대로 돈다.
     lockAim: false,
@@ -84,7 +79,7 @@ export function makeLaser(rng, from, nextAt = CFG.LASER_FIRST, earth = null) {
 // 천체 하나를 태양 중력만으로 seconds초 뒤까지 굴린다. 행성 섭동은 무시 —
 // 조르그의 계산도 이 정도이고(그래서 밀면 빗나간다), 무엇보다 싸다.
 //
-// **지구의 회피 예측(game.dodgeMiss)도 이 함수를 쓴다.** 조준점을 푸는 세계와
+// **지구의 회피 예측(game.missAfter)도 이 함수를 쓴다.** 조준점을 푸는 세계와
 // "분사하면 비켜나는가"를 묻는 세계가 갈리면 두 예측이 다른 답을 내고, 그러면
 // 버튼이 거짓말을 한다 — 같은 적분기, 같은 간격(1/40)이어야 한다.
 export function propagate(state, seconds) {
@@ -165,10 +160,6 @@ export function stepLaser(L, game, dt, n = 1) {
     L.state = LASER_CHARGE; L.t = 0
     L.ox = src.pos.x; L.oy = src.pos.y
     L.head = 0; L.back = 0; L.refresh = 0
-    // 회피 판정은 히스테리시스가 걸려 있어 **직전 답에 기댄다**(game.dodgeWorks).
-    // 지난 조준이 켜진 채로 끝났으면 그 값이 새 조준의 첫 문턱을 느슨하게
-    // 만든다 — 조준이 바뀌면 답도 처음부터 다시 묻는다.
-    L.dodgeT = null; L.dodgeOk = false
     L.n = n
     L.range = game.aMax * CFG.LASER_RANGE_MUL
     // 지구의 **원래 궤도** 사본. 이제부터 진짜 지구가 이것과 벌어지는 만큼
@@ -305,7 +296,7 @@ export function stepDoom(D, game, dt) {
   // 흩어지는 난사라면 그 한 발이 마침표다 — 판이 쓸려나가는 걸 보여 주면서
   // 동시에 판돈을 가져간다.
   //
-  // 지구가 부서지면 그 순간 총구가 멎는다. 이미 나간 빛만 마저 들어온다.
+  // 지구가 부서지면 그 순간 총구가 멎고, 이미 나간 빛도 같이 꺼진다(아래 ceased).
   while (game.earth.alive && D.spawned < CFG.DOOM_MAX_BEAMS && D.fireT >= CFG.DOOM_GAP) {
     D.fireT -= CFG.DOOM_GAP
     const aimed = D.spawned % CFG.DOOM_AIM_EVERY === CFG.DOOM_AIM_EVERY - 1
@@ -315,6 +306,17 @@ export function stepDoom(D, game, dt) {
     ev.push({ kind: 'beam', a })
     D.spawned++
   }
+  // ── 끝났다는 신호 ── 총구가 멎는 조건은 하나뿐이다: **지구가 부서졌다.**
+  // (안전 상한에 닿아도 끝낸다 — 행성이 계속 대신 맞아 주는 판에서 난사가
+  //  영영 이어지지 않게 하는 장치이고, 132초어치라 실제로는 거의 안 닿는다.)
+  const ceased = !game.earth.alive || D.spawned >= CFG.DOOM_MAX_BEAMS
+  // 그 순간 **이미 나간 빛도 그 자리에서 꺼진다.** 예전에는 살아 있는 막대가
+  // 사거리 끝(aMax×3.2 = 5440 GU)까지 마저 날아갔는데, 900 GU/s이니 그게 6.4초다 —
+  // 지구가 터진 뒤 아무 일도 안 일어나는 6초가 패배 화면 앞에 붙어 있었다는 뜻이다
+  // (16시드 계측: 지구 소멸 → 패배 판정 6.35초). 머리를 세우고 꼬리만 들여보내는
+  // 것은 무언가에 박혔을 때와 같은 처리라 화면에서는 "빛이 꺼진다"로 읽히고,
+  // 0.18초(LASER_BOLT / LASER_SPEED)면 다 들어온다.
+  if (ceased) for (const b of D.beams) b.dead = true
   for (const b of D.beams) {
     if (b.gone) continue
     // 머리가 이미 멎었으면 꼬리만 그 자리까지 밀려 들어온다(요새 광선과 같다)
@@ -338,10 +340,8 @@ export function stepDoom(D, game, dt) {
   // 다 들어온 빛은 명단에서 뺀다 — 난사가 끝이 없으므로 안 걷으면 배열이
   // 계속 자라고, 렌더러가 매 프레임 그 전부를 훑는다.
   if (D.beams.length > 24) D.beams = D.beams.filter(b => !b.gone)
-  // ── 끝 ── 총구가 멎는 조건은 하나뿐이다: **지구가 부서졌다.**
-  // (안전 상한에 닿아도 끝낸다 — 행성이 계속 대신 맞아 주는 판에서 난사가
-  //  영영 이어지지 않게 하는 장치이고, 132초어치라 실제로는 거의 안 닿는다.)
-  const ceased = !game.earth.alive || D.spawned >= CFG.DOOM_MAX_BEAMS
+  // 꼬리까지 다 들어왔으면 그것으로 끝이다 — 여기서 D.done이 서면 게임 쪽이
+  // 패배 판정을 낸다(game.tickDoom).
   if (ceased && D.beams.every(b => b.gone)) D.done = true
   return ev
 }

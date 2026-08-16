@@ -1,7 +1,7 @@
 import { CFG, hitRadiusOf } from '../game/config.js'
 import { ROLES, SHARD_N, effDv, massClass, modsOf, roleBrief, roleLabel, shardCone, volatileRadius } from '../game/roles.js'
 import { t, nameOf } from '../i18n/index.js'
-import { categoryOf, hostileMark } from '../render/Icons.js'
+import { catOf, hostileMark } from '../render/Icons.js'
 
 // ─── 천체 정보창 ────────────────────────────────────────────────
 // 마우스를 올리거나(데스크톱) 손가락으로 짚으면(모바일) 그 공의 제원이 뜬다.
@@ -71,11 +71,11 @@ export class Inspector {
   }
 
   rows(b) {
-    const cat = categoryOf(b.type)
+    const cat = catOf(b)
     const g = this.game
     const r = Math.hypot(b.pos.x, b.pos.y)
     const v = Math.hypot(b.vel.x, b.vel.y)
-    const hostile = b.role === 'battery' || b.role === 'hive'
+    const hostile = b.role === 'battery'
     const hp = b.hp ?? CFG.PLANET_HP, hpMax = b.hpMax ?? CFG.PLANET_HP
     const pips = '◆'.repeat(Math.max(0, hp)) + '◇'.repeat(Math.max(0, hpMax - hp))
     const out = []
@@ -83,7 +83,7 @@ export class Inspector {
     const tags = []
     if (hostile) { const m = hostileMark(b); tags.push(['foe', `${m.icon} ${m.label}`]) }
     for (const key of [b.role, ...modsOf(b)]) {
-      if (!key || key === 'battery' || key === 'hive') continue
+      if (!key || key === 'battery') continue
       const R = ROLES[key]
       if (R) tags.push(['tag', `${R.icon} ${roleLabel(key)}`])
     }

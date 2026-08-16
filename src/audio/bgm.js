@@ -7,7 +7,7 @@ import { rampParam, EXP_FLOOR } from './engine.js'
 // 음악만 파일이고, 이제 두 곡이다:
 //
 //   dorian-gates   (3:32.9) — 1~4스테이지. 규칙을 배우고 요새를 하나씩 지우는 판.
-//   starforge-ace  (4:14.1) — 5스테이지부터 끝까지. 초엘리트가 서고 하늘이
+//   starforge-ace  (4:14.1) — 5스테이지부터 끝까지. 투석기가 서고 하늘이
 //                             검붉어지는 판(TRACK_STAGE는 config가 아니라 부르는
 //                             쪽이 정한다 — audio/index.js).
 //

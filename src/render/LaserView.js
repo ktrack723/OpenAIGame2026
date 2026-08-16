@@ -4,6 +4,8 @@ import { CFG, hitRadiusOf } from '../game/config.js'
 // 바뀌어도 판정은 그대로인 채 **그림만 조용히 멎는다**(같은 상수를 game.js와
 // Attract.js는 이미 import해 쓰고 있다).
 import { LASER_CHARGE, LASER_SPENT, LASER_TRAVEL } from '../game/laser.js'
+// 색도 한 군데서만 산다 — 막대(여기)와 착탄·발사 섬광(Explosions)이 같은 표를 본다.
+import { LZ_DOOM } from './Explosions.js'
 
 // ─── 조르그 레이저 연출 ─────────────────────────────────────────
 // **단순하게.** 예전엔 흐르는 빗금 + 맥동 + 색 변화 + 번짐을 한꺼번에 얹었더니
@@ -158,7 +160,10 @@ export class LaserView {
       const lit = b.head - b.back
       if (lit <= 0) continue
       const hx = D.x + b.ux * b.back, hy = D.y + b.uy * b.back
-      this.place(this.bolt(0xff2d4d, 1), hx, hy, ang, lit, Math.max(8 * ppw, 11), 7)
+      // **자홍이다 — 요새의 장미와 갈린다.** 요새의 광선은 지구 체력을 한 눈금
+      // 깎지만(EARTH_MAX_DMG) 이건 체력을 안 본다: 닿으면 끝이다. 규칙이 다른
+      // 물건은 색도 달라야 한다(Explosions의 LZ_DOOM · 같은 자홍이다).
+      this.place(this.bolt(LZ_DOOM.core, 1), hx, hy, ang, lit, Math.max(8 * ppw, 11), 7)
       this.place(this.bolt(0xffffff, 1), hx, hy, ang, lit, Math.max(3 * ppw, 4), 7.2)
     }
   }

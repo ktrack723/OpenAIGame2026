@@ -104,7 +104,31 @@ export class Orbits {
     }
   }
 
+  // ─── 유령 궤도 ──────────────────────────────────────────────
+  // 판 위의 천체가 아니라 **아직 일어나지 않은 일**을 그린다: 지금 쏘면 지구가
+  // 이만큼 밀리고, 그러면 궤도가 이렇게 된다(aim.earthShove). 같은 원뿔곡선
+  // 식(fill)을 쓰므로 실제로 밀린 뒤의 궤도선과 정확히 겹친다 — 그래야 이 선이
+  // 예고가 된다. pos/vel 이 null이면 걷는다.
+  ghost(pos, vel, aMax, color) {
+    if (!pos) { if (this._ghost) this._ghost.line.visible = false; return }
+    if (!this._ghost) {
+      this._ghost = this.make(color)
+      this._ghost.line.material.opacity = 0.85
+      this._ghost.line.renderOrder = 2
+    }
+    const o = this._ghost
+    o.line.visible = true
+    o.line.material.color.setHex(color)
+    o.key = ''                      // 매번 다시 쓴다 — 조준이 바뀌면 선도 바뀐다
+    this.fill(o, pos, vel, beltRadius(aMax))
+  }
+
   dispose() {
+    if (this._ghost) {
+      this.scene.remove(this._ghost.line)
+      this._ghost.line.geometry.dispose(); this._ghost.line.material.dispose()
+      this._ghost = null
+    }
     for (const o of this.map.values()) {
       this.scene.remove(o.line)
       o.line.geometry.dispose(); o.line.material.dispose()

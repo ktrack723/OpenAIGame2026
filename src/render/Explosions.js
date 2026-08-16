@@ -5,6 +5,24 @@ import { CFG, VIS } from '../game/config.js'
 // 게임 로직이 쌓아둔 fx 큐를 소비해 파티클/링/섬광으로 옮긴다.
 // 여기 있는 숫자는 전부 "보이는 크기"일 뿐, 미는 힘·반경 같은 게임 수치가
 // 아니다 — 그건 game.js와 config.js에만 있다.
+
+// ─── 두 광선의 색 ───────────────────────────────────────────────
+// 요새의 광선과 모성의 난사는 **같은 그림에 다른 색**을 쓴다. 그림이 같은 것은
+// 굴러가는 규칙이 같기 때문이고(같은 sweep · 같은 속도 · 닿는 첫 천체는 체력
+// 불문 소멸), 색이 갈리는 것은 **지구에게만 규칙이 다르기** 때문이다:
+//   · 요새의 광선 → 지구 체력 한 눈금(EARTH_MAX_DMG 1). 세 번까지 버틴다.
+//   · 모성의 난사 → 체력을 아예 안 본다. 닿으면 그 자리에서 끝이다(game.tickDoom).
+// 같은 색으로 두면 그 차이는 맞아 보기 전에 알 길이 없다.
+//
+// 새 색을 만들지는 않았다. 판은 이미 이 둘로 편을 갈라 놓았다 — 요새는 장미,
+// 모성은 자홍이고(폭발의 capital · Markers의 화살표 · 패배 화면 · Icons의 분류색),
+// 난사만 그 표에서 혼자 장미였다.
+// (막대 자체는 LaserView가 그린다 — 그래서 표를 내보낸다. 색이 두 군데에
+//  적혀 있으면 한쪽만 고쳐지고, 그러면 막대와 착탄이 다른 색이 된다.)
+export const LZ_FORT = { core: 0xff2d4d, glow: 0xff4d6d, spark: 0xff6b7f, mist: 0xffd7de, flash: '#ffdde3', warm: '#ffe0e6' }
+export const LZ_DOOM = { core: 0xe879f9, glow: 0xf0abfc, spark: 0xf5a3fc, mist: 0xf5d0fe, flash: '#f7dcff', warm: '#f3d5ff' }
+export const lzOf = (e) => (e && e.doom ? LZ_DOOM : LZ_FORT)
+
 export class Explosions {
   constructor(parts, rig, flash) {
     this.parts = parts
@@ -36,13 +54,13 @@ export class Explosions {
       else if (e.kind === 'swing') {
         this.parts.shock(e.x, e.y, Math.max(24, (e.r ?? 10) * CFG.SWING_ZONE * 0.5), 0x67e8f9, 0.6)
         this.parts.burst(e.x, e.y, { n: 26, color: 0x67e8f9, speed: 110, size: 8, ttl: 0.7 })
-      } else if (e.kind === 'hive') this.hive(e)
-      else if (e.kind === 'siegeLock') this.siegeLock(e)
+      } else if (e.kind === 'siegeLock') this.siegeLock(e)
       else if (e.kind === 'siegeFire') this.siegeFire(e)
       else if (e.kind === 'siegeNuke') this.siegeNuke(e)
       else if (e.kind === 'siegePush') this.siegePush(e)
       else if (e.kind === 'boost') this.boost(e)
       else if (e.kind === 'earthBurn') this.earthBurn(e)
+      else if (e.kind === 'keepBurn') this.keepBurn(e)
       else if (e.kind === 'pol') this.pol(e)
       else if (e.kind === 'bump') this.bump(e)
       else if (e.kind === 'belt') this.belt(e)
@@ -56,23 +74,8 @@ export class Explosions {
     q.length = 0
   }
 
-  // ─── 조르그 모함의 송출 ──────────────────────────────────────
-  // 폭발이 아니라 **보냈다**는 표시다. 모함 자리에서 자주색 고리가 한 번
-  // 퍼지고(= 여기서 나갔다), 도착지에도 같은 색 고리가 뜬다(= 저기로 갔다).
-  // 실제 워프인 연출(warp)은 그 뒤 도착 시각에 따로 뜨므로 여기서는 둘을
-  // **잇는 것**만 한다 — 화면 밖이라도 "또 하나 왔다"가 색으로 읽힌다.
-  hive(e) {
-    const P = this.parts, C = 0xe879f9, R = Math.max(50, e.r ?? 60)
-    P.shock(e.x, e.y, R * 2.2, C, 0.7)
-    P.puff(e.x, e.y, { r0: R * 0.4, r1: R * 1.5, ttl: 0.5, color: C, alpha: 0.5 })
-    P.burst(e.x, e.y, { n: 40, color: C, speed: 150, size: 9, ttl: 0.8 })
-    if (e.tx !== undefined) {
-      P.shock(e.tx, e.ty, 90, C, 0.8)
-      P.burst(e.tx, e.ty, { n: 26, color: C, speed: 90, size: 8, ttl: 0.7 })
-    }
-  }
 
-  // ─── 초엘리트의 한 수 ────────────────────────────────────────
+  // ─── 투석기의 한 수 ────────────────────────────────────────
   // 셋 다 조르그 것이므로 **주홍**으로 묶는다. 내 핵의 화구는 흰빛에서
   // 호박·주황으로 식지만(nuke), 이쪽은 처음부터 끝까지 붉다 — 화면에 둘이
   // 같이 터져도 어느 쪽이 내 것인지 색 하나로 갈린다.
@@ -192,6 +195,37 @@ export class Explosions {
     P.shock(e.x, e.y, R, 0xff7a18, 1.0, { from: 0.14, to: 3.0, delay: 0.1, alpha: 0.65 })
     this.rig.hit(10)
     this.flash(0.16, '#ffe0bf')
+  }
+
+  // ─── 자세 제어 분사 (궤도 복원) ──────────────────────────────
+  // 위의 earthBurn·boost와 **같은 물건인데 반대로 만든 연출**이다. 저 둘은
+  // 한 번의 사건이라 화면을 흔들고 섬광을 터뜨리지만, 이건 수십 초에 걸쳐
+  // 조금씩 잡는 자세 제어라 같은 크기로 터뜨리면 화면이 그걸로 덮인다.
+  // 그래서 여기에는 셋이 없다: 화면 흔들림(rig.hit) · 섬광(flash) · 충격파(shock).
+  // 남는 것은 작은 배기 화염 하나뿐이고, 그게 0.9초마다 한 번씩 반복된다
+  // (game.stepOrbitKeep). 여러 번 뿜는 그림 자체가 "지금 스스로 잡는 중"이다.
+  //
+  // 색은 판의 규칙 그대로다 — 조르그는 분홍, 지구는 주황. 그래서 화면 어디서
+  // 불꽃이 나든 **누구의 엔진인지**가 색 하나로 읽힌다.
+  keepBurn(e) {
+    // 크기 기준은 **판 전체를 보고 있을 때 읽히는가**다. 처음엔 판정 원의
+    // 0.6배로 잡았는데, 성계 전체가 2500 GU를 넘는 화면에서는 점 하나로 사라졌다
+    // — 이 연출의 목적이 "쟤가 지금 스스로 잡는 중"을 알리는 것이므로 안 보이면
+    // 없는 것과 같다. 그래도 earthBurn(입자 220 · 속도 560)의 1/6 규모다.
+    const P = this.parts, R = Math.max(30, (e.r ?? 20) * 1.1)
+    const core = e.zorg ? 0xff5c9e : 0xff7a18
+    const hot = e.zorg ? 0xffd7ec : 0xffdcb0
+    // ── 노즐은 **몸통 밖**이다 ────────────────────────────────
+    // 처음엔 천체 중심에서 뿜었는데 화면에 아무것도 안 나왔다. 이유는 속도였다:
+    // 250 GU/s로 0.2초면 50 GU를 가는데 지구 판정 반경이 44 GU라, 입자가 행성
+    // 그림 뒤에서 태어나 그 안에서 죽었다. earthBurn이 보이는 건 560~1250 GU/s로
+    // 단번에 몸통을 벗어나기 때문이다. 그래서 둘 다 고친다 — 배기 방향으로
+    // 반경만큼 밀어낸 자리에서, 몸통을 벗어날 속도로 뿜는다.
+    const ox = e.x + Math.cos(e.a) * (e.r ?? 20) * 0.95
+    const oy = e.y + Math.sin(e.a) * (e.r ?? 20) * 0.95
+    P.puff(ox, oy, { r0: R * 0.12, r1: R * 0.8, ttl: 0.42, color: hot, alpha: 0.7 })
+    P.burst(ox, oy, { n: 34, color: core, speed: 520, size: 11, ttl: 0.8, spread: 0.42, dir: e.a, drag: 0.5 })
+    P.burst(ox, oy, { n: 16, color: hot, speed: 760, size: 7, ttl: 0.5, spread: 0.22, dir: e.a })
   }
 
   // ─── 정치자금 획득 ───────────────────────────────────────────
@@ -337,35 +371,35 @@ export class Explosions {
 
   // ─── 레이저 충전 개시 — 본성이 달아오른다 ───────────────────
   laserCharge(e) {
-    const P = this.parts
-    P.shock(e.x, e.y, 120, 0xff4d6d, 0.8, { thin: true, from: 2.8, to: 0.15, alpha: 0.9 })
-    P.burst(e.x, e.y, { n: 60, color: 0xff4d6d, speed: 160, size: 10, ttl: 0.9 })
+    const P = this.parts, C = lzOf(e)
+    P.shock(e.x, e.y, 120, C.glow, 0.8, { thin: true, from: 2.8, to: 0.15, alpha: 0.9 })
+    P.burst(e.x, e.y, { n: 60, color: C.glow, speed: 160, size: 10, ttl: 0.9 })
     this.rig.hit(8)
-    this.flash(0.16, '#ffe0e6')
+    this.flash(0.16, C.warm)
   }
 
   // ─── 레이저 발사 — 총구에서 탄두가 튀어나가는 순간만 ────────
   // 착탄은 별도 이벤트다(laserHit). 광선이 날아가는 데 시간이 걸리므로
   // 예전처럼 발사와 착탄을 한 번에 터뜨리면 거짓말이 된다.
   laserFire(e) {
-    const P = this.parts
-    P.puff(e.x, e.y, { r0: 8, r1: 120, ttl: 0.4, color: 0xff4d6d, alpha: 1 })
-    P.burst(e.x, e.y, { n: 70, color: 0xffd7de, speed: 900, size: 9, ttl: 0.4, spread: 0.5, dir: e.a })
+    const P = this.parts, C = lzOf(e)
+    P.puff(e.x, e.y, { r0: 8, r1: 120, ttl: 0.4, color: C.glow, alpha: 1 })
+    P.burst(e.x, e.y, { n: 70, color: C.mist, speed: 900, size: 9, ttl: 0.4, spread: 0.5, dir: e.a })
     this.rig.hit(14)
-    this.flash(0.32, '#ffdde3')
+    this.flash(0.32, C.flash)
   }
 
   // ─── 레이저 착탄 — 여기서 뭔가가 부서진다 ───────────────────
   laserHit(e) {
-    const P = this.parts, R = Math.max(120, (e.r ?? 30) * 2.6)
-    P.puff(e.x, e.y, { r0: 10, r1: R, ttl: 0.7, color: 0xff2d4d, alpha: 1 })
+    const P = this.parts, C = lzOf(e), R = Math.max(120, (e.r ?? 30) * 2.6)
+    P.puff(e.x, e.y, { r0: 10, r1: R, ttl: 0.7, color: C.core, alpha: 1 })
     P.shock(e.x, e.y, R, 0xffffff, 0.6, { thin: true, from: 0.08, to: 2.6, alpha: 1 })
-    P.shock(e.x, e.y, R, 0xff4d6d, 1.1, { from: 0.1, to: 2.0, delay: 0.06 })
-    P.burst(e.x, e.y, { n: e.sun ? 120 : 260, color: e.sun ? 0xffb247 : 0xff6b7f, speed: 520, size: 16, ttl: 1.6 })
+    P.shock(e.x, e.y, R, C.glow, 1.1, { from: 0.1, to: 2.0, delay: 0.06 })
+    P.burst(e.x, e.y, { n: e.sun ? 120 : 260, color: e.sun ? 0xffb247 : C.spark, speed: 520, size: 16, ttl: 1.6 })
     P.burst(e.x, e.y, { n: 90, color: 0xffffff, speed: 900, size: 9, ttl: 0.6 })
     this.rig.focus(e.x, e.y, 420, 2)
     this.rig.hit(VIS.SHAKE_MAX)
-    this.flash(0.85, '#ffdde3')
+    this.flash(0.85, C.flash)
   }
 
   // ─── 레이저 소진 — 아무것도 못 맞히고 성계를 벗어났다 ───────
@@ -495,9 +529,9 @@ export class Explosions {
   // 폭발의 문법(밖으로 퍼지는 화구·충격파)을 여기서는 하나도 안 쓴다 —
   // 써 버리면 0.45초 뒤의 진짜 폭발이 두 번째 폭발로 읽힌다.
   //
-  // 색은 조르그의 것이다: 요새는 장미(제 회로 불빛과 같은 색), 모함·모성은 자주.
+  // 색은 조르그의 것이다: 요새는 장미(제 회로 불빛과 같은 색), 모성은 자주.
   zorgCharge(e) {
-    const P = this.parts, C = e.hive ? 0xe879f9 : 0xff2b3f
+    const P = this.parts, C = e.capital ? 0xe879f9 : 0xff2b3f
     const R = Math.max(60, (e.r ?? 30) * 1.6)
     // ① 안으로 조여드는 링 둘 — 힘이 모인다(from > to = 수축)
     P.shock(e.x, e.y, R, 0xffffff, 0.40, { thin: true, from: 3.0, to: 0.12, alpha: 1 })
@@ -515,7 +549,7 @@ export class Explosions {
         _pc.setHex(Math.random() < 0.4 ? 0xffffff : C), 6 + Math.random() * 6, 0.38, 0.2)
     }
     this.rig.focus(e.x, e.y, R * 3.4, 1.4)
-    this.flash(0.12, e.hive ? '#ffe6ff' : '#ffdfe6')
+    this.flash(0.12, e.capital ? '#ffe6ff' : '#ffdfe6')
   }
 
   // ─── 조르그 폭파 — 빛기둥이 판을 가른다 ──────────────────────
@@ -523,9 +557,9 @@ export class Explosions {
   //   기둥이 있다 / 색이 장미·자주다 / 파편 대신 금속 조각이 곧게 날아간다.
   // 화면 구석에서 터져도 "저건 조르그였다"가 형태와 색으로 읽혀야 한다.
   destroyZorg(e) {
-    const P = this.parts, C = e.hive ? 0xe879f9 : 0xff2b3f
+    const P = this.parts, C = e.capital ? 0xe879f9 : 0xff2b3f
     const R = Math.max(80, (e.r ?? 30) * 3.6)
-    this.flash(0.9, e.hive ? '#ffe6ff' : '#ffe0e8')
+    this.flash(0.9, e.capital ? '#ffe6ff' : '#ffe0e8')
     // ① 흰 코어가 터진다
     P.puff(e.x, e.y, { r0: R * 0.28, r1: R * 1.35, ttl: 0.24, color: 0xffffff, alpha: 1 })
     P.puff(e.x, e.y, { r0: R * 0.15, r1: R * 2.3, ttl: 1.2, color: C, alpha: 0.95, delay: 0.05 })

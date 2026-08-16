@@ -3,19 +3,19 @@ import { cloneBodies, segCircleEntry, segHitsCircle, stepBodies } from './physic
 import { propagate } from './laser.js'
 import { effDv } from './roles.js'
 
-// ─── 초엘리트 조르그 행성 — 저쪽도 당구를 친다 ──────────────────
+// ─── 조르그 투석기 — 저쪽도 당구를 친다 ──────────────────
 //
-// 5스테이지부터 성계에 한 기 앉는다. 하는 일은 요새(광선)와도 모함(증원)과도
+// 5스테이지부터 성계에 한 기 앉는다. 하는 일은 요새(광선)와도
 // 다르다: **핵미사일로 중립 행성을 골라 지구에 처박는다.** 플레이어가 판
 // 내내 해 온 그 수를 그대로 되돌려 주는 물건이다.
 //
 // 상태는 넷이다: 조용함 → **잠금**(조준선이 보인다) → **비행** → 기폭.
 //
 // ① 잠금 — 큐볼 하나를 고르고 그 공의 어느 살을 칠지까지 정한다. 조준선이
-//    초엘리트에서 그 살까지 그려지고, 밀려갈 방향도 같이 보인다(화면 쪽 일).
+//    투석기에서 그 살까지 그려지고, 밀려갈 방향도 같이 보인다(화면 쪽 일).
 //    이 구간이 곧 **대응 시간**이다(CFG.SIEGE_LOCK_TIME). 대응은 넷 다 이미 배운 수다:
 //      · 큐볼을 먼저 쳐서 치워 놓는다 — 조준이 통째로 무의미해진다
-//      · 잠금 중에 초엘리트를 끊는다 — 발사가 취소된다(요새 광선과 같은 규칙)
+//      · 잠금 중에 투석기를 끊는다 — 발사가 취소된다(요새 광선과 같은 규칙)
 //      · 밀려 오는 공을 되친다 — 궤도를 틀면 지구를 스쳐 지나간다
 //      · 지구 추진기로 비켜선다 — 회랑이 아니라 궤도를 피하는 것이라 더 쉽다
 //
@@ -43,8 +43,8 @@ export const SIEGE_FLY = 'fly'
 // 큐볼 자격 — **밀리는 공이어야** 이 수가 성립한다. 요새가 옆자리를 고를 때
 // 쓰는 것과 같은 문턱을 쓴다(CFG.FORT_CUE_MIN_DV): 목성·토성처럼 무거운
 // 공은 6Mt로는 꿈쩍도 안 하므로 골라도 헛수다.
-// 조르그가 제 편(요새·모함·다른 초엘리트)을 치지는 않는다 — 그건 당구가
-// 아니라 자해다. 특이점은 핵이 안 통하고(Δv 0) 파편은 공이 아니다.
+// 조르그가 제 편(요새·다른 투석기)을 치지는 않는다 — 그건 당구가
+// 아니라 자해다. 파편은 공이 아니고, 모성은 아무것도 안 통한다.
 //
 // 가스(유폭)와 불안정(파열)도 뺀다. 밀리는 대신 **다른 일**을 하는 공이라,
 // 이 함수의 답을 받아 "밀면 지구에 닿는다"를 푸는 시뮬레이션(trial)이 그
@@ -56,7 +56,7 @@ function candidates(game, from) {
   const out = []
   for (const b of game.bodies) {
     if (!b.alive || b === from || b.isEarth) continue
-    if (b.zorg || b.role === 'battery' || b.role === 'hive' || b.role === 'siege') continue
+    if (b.zorg || b.role === 'battery' || b.role === 'siege') continue
     if (b.type === 'debris' || b.mothership) continue
     if (b.role === 'volatile' || b.role === 'unstable') continue
     if ((b.warpIn ?? 0) > 0) continue
@@ -134,7 +134,7 @@ function trial(cue, earth, ang, dv, horizon) {
 // 천체 둘이고, 그 앞에 후보마다 미래로 한 번씩 굴린다(2700스텝 × 1체).
 // 이 함수가 도는 프레임은 **중앙 17ms · 최대 64ms**다(10시드 계측, 36회).
 // 프레임 하나를 그만큼 붙잡는 셈인데 이 주기는 200초에 한 번이라 화면에서는
-// 안 보인다(모함의 보충도 같은 급의 멈칫을 낸다 — system.placeFort 주석).
+// 안 보인다(판 전환의 자리 찾기도 같은 급의 비용이다 — system.placeFort 주석).
 // 후보를 셋으로 자르는 것이 그 예산의 전부라 여기를 늘리려면 다시 재야 한다.
 export function solveCarom(game, from) {
   const pool = candidates(game, from).slice(0, 3)
@@ -171,7 +171,7 @@ export function caromPoint(cue, ang, at = cue.pos) {
   return { x: at.x - Math.cos(ang) * r, y: at.y - Math.sin(ang) * r }
 }
 
-// from = 이 포를 실은 초엘리트. 그놈이 죽으면 같이 없어진다(game.syncSieges).
+// from = 이 포를 실은 투석기. 그놈이 죽으면 같이 없어진다(game.syncSieges).
 export function makeSiegeGun(rng, from, nextAt = CFG.SIEGE_FIRST) {
   return {
     state: SIEGE_IDLE,
@@ -238,7 +238,7 @@ export function stepSiegeGun(S, game, dt) {
   return null
 }
 
-// 발사가 취소됐다 — 잠금 중에 초엘리트가 부서졌을 때 game이 부른다.
+// 발사가 취소됐다 — 잠금 중에 투석기가 부서졌을 때 game이 부른다.
 export function abortSiegeGun(S) {
   if (S.state !== SIEGE_LOCK) return false
   S.state = SIEGE_IDLE; S.t = 0; S.nextAt = CFG.SIEGE_PERIOD; S.cue = null
@@ -298,7 +298,7 @@ export function stepSiegeShot(m, game, dt) {
     // 쏘는 것"이 아니라 "행성을 지구에 처박는 것"이고(핵은 원래 행성을 못
     // 부순다 — 이 게임의 전제), 그래서 이 탄은 배정된 그 공에만 무장돼 있다.
     //
-    // 규칙으로 못 박은 이유가 하나 더 있다. 초엘리트 대역은 지구 궤도
+    // 규칙으로 못 박은 이유가 하나 더 있다. 투석기 대역은 지구 궤도
     // 언저리라 탄의 직선 경로에 지구가 걸리는 일이 흔한데, 9Mt가 지구에
     // 직격하면 Δv 15.6이다 — 지구 궤도 속도(21)의 74%다. 계측에서 그 한 방이
     // 근일점을 태양까지 끌어내려 400초 뒤에 판이 끝났고, 화면에는 그 인과가

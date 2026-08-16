@@ -1,6 +1,6 @@
-import { CFG, R_SCALE, blastRadius, contactDist, radiusOf } from './config.js'
+import { CFG, R_SCALE, blastRadius, contactDist, nukeDv, radiusOf } from './config.js'
 import { cloneBody, makeBody } from './body.js'
-import { effDv } from './roles.js'
+import { effDv, roleOf } from './roles.js'
 import { clone, vec } from '../core/vector.js'
 
 // ─── T1-1: N체 가속도 — 태양(원점 고정) + 행성 상호작용 (§4.2) ───
@@ -127,6 +127,48 @@ export function segCircleEntry(ax, ay, bx, by, cx, cy, r) {
   return { x: ax + dx * tc, y: ay + dy * tc }
 }
 
+// ─── 움직이는 두 점이 한 스텝 안에서 만나는가 ────────────────────
+// 탄두끼리의 판정이다(game.crossFire · aim.predictPath). "선분 대 원"으로는
+// 못 푼다 — 원 쪽도 같이 움직이기 때문이다. 한쪽을 세운 **상대 좌표**로
+// 옮기면 다시 선분 대 원이 되고, 그러면 스텝 안의 어느 시점에 만나는지까지
+// 그대로 나온다. 둘 다 초당 수십 GU로 나는 물건이라 스텝 끝 위치만 비교하면
+// 서로를 통과해 버린다(같은 이유로 천체 판정도 스윕이다).
+// 돌려주는 값은 처음 반경 r 안에 드는 시점 u∈[0,1], 안 만나면 -1.
+// 만나는 자리는 부르는 쪽이 u로 보간해 구한다 — 두 점의 자리가 서로 다르므로
+// 여기서 하나로 정해 줄 수가 없다(폭심은 큐 쪽, 밀리는 방향은 공 쪽이다).
+export function sweepMeet(a0, a1, b0, b1, r) {
+  const fx = a0.x - b0.x, fy = a0.y - b0.y
+  const c = fx * fx + fy * fy - r * r
+  if (c <= 0) return 0                        // 스텝 머리에서 이미 겹쳐 있다
+  const dx = (a1.x - a0.x) - (b1.x - b0.x), dy = (a1.y - a0.y) - (b1.y - b0.y)
+  const a = dx * dx + dy * dy
+  if (a < 1e-12) return -1                    // 상대 정지 — 이 스텝에는 안 가까워진다
+  const b = 2 * (fx * dx + fy * dy)
+  const disc = b * b - 4 * a * c
+  if (disc < 0) return -1
+  const u = (-b - Math.sqrt(disc)) / (2 * a)  // 첫 교점
+  return (u >= 0 && u <= 1) ? u : -1
+}
+
+// ─── 탄두를 미는 핵 ──────────────────────────────────────────────
+// applyNuke와 **같은 규칙**이다: 방향은 폭심 → 맞은 것의 중심, 크기는
+// 작약량 / 질량. 다른 것은 나뉘는 질량뿐이다 — 탄두는 다 같은 물건이라
+// μ가 하나로 고정된다(CFG.MISSILE_MU). 그래서 "어느 살을 치나"라는 조준법이
+// 공에서 탄두로 그대로 넘어온다.
+// 미는 것은 부르는 쪽이 한다(vel += dx*dv). 예측은 **밀지 않고 값만** 읽어
+// 화살표를 그리기 때문이다 — 둘이 같은 함수를 봐야 조준이 거짓말을 안 한다.
+export function missilePush(blastX, blastY, atX, atY, yld) {
+  const dx = atX - blastX, dy = atY - blastY
+  const d = Math.hypot(dx, dy)
+  // 정확히 겹쳐 있으면 **미는 방향이 없다.** 같은 프레임에 같은 각·같은 힘으로
+  // 쏜 두 발은 궤적이 비트 단위로 같아서 실제로 이 자리에 온다(계측). 그때
+  // 폭심은 상대의 한가운데이고, 한가운데서 터진 폭발은 어느 쪽으로도 안 민다 —
+  // 방향을 아무거나 지어내면 그게 거짓말이다. 크기까지 0으로 돌려주어야
+  // 부르는 쪽이 "밀었다"고 보고하지 않는다(game.relay).
+  if (d < 1e-9) return { dx: 0, dy: 0, dv: 0 }
+  return { dx: dx / d, dy: dy / d, dv: nukeDv(yld, CFG.MISSILE_MU) }
+}
+
 // 스텝당 객체를 만들지 않는다 — 예측 한 발이 6천여 스텝 × 천체 수를 돌므로
 // 여기서의 할당(직전 위치·가속도 스크래치·근접 판정의 임시 벡터)이 곧 GC다.
 // m.prev는 **제자리 갱신**한다: 붙들어 두는 호출부가 없음을 확인했고(모두 스텝
@@ -212,16 +254,36 @@ export function blastWave(bodies, blastX, blastY, yld, skip) {
   const R = blastRadius(yld), out = []
   for (const o of bodies) {
     if (!o.alive || o === skip) continue
-    let dx = o.pos.x - blastX, dy = o.pos.y - blastY
-    const d = Math.hypot(dx, dy)
-    if (d > R || d < 1e-6) continue
-    const falloff = 1 - d / R
-    const dv = effDv(o, yld) * CFG.BLAST_PUSH * falloff * falloff
-    o.vel.x += dx / d * dv; o.vel.y += dy / d * dv
+    const p = blastPushOn(o, blastX, blastY, yld)
+    if (!p) continue
+    o.vel.x += p.dx * p.dv; o.vel.y += p.dy * p.dv
     o.trailFlash = 1.5
-    out.push({ body: o, dv })
+    out.push({ body: o, dv: p.dv })
   }
   return { radius: R, pushed: out }
+}
+
+// 폭풍이 **이 공 하나**를 얼마나 미는가. 밀지 않으면 null.
+// blastWave가 실제로 미는 값과, 조준 화면이 "지구가 얼마나 밀리는가"를 미리
+// 보여줄 때 쓰는 값이 **같은 식이어야** 한다(aim.earthShove) — 갈라 두면
+// 화면이 예고한 궤도와 실제로 밀린 궤도가 다른, 제일 나쁜 종류의 거짓말이 된다.
+export function blastPushOn(o, blastX, blastY, yld) {
+  const R = blastRadius(yld)
+  const dx = o.pos.x - blastX, dy = o.pos.y - blastY
+  const d = Math.hypot(dx, dy)
+  if (d > R || d < 1e-6) return null
+  const falloff = 1 - d / R
+  return { dx: dx / d, dy: dy / d, dv: effDv(o, yld) * CFG.BLAST_PUSH * falloff * falloff, radius: R }
+}
+
+// 가스 행성의 유폭이 **이 공 하나**를 얼마나 미는가. 밀지 않으면 null.
+// 위와 같은 이유로 game.volatileBlast와 이 함수가 한 식을 본다.
+export function volatilePushOn(o, b, R) {
+  const dx = o.pos.x - b.pos.x, dy = o.pos.y - b.pos.y
+  const d = Math.hypot(dx, dy)
+  if (d > R || d < 1e-6) return null
+  const f = 1 - d / R
+  return { dx: dx / d, dy: dy / d, dv: CFG.VOLATILE_IMPULSE * f * f / o.mu * (roleOf(o)?.dvScale ?? 1), radius: R }
 }
 
 // ─── 파편 생성 (§6.1): n = clamp(4+⌊μ/150⌋, 4, 9), 총질량 55% ───
@@ -264,7 +326,7 @@ export function shardBurst(b, bodies, rnd, dirX, dirY) {
     const ang = base + spread + (rnd() - 0.5) * cone * 0.3
     const sp = CFG.UNSTABLE_SPEED * (1 + (rnd() - 0.5) * CFG.UNSTABLE_SPEED_VAR)
     bodies.push(makeBody({
-      id: `${b.id}s${bodies.length}`, nameKey: 'planet.debris', mu: muF, radius: rF,
+      id: `${b.id}s${bodies.length}`, nameKey: 'planet.shard', mu: muF, radius: rF,
       // 껍데기가 있던 자리에서 출발한다 — 중심에서 뿜으면 공 속에서 태어난 것처럼 보인다
       pos: { x: b.pos.x + Math.cos(ang) * b.radius * 1.15, y: b.pos.y + Math.sin(ang) * b.radius * 1.15 },
       vel: { x: b.vel.x + Math.cos(ang) * sp, y: b.vel.y + Math.sin(ang) * sp },
@@ -340,13 +402,25 @@ export function resolveBodyPairs(bodies, game) {
     const dx = b.pos.x - a.pos.x, dy = b.pos.y - a.pos.y, cd = contactDist(a, b)
     if (dx * dx + dy * dy >= cd * cd) continue
     if (aD || bD) {
-      // 파편은 행성 대기권에서 소멸한다 — **닿는 순간 그 자리에서 끝난다.**
-      // 튕겨 나가게 두면 이미 부서진 공의 부스러기가 판을 영영 굴러다닌다.
-      const frag = aD ? a : b, hit = aD ? b : a
+      const frag = aD ? a : b
+      if (!frag.shard) {
+        // ── 장식용 잔해 — **튕긴다** ──
+        // 예전에는 행성 대기권에서 타 없어졌다. 그러면 잔해가 사라지는 자리가
+        // 판마다 달라져서 "저건 어디까지 굴러가나"를 눈으로 못 쫓는다.
+        // 이제 잔해도 공이다: 당구공처럼 튕기고, 없어지는 곳은 판의 두 끝
+        // (카이퍼 벨트·태양)뿐이다. 대신 **아무도 안 깎는다** — 체력은
+        // 산탄만 건드린다(body.shard 주석). 그래서 판이 저 혼자 안 정리된다.
+        elasticBounce(a, b)
+        continue
+      }
+      // ── 산탄 — **체력 1짜리 공과 똑같이 판정한다** ──
+      // 같은 함수(onPlanetCollision)를 그대로 지난다. 그래서 가스 행성에
+      // 꽂히면 유폭하고, 불안정 행성에 꽂히면 그놈이 다시 쪼개진다(연쇄).
+      // 산탄만의 규칙은 하나뿐이다: **한 발에 한 번.** 판정이 어떻게 나오든
+      // 닿았으면 거기서 끝난다(체력 1이라 대개 판정 자체로 이미 죽는다).
+      const changed = game.onPlanetCollision(a, b) === 'destroyed'
       frag.alive = false
-      // 산탄만 때린다(body.shard 주석). 무엇에 얼마나 꽂혔는지는 게임이 정한다 —
-      // 여기서는 "닿았다"까지만 말하고, 배열이 바뀌었으면 그 스텝을 끝낸다.
-      if (frag.shard && game.onShardHit(frag, hit) === 'destroyed') return
+      if (changed) return
       continue
     }
     // 파괴가 일어나면 파편 생성으로 배열이 변한다 — 그 스텝은 거기서 끝낸다

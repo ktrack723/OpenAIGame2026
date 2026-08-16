@@ -57,6 +57,9 @@ export const PRED_TONE = {
   target: 0x4ade80, neutral: 0xe2e8f0, earth: 0xf87171,
   debris: 0x94a3b8, sun: 0xfb923c, timeout: 0x67e8f9, belt: 0x7dd3fc,
   volatile: 0xfb923c, unstable: 0xa3e635,
+  // 탄이 탄을 친다 — 판 위의 어느 공도 안 쓰는 색이어야 한다. 이 한 발이
+  // 무는 것은 천체가 아니라 **내가 조금 전에 쏜 탄**이기 때문이다.
+  relay: 0xc084fc,
 }
 
 // ─── 조준 보조 렌더 ─────────────────────────────────────────────
