@@ -1,14 +1,9 @@
 import { defineConfig, devices } from '@playwright/test'
-
-// 이 이미지에는 크로미움이 미리 깔려 있다. @playwright/test 버전이 기대하는 빌드 번호와
-// 다를 수 있어서 새로 받지 않고 있는 실행 파일을 직접 가리킨다.
-const CHROME = process.env.RIZZ_CHROME ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
+import { chromeLaunchOptions } from './tools/chrome.js'
 
 // 컨테이너에서 root 로 도는 경우가 많아 샌드박스를 끈다. 끄지 않으면 조용히 멈춘다.
-const launchOptions = {
-  executablePath: CHROME,
-  args: ['--no-sandbox', '--disable-dev-shm-usage', '--use-gl=swiftshader'],
-}
+// 미리 깔린 크로미움이 있으면 그걸 쓰고, 없으면(CI) playwright 가 받은 걸 쓴다.
+const launchOptions = chromeLaunchOptions()
 
 // 정적 사이트 그대로 띄운다 — GitHub Pages 와 같은 조건(빌드 단계 없음)에서 검증한다.
 export default defineConfig({

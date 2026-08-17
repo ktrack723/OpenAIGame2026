@@ -1,0 +1,64 @@
+name: Live API check
+
+# 실제 Anthropic API 로 도는 검사. 기본적으로 꺼져 있다 — 호출 요금이 나가기 때문이다.
+#
+# 켜는 법 (Settings → Secrets and variables → Actions):
+#   1. Secrets 탭 → New repository secret → 이름 ANTHROPIC_API_KEY, 값은 본인 키
+#   2. Variables 탭 → New repository variable → 이름 RIZZ_LIVE_CHECK, 값 on
+#
+# 키를 어디에도 붙여넣을 필요가 없다. 시크릿은 로그에서 마스킹된다.
+# 다 쓰고 나면 RIZZ_LIVE_CHECK 를 off 로 바꾸거나 지우면 다시 안 돈다.
+#
+# workflow_dispatch(Actions 탭의 Run workflow 버튼)는 이 파일이 기본 브랜치에 있어야
+# 나타난다. 이 브랜치는 병합하지 않으므로, 평소에는 아래 push 트리거로 돈다.
+
+on:
+  workflow_dispatch:
+    inputs:
+      full:
+        description: '한 판을 끝까지 돌린다 (호출 40회 이상)'
+        type: boolean
+        default: false
+      model:
+        description: '모델 ID'
+        type: string
+        default: 'claude-opus-5'
+  push:
+    branches: ['claude/llm-dating-coach-game-cj3bwo']
+
+jobs:
+  live:
+    # 변수를 켜 둔 동안에만 돈다. 켜지 않으면 push 때마다 조용히 건너뛴다.
+    if: github.event_name == 'workflow_dispatch' || vars.RIZZ_LIVE_CHECK == 'on'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install
+
+      - name: 키가 있는지 확인
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::error::ANTHROPIC_API_KEY 시크릿이 없습니다. Settings → Secrets and variables → Actions 에서 추가하세요."
+            exit 1
+          fi
+
+      - name: 서버 없이 — 요청 규격 · 구조화 출력 · 게임 루프
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          RIZZ_MODEL: ${{ inputs.model }}
+        run: npm run live
+
+      - name: 브라우저 설치
+        run: npx playwright install --with-deps chromium
+
+      - name: 브라우저에서 — CORS 직접 호출
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          RIZZ_MODEL: ${{ inputs.model }}
+          RIZZ_LIVE_FULL: ${{ inputs.full && '1' || '0' }}
+        run: npm run live:browser

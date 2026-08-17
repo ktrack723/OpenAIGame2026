@@ -132,6 +132,45 @@ E2E 는 `api.anthropic.com` 을 가로채 가짜 모델로 바꿔치고 **실제
 - 대화 도중 호출이 끊기면 **멈추고** 재시도를 제안한다 (대체 판정 없음)
 - 세로 화면 탭 타깃 크기 · 가로 스크롤 없음 · 입력 16px
 
+### 실제 키로 하는 검사
+
+위의 테스트는 전부 모델을 가짜로 바꿔친다. 그래서 **진짜 서버가 이 요청을 받아주는가**,
+특히 **브라우저 직접 호출이 CORS 를 통과하는가**는 검증되지 않는다. GitHub Pages 배포에서
+가장 먼저 깨질 수 있는 곳이 정확히 거기다. 그 구멍만 메우는 검사가 따로 있다.
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...   # 인자로 넘기지 말 것 — 셸 히스토리에 남는다
+
+npm run live           # Node — 요청 규격 · 구조화 출력 · 게임 루프 (호출 7회)
+npm run live:browser   # 브라우저 — 진짜 CORS · 실제 모델로 두 턴 (호출 9회 안쪽)
+
+RIZZ_LIVE_FULL=1 npm run live:browser   # 한 판을 끝까지 (호출 40회 이상)
+```
+
+`ANTHROPIC_API_KEY` 가 없으면 `live:browser` 는 통째로 건너뛰고, `live` 는 안내만 찍고 멈춘다.
+호출 요금은 본인 계정에 붙는다. 게이트웨이를 거쳐야 하면 `RIZZ_BASE_URL` 로 바꿀 수 있다
+(`npm run live` 한정 — 브라우저 쪽은 배포된 게임과 똑같이 `api.anthropic.com` 을 직접 부른다).
+
+> TLS 를 다시 끊는 사내 프록시 뒤에서는 `live:browser` 가 `ERR_CERT_AUTHORITY_INVALID` 로
+> 죽는다. 크로미움이 그 프록시의 CA 를 신뢰하지 않아서다 — 게임 문제가 아니다.
+> 그런 환경에서는 아래 GitHub Actions 경로로 돌리는 게 빠르다.
+
+**키를 로컬에 두고 싶지 않다면** 저장소 시크릿으로 돌린다. `Settings → Secrets and variables
+→ Actions` 에 `ANTHROPIC_API_KEY` 를 넣고, Actions 탭에서 **Live API check** 워크플로를
+손으로 실행하면 된다 (`.github/workflows/live-check.yml`). 시크릿은 로그에서 마스킹된다.
+
+확인하는 것들:
+
+- 키가 실제로 통하는가 / 엉터리 키가 `auth` 로 거절되는가
+- `output_config.format` 구조화 출력이 실제 응답에서 파싱되는가
+- 심판이 스키마 `enum` 밖의 화제를 만들어내지 않는가
+- 분위기·호감 증감이 정수이고 범위 안인가
+- **브라우저가 `api.anthropic.com` 을 직접 불러 프리플라이트를 통과하는가** ← 여기가 핵심
+
+대본은 `test/live/drive.js` 한 군데에 있고, `test/e2e/live-driver.spec.js` 가 같은 대본을
+가짜 모델로 매번 돌린다. 화면을 고쳐 셀렉터가 어긋나면 평소 CI 에서 바로 깨진다 —
+실제 키를 넣는 날 헛걸음하지 않기 위해서다.
+
 ### 자동 플레이 계측
 
 `tools/selfplay.js` 는 `test/helpers/fake-model.js`(결정적인 가짜 상대)를 붙여 돌린다.
@@ -170,10 +209,13 @@ game/
 test/
   *.test.js          Node
   e2e/               Playwright (가짜 API 포함)
+  live/              실제 키가 있을 때만 도는 검사 + 그 대본
   helpers/           가짜 모델 (테스트 전용 — web/ 에서 import 되지 않는다)
 tools/
   serve.js           정적 서버
   selfplay.js        자동 플레이 계측
+  live-check.mjs     실제 API 연기 테스트 (Node)
+  chrome.js          브라우저 실행 옵션 (개발 컨테이너 / CI 공용)
 ```
 
 세 개의 역할이 각각 한 번의 API 호출이다.

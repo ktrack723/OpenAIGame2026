@@ -8,9 +8,11 @@
     "test": "node --test test/*.test.js",
     "test:e2e": "playwright test",
     "test:all": "npm test && npm run selfplay && npm run test:e2e",
+    "live": "node tools/live-check.mjs",
+    "live:browser": "playwright test --config=playwright.live.config.js",
     "selfplay": "node tools/selfplay.js",
     "balance": "node tools/selfplay.js --runs=60",
-    "check": "find game web tools test -name '*.js' -print0 | xargs -0 -n1 node --check"
+    "check": "find . \\( -name node_modules -o -name vendor -o -name .git \\) -prune -o \\( -name '*.js' -o -name '*.mjs' \\) -print0 | xargs -0 -n1 node --check"
   },
   "engines": {
     "node": ">=20"

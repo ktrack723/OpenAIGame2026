@@ -31,10 +31,10 @@ jobs:
         run: npm run selfplay
       - name: 브라우저 설치
         run: npx playwright install --with-deps chromium
+      # 실행 파일 선택은 tools/chrome.js 가 한다 —
+      # 개발 컨테이너에는 미리 깔린 크로미움, CI 에는 playwright 가 받은 것.
       - name: 브라우저 E2E (데스크톱 · 아이패드 · 아이폰)
         run: npm run test:e2e
-        env:
-          RIZZ_CHROME: '' # CI 에서는 playwright 가 받은 브라우저를 쓴다
 
   deploy:
     needs: test
