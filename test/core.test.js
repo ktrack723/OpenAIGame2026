@@ -16,7 +16,7 @@ import {
 import { LANDMINES } from '../game/data/topics.js'
 import { getClient, CLIENTS } from '../game/data/clients.js'
 import { DIFFICULTIES } from '../game/core/config.js'
-import { dw, wrap, visibleWidth } from '../game/ui/term.js'
+import { parseAppearance, sameAppearance } from '../web/three/appearance.js'
 
 // ─────────────────────────────────────────────── 난수
 
@@ -87,7 +87,7 @@ test('모든 의뢰인 데이터가 온전하다', () => {
     assert.ok(c.target.mines.length >= 3, `${c.name}: 지뢰가 3개는 있어야 난이도별로 뽑을 수 있다`)
     assert.equal(new Set(c.target.likes).size, c.target.likes.length, `${c.name}: 취향 중복`)
     assert.ok(c.storyKeywords.length >= 5, `${c.name}: 연설 채점용 키워드 부족`)
-    assert.ok(c.portrait.length > 0 && c.target.portrait.length > 0)
+    assert.ok(c.appearance.length >= 3, `${c.name}: 3D 외형에 쓸 외모 태그가 부족하다`)
   }
 })
 
@@ -207,19 +207,78 @@ test('고백 판정은 시드가 같으면 같은 결과다', () => {
   assert.equal(a.score, b.score)
 })
 
-// ─────────────────────────────────────────────── 터미널 폭 계산
+// ─────────────────────────────────────────────── 외모 텍스트 → 3D 명세
 
-test('한글은 두 칸으로 센다', () => {
-  assert.equal(dw('abc'), 3)
-  assert.equal(dw('가나다'), 6)
-  assert.equal(dw('a가'), 3)
+test('옷 종류를 문장에서 읽어낸다', () => {
+  const of = (styling) => parseAppearance({ styling, seedName: 'x' }).outfit.type
+  assert.equal(of('검정 후드티'), 'hoodie')
+  assert.equal(of('흰 정장에 넥타이'), 'suit')
+  assert.equal(of('빨간 원피스'), 'dress')
+  assert.equal(of('가죽 재킷'), 'jacket')
+  assert.equal(of('체크 셔츠'), 'shirt')
+  assert.equal(of('니트 가디건'), 'knit')
 })
 
-test('ANSI 코드는 폭에서 제외한다', () => {
-  assert.equal(visibleWidth('\x1b[31m빨강\x1b[0m'), 4)
+test('색 단어가 가까운 명사에 붙는다', () => {
+  const a = parseAppearance({ styling: '분홍 머리, 검정 재킷', seedName: 'x' })
+  assert.equal(a.hair.color, '#e46ba8', '머리색이 분홍이어야 한다')
+  assert.equal(a.outfit.color, '#1b1b20', '옷색이 검정이어야 한다')
 })
 
-test('줄바꿈은 폭 기준으로 자른다', () => {
-  const lines = wrap('가'.repeat(60), 20)
-  for (const l of lines) assert.ok(visibleWidth(l) <= 20, `너무 김: ${visibleWidth(l)}`)
+test('머리 모양을 구분한다', () => {
+  const hs = (t) => parseAppearance({ styling: t, seedName: 'x' }).hair.style
+  assert.equal(hs('긴 머리'), 'long')
+  assert.equal(hs('포니테일'), 'ponytail')
+  assert.equal(hs('삭발'), 'buzz')
+  assert.equal(hs('부스스한 머리'), 'messy')
+  assert.equal(hs('단발'), 'bob')
+})
+
+test('소품을 모아 담는다', () => {
+  const a = parseAppearance({ styling: '뿔테 안경, 헤드폰, 은 목걸이, 워커 부츠, 우산', seedName: 'x' })
+  for (const want of ['glasses', 'headphones', 'necklace', 'boots', 'umbrella']) {
+    assert.ok(a.accessories.includes(want), `${want} 를 못 읽었다`)
+  }
+})
+
+test('체형과 자세가 태그를 따라간다', () => {
+  const tall = parseAppearance({ appearanceTags: ['큰 키'], seedName: 'x' })
+  const small = parseAppearance({ appearanceTags: ['작은 키'], seedName: 'x' })
+  assert.ok(tall.height > small.height)
+
+  const broad = parseAppearance({ appearanceTags: ['넓은 어깨', '근육'], seedName: 'x' })
+  const thin = parseAppearance({ appearanceTags: ['마른'], seedName: 'x' })
+  assert.ok(broad.build > thin.build)
+
+  const slouch = parseAppearance({ appearanceTags: ['구부정한 어깨'], seedName: 'x' })
+  const upright = parseAppearance({ appearanceTags: ['꼿꼿한 자세'], seedName: 'x' })
+  assert.ok(slouch.posture > upright.posture)
+})
+
+test('서류철 외모와 플레이어 스타일링이 합쳐진다', () => {
+  const client = getClient('dohun') // 항상 후드티, 손톱에 접착제 자국, 다크서클
+  const base = parseAppearance({ appearanceTags: client.appearance, seedName: client.name })
+  assert.equal(base.outfit.type, 'hoodie', '서류철 외모가 반영돼야 한다')
+  assert.equal(base.darkCircles, true)
+
+  const styled = parseAppearance({
+    appearanceTags: client.appearance,
+    styling: '흰 정장',
+    seedName: client.name,
+  })
+  assert.equal(styled.outfit.type, 'suit', '플레이어 스타일링이 서류철을 덮어써야 한다')
+})
+
+test('같은 입력은 같은 명세를 낸다', () => {
+  const a = parseAppearance({ styling: '가죽 재킷, 헤드폰', seedName: '김도훈' })
+  const b = parseAppearance({ styling: '가죽 재킷, 헤드폰', seedName: '김도훈' })
+  assert.ok(sameAppearance(a, b))
+  const c = parseAppearance({ styling: '흰 정장', seedName: '김도훈' })
+  assert.ok(!sameAppearance(a, c))
+})
+
+test('빈 입력이어도 온전한 명세가 나온다', () => {
+  const a = parseAppearance({})
+  assert.ok(a.height > 0 && a.skin && a.hair.style && a.outfit.type)
+  assert.ok(Array.isArray(a.accessories))
 })

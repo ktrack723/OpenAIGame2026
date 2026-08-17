@@ -4,12 +4,13 @@ import assert from 'node:assert/strict'
 import { Game } from '../game/core/game.js'
 import { PHASES, DIFFICULTIES } from '../game/core/config.js'
 import { CLIENTS } from '../game/data/clients.js'
+import { createFakeModel } from './helpers/fake-model.js'
 
 const TOTAL_TURNS = PHASES.texting.turns + PHASES.talking.turns
 
 /** 준비가 잘 된 한 판을 끝까지 돌린다. */
 async function playPrepared(opts = {}) {
-  const g = new Game({ seed: opts.seed ?? 11, difficulty: opts.difficulty ?? 'normal' })
+  const g = new Game({ seed: opts.seed ?? 11, difficulty: opts.difficulty ?? 'normal', engine: createFakeModel() })
   g.chooseClient(opts.clientId ?? 'dohun')
   g.setStyling(opts.styling ?? '가죽 재킷, 별자리 목걸이')
   g.setCoaching(opts.coaching ?? '야식이랑 별 얘기를 꺼내. 상대 말을 끝까지 듣고 되물어. 자랑은 하지 마.')
@@ -36,7 +37,7 @@ test('게임 루프가 사람 없이 끝까지 돈다', async () => {
 })
 
 test('단계가 문자 → 대면 → 종료 순으로 넘어간다', async () => {
-  const g = new Game({ seed: 3, difficulty: 'normal' })
+  const g = new Game({ seed: 3, difficulty: 'normal', engine: createFakeModel() })
   g.chooseClient('sera')
   g.setCoaching('커피 얘기를 꺼내')
   g.setSpeech('세라야 넌 할 수 있어. 무대에선 늘 그랬잖아.')
@@ -52,7 +53,7 @@ test('단계가 문자 → 대면 → 종료 순으로 넘어간다', async () =
 })
 
 test('분위기와 호감은 단계를 넘어 이어진다', async () => {
-  const g = new Game({ seed: 8, difficulty: 'normal' })
+  const g = new Game({ seed: 8, difficulty: 'normal', engine: createFakeModel() })
   g.chooseClient('dohun')
   g.setCoaching('야식 얘기를 꺼내고 상대 말을 들어라')
   g.setSpeech('도훈아 3년을 버틴 건 너야. 넌 할 수 있어!')
@@ -67,7 +68,7 @@ test('분위기와 호감은 단계를 넘어 이어진다', async () => {
 })
 
 test('개입 횟수는 단계별로 제한되고 소진된다', async () => {
-  const g = new Game({ seed: 5, difficulty: 'normal' })
+  const g = new Game({ seed: 5, difficulty: 'normal', engine: createFakeModel() })
   g.chooseClient('dohun')
   g.setCoaching('별 얘기를 꺼내')
   g.setSpeech('도훈아 넌 할 수 있어')
@@ -87,7 +88,7 @@ test('개입 횟수는 단계별로 제한되고 소진된다', async () => {
 })
 
 test('개입은 지목한 화제를 실제로 꺼내게 만든다', async () => {
-  const g = new Game({ seed: 21, difficulty: 'hard' })
+  const g = new Game({ seed: 21, difficulty: 'hard', engine: createFakeModel() })
   g.chooseClient('dohun')
   g.setCoaching('편하게 얘기해')
   g.setSpeech('도훈아 넌 할 수 있어')
@@ -129,7 +130,7 @@ test('다른 시드는 다른 판을 만든다', async () => {
 })
 
 test('의뢰인을 안 고르고 시작할 수 없다', async () => {
-  const g = new Game({ seed: 1 })
+  const g = new Game({ seed: 1, engine: createFakeModel() })
   await assert.rejects(() => g.beginRun(), /의뢰인을 먼저/)
   assert.throws(() => g.chooseClient('없는사람'), /알 수 없는 의뢰인/)
 })
@@ -162,7 +163,7 @@ test('발견한 취향은 중복 기록되지 않는다', async () => {
 })
 
 test('공개된 취향에는 발굴 보너스가 붙지 않는다', async () => {
-  const g = new Game({ seed: 99, difficulty: 'easy' })
+  const g = new Game({ seed: 99, difficulty: 'easy', engine: createFakeModel() })
   g.chooseClient('dohun')
   g.setCoaching('공개된 취향 얘기를 계속해')
   g.setSpeech('넌 할 수 있어')

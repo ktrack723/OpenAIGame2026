@@ -1,23 +1,22 @@
 {
   "name": "bishoujo-rizz-simulator-2077",
   "version": "1.0.0",
-  "description": "LLM 기반 연애 코칭 게임 — 키 입력으로 돌아가는 터미널 게임",
+  "description": "LLM 기반 연애 코칭 게임 — three.js · GitHub Pages",
   "type": "module",
-  "bin": {
-    "rizz": "./game/main.js"
-  },
   "scripts": {
-    "start": "node game/main.js",
+    "start": "node tools/serve.js 4173",
     "test": "node --test test/*.test.js",
+    "test:e2e": "playwright test",
+    "test:all": "npm test && npm run selfplay && npm run test:e2e",
     "selfplay": "node tools/selfplay.js",
-    "balance": "node tools/selfplay.js --runs=60 --report",
-    "check": "find game tools test -name '*.js' -print0 | xargs -0 -n1 node --check"
-  },
-  "optionalDependencies": {
-    "@anthropic-ai/sdk": "^0.70.0"
+    "balance": "node tools/selfplay.js --runs=60",
+    "check": "find game web tools test -name '*.js' -print0 | xargs -0 -n1 node --check"
   },
   "engines": {
     "node": ">=20"
   },
-  "private": true
+  "private": true,
+  "devDependencies": {
+    "@playwright/test": "^1.62.1"
+  }
 }

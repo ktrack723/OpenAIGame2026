@@ -1,15 +1,12 @@
-// 오프라인 엔진.
+// 테스트 전용 가짜 모델.
 //
-// API 키가 없어도 게임이 끝까지 돌아가야 한다. 자동 플레이 계측(tools/selfplay.js)과
-// 회귀 테스트도 전부 이 엔진 위에서 돈다.
-//
-// 설계 원칙: 생성기와 판정기를 분리한다. 생성기는 { text, topic, tier } 를 만들고,
-// 판정기는 그 결과만 보고 점수를 매긴다. LLM 엔진도 같은 모양을 돌려주므로
-// game/core/game.js 는 어느 엔진이 붙었는지 알 필요가 없다.
+// 게임에는 오프라인 모드가 없다 — LLM 연결이 없으면 아예 시작되지 않는다.
+// 하지만 게임 루프·밸런스·재현성을 자동으로 검증하려면 결정적인 상대가 필요해서,
+// 원래의 오프라인 시뮬레이션을 테스트 더블로만 남겨 두었다.
+// 이 파일은 web/ 어디에서도 import 되지 않는다.
 
-import { TOPICS, LANDMINES, FILLER, FILLER_REPLY, ALL_TOPIC_IDS } from '../data/topics.js'
-import { BALANCE, clamp } from '../core/config.js'
-
+import { TOPICS, LANDMINES, FILLER, FILLER_REPLY, ALL_TOPIC_IDS } from '../../game/data/topics.js'
+import { BALANCE, clamp } from '../../game/core/config.js'
 
 const TIER_MOOD = { great: 5, ok: 3, flat: 0, bad: -6, mine: -10 }
 
@@ -118,10 +115,10 @@ function pickTier(ctx, topic) {
   return 'bad'
 }
 
-export function createLocalEngine() {
+export function createFakeModel() {
   return {
-    id: 'local',
-    label: '오프라인 시뮬레이션',
+    id: 'fake',
+    label: '테스트용 가짜 모델',
 
     async clientTurn(ctx) {
       // 개입이 역효과였다면 그 지뢰를 그대로 밟는다

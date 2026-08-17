@@ -1,0 +1,59 @@
+name: Test and deploy to Pages
+
+on:
+  push:
+    branches: ['claude/llm-dating-coach-game-cj3bwo', 'main']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install
+      - name: 문법 검사
+        run: npm run check
+      - name: 단위 · 통합 테스트
+        run: npm test
+      - name: 자동 플레이 계측
+        run: npm run selfplay
+      - name: 브라우저 설치
+        run: npx playwright install --with-deps chromium
+      - name: 브라우저 E2E (데스크톱 · 아이패드 · 아이폰)
+        run: npm run test:e2e
+        env:
+          RIZZ_CHROME: '' # CI 에서는 playwright 가 받은 브라우저를 쓴다
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: 정적 파일만 모은다
+        run: |
+          mkdir -p _site
+          cp index.html _site/
+          cp -r web vendor game _site/
+          # Jekyll 이 밑줄 폴더를 삼키지 않게
+          touch _site/.nojekyll
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

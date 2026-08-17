@@ -15,7 +15,6 @@ import {
   resolveConfession,
 } from './scoring.js'
 import { Rng } from './rng.js'
-import { createLocalEngine } from '../engine/local.js'
 import { writeLetter } from '../data/letters.js'
 
 export const STAGES = ['screening', 'consult', 'texting', 'talking', 'ending']
@@ -25,7 +24,8 @@ export class Game {
     this.seed = seed
     this.rng = new Rng(seed)
     this.difficulty = DIFFICULTIES[difficulty] ? difficulty : 'normal'
-    this.engine = engine ?? createLocalEngine()
+    if (!engine) throw new Error('엔진이 필요합니다 — 이 게임은 LLM 연결 없이는 시작되지 않습니다')
+    this.engine = engine
 
     this.stage = 'screening'
     this.client = null
@@ -91,7 +91,9 @@ export class Game {
       llm: null,
     }
 
-    // LLM 모드면 준비 평가를 LLM이 덮어쓴다(실패하면 휴리스틱 그대로).
+    // 준비 평가는 모델이 한다. 위에서 계산한 휴리스틱은 스타일링 태그 → 화제 매칭처럼
+    // 3D 외형과 개입 판정이 쓰는 결정적인 부분만 남기고, 점수는 모델 값으로 덮어쓴다.
+    // 실패하면 그대로 예외가 올라간다 — 대체 판정으로 넘어가지 않는다.
     if (typeof this.engine.evaluatePrep === 'function') {
       const verdict = await this.engine.evaluatePrep(this._ctx())
       if (verdict) {

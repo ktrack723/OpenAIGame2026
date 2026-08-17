@@ -1,5 +1,8 @@
 #!/usr/bin/env node
-// 자동 플레이 계측기.
+// 자동 플레이 계측기 (테스트 전용).
+//
+// 실제 게임은 LLM 로 돌아가지만, 밸런스와 루프를 결정적으로 계측하려면 고정된 상대가
+// 필요해서 test/helpers/fake-model.js 를 붙여 돌린다.
 //
 // 사람 없이 게임 루프를 끝까지 돌리고, 실력 차이가 승률 차이로 나오는지 본다.
 // 봇은 플레이어와 완전히 같은 입구만 쓴다 — 공개된 서류철과 대화 중 알아낸 것만 보고
@@ -14,6 +17,7 @@ import { CLIENTS } from '../game/data/clients.js'
 import { TOPICS } from '../game/data/topics.js'
 import { DIFFICULTIES } from '../game/core/config.js'
 import { knownLikes } from '../game/core/scoring.js'
+import { createFakeModel } from '../test/helpers/fake-model.js'
 
 // ─────────────────────────────────────────────────────────── 봇 전략
 
@@ -130,7 +134,7 @@ const STRATEGIES = {
 
 export async function playOne({ seed, difficulty, clientId, strategy, verbose = false }) {
   const strat = STRATEGIES[strategy]
-  const g = new Game({ seed, difficulty })
+  const g = new Game({ seed, difficulty, engine: createFakeModel() })
   g.chooseClient(clientId)
   strat.prep(g)
   await g.beginRun()
