@@ -1,9 +1,23 @@
 {
-  "scripts": {
-    "check": "find src -name '*.js' ! -path 'src/vendor/*' -print0 | xargs -0 -n1 node --check",
-    "serve": "python3 -m http.server 4173"
+  "name": "bishoujo-rizz-simulator-2077",
+  "version": "1.0.0",
+  "description": "LLM 기반 연애 코칭 게임 — 키 입력으로 돌아가는 터미널 게임",
+  "type": "module",
+  "bin": {
+    "rizz": "./game/main.js"
   },
-  "dependencies": {},
-  "devDependencies": {},
-  "type": "module"
+  "scripts": {
+    "start": "node game/main.js",
+    "test": "node --test test/*.test.js",
+    "selfplay": "node tools/selfplay.js",
+    "balance": "node tools/selfplay.js --runs=60 --report",
+    "check": "find game tools test -name '*.js' -print0 | xargs -0 -n1 node --check"
+  },
+  "optionalDependencies": {
+    "@anthropic-ai/sdk": "^0.70.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "private": true
 }
