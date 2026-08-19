@@ -2,7 +2,7 @@ import { fromAngle } from '../core/vector.js'
 import { wrapPi } from '../core/angle.js'
 import { CFG, beltRadius, blastRadius, hitRadiusOf } from './config.js'
 import {
-  blastPushOn, buildBodyTrack, cloneBodies, makeStepCache, missilePush, segCircleEntry,
+  blastPushOn, buildBodyTrack, cloneBodies, liveBodies, makeStepCache, missilePush, segCircleEntry,
   segHitsCircle, stepBodies, stepMissile, sweepMeet, trackFrame, volatilePushOn,
 } from './physics.js'
 import { SHARD_N, effDv, shardCone, shardReach, volatileRadius } from './roles.js'
@@ -61,7 +61,7 @@ export function predictPath(game) {
   if (game._pred && now - (game._predAt || 0) < gap) return game._pred
   game._predAt = now
 
-  const sim = cloneBodies(game.bodies), bc = makeStepCache()
+  const sim = liveBodies(game.bodies), bc = makeStepCache()
   const p = game.launchPos()
   const m = { pos: { ...p }, vel: fromAngle(game.aim, game.power), age: 0, pathN: 0, path: null, minSunDist: Infinity, prev: { ...p } }
   // ── 이미 날고 있는 내 탄두 ──
@@ -214,7 +214,7 @@ export function firstImpact(game, m, horizon) {
   // 이 질의는 초당 몇 번이라, 캐시 넘긴 정직한 적분으로 충분히 싸다.
   // 탄끼리의 충돌은 여기서 안 본다: 요새가 묻는 것은 "저 탄이 내게 꽂히는가"인데,
   // 그 탄이 도중에 밀릴지 말지는 **아직 안 쏜 발**에 달렸다. 저쪽이 알 길이 없다.
-  const sim = cloneBodies(game.bodies), bc = makeStepCache()
+  const sim = liveBodies(game.bodies), bc = makeStepCache()
   const probe = {
     pos: { ...m.pos }, vel: { ...m.vel }, age: 0, pathN: 0, path: null,
     minSunDist: Infinity, prev: { ...m.pos },

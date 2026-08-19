@@ -454,6 +454,17 @@ button:disabled{opacity:.32;cursor:not-allowed;box-shadow:none}
 .comms.gnd .commswho b{background:#4fd6f7;color:#00131c}
 .comms.gnd .commsline{color:#d9f6ff}
 
+/* ── 순회선(다른 종족) ──────────────────────────────────────────
+   같은 창을 세 번째 색으로 쓴다. 조르그는 분홍, 관제는 시안, 이쪽은 비취색 —
+   판에서 초록을 쓰는 것이 불안정 행성뿐이라 이 색이 비어 있었다.
+   붙는 자리는 조르그와 같다(말하는 배 위). 색 하나로 편이 갈린다. */
+.comms.visitor{background:linear-gradient(180deg,#04241bee,#02140ef2);border-color:#34d39966;
+  box-shadow:0 10px 34px #000a, inset 0 0 26px #34d3991f}
+.comms.visitor .commsport{background:#02140e;border-right-color:#34d39944}
+.comms.visitor .commswho{color:#8ff0c8}
+.comms.visitor .commswho b{background:#34d399;color:#00160e}
+.comms.visitor .commsline{color:#d6fff0}
+
 @media (max-width:700px){
   .comms{max-width:calc(100vw - 20px)}
   .commsline{font-size:11.5px}

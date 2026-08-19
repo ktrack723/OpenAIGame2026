@@ -51,6 +51,7 @@ export class Explosions {
       else if (e.kind === 'zorgCharge') this.zorgCharge(e)
       else if (e.kind === 'destroy') (e.zorg ? this.destroyZorg(e) : this.destroy(e))
       else if (e.kind === 'comet') this.comet(e)
+      else if (e.kind === 'ufo') this.ufo(e)
       else if (e.kind === 'swing') {
         this.parts.shock(e.x, e.y, Math.max(24, (e.r ?? 10) * CFG.SWING_ZONE * 0.5), 0x67e8f9, 0.6)
         this.parts.burst(e.x, e.y, { n: 26, color: 0x67e8f9, speed: 110, size: 8, ttl: 0.7 })
@@ -521,6 +522,24 @@ export class Explosions {
     P.burst(e.x, e.y, { n: 60, color: 0xffffff, speed: 420, size: 8, ttl: 0.8, spread: 0.6, dir: e.a })
     this.rig.hit(7)
     this.flash(0.12, '#e8f7ff')
+  }
+
+  // ─── 순회선이 지나간다 ───────────────────────────────────────
+  // 혜성과 같은 자리이되(comet) **폭발이 아니라 항적**이다. 저건 얼음덩이가
+  // 벽을 스치고 들어온 게 아니라 배가 엔진으로 지나가는 것이라, 파문 대신
+  // 진행 방향으로 밀리는 고리와 뒤로 끌리는 청록 항적을 그린다.
+  // 색은 조르그의 붉은 계열과 제일 먼 비취색이다 — 도착 연출만 봐도 편이 갈린다.
+  ufo(e) {
+    // **작게 친다.** 손님이 셋씩 같이 들어오므로(config.UFO_GROUP) 혜성만 한
+    // 파문을 세 번 겹치면 화면이 그것만으로 하얘진다(계측용 스크린샷).
+    // 여기서 말해야 하는 것은 "폭발"이 아니라 "지나간다" 하나뿐이다.
+    const P = this.parts, R = Math.max(70, (e.r ?? 30) * 1.5)
+    const back = (e.a ?? 0) + Math.PI
+    P.shock(e.x, e.y, R, 0x34d399, 0.9, { thin: true, from: 0.3, to: 1.9, alpha: 0.6 })
+    P.shock(e.x, e.y, R, 0xa7f3d0, 1.1, { thin: true, from: 0.5, to: 2.6, alpha: 0.28, delay: 0.14 })
+    // 항적 — 뒤로만 뿜는다(엔진이다). 앞으로 퍼지면 그건 폭발로 읽힌다.
+    P.burst(e.x, e.y, { n: 46, color: 0x6ee7b7, speed: 170, size: 8, ttl: 1.3, spread: 0.4, dir: back, drag: 0.5 })
+    P.burst(e.x, e.y, { n: 20, color: 0xecfdf5, speed: 300, size: 6, ttl: 0.6, spread: 0.24, dir: back })
   }
 
   // ─── 조르그의 마지막 0.45초 — 빛기둥 ─────────────────────────

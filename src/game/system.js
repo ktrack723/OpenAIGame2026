@@ -64,7 +64,7 @@ function freeOrbit(rng, bodies, aMax, rNew, nearBand = 0, band = null, sepMul = 
   // 중이라 지금 반경이 곧 자리가 아니고, 그걸 이웃으로 세면 지나가는 공 하나가
   // 반경 띠 하나를 통째로 막는다(그리고 곧 나가 버려 그 자리는 영영 안 쓰인다).
   // 겹침 검사(아래 clear 루프)에는 그대로 넣는다 — 지금 거기 있는 건 사실이다.
-  const orbiting = live.filter(b => !b.comet)
+  const orbiting = live.filter(b => !b.visitor)
   const hitNew = hitRadiusFor(rNew)
   // 이웃 하나하나에 대해 "궤도 반경이 이만큼은 벌어져야 한다"를 미리 재 둔다.
   // 예전 규칙은 `26 + rNew × 2.5` — **새로 놓는 공의 크기만** 봤다. 그래서
@@ -395,7 +395,7 @@ const forcedType = (stage) => (stage === CFG.UNSTABLE_STAGE ? 'shard' : null)
 // 플레이어가 조준하던 그림이 통째로 바뀐다. 보낼 자리가 없으면(정원·자리)
 // 조용히 아무것도 안 한다: 못 보내는 것은 사고가 아니라 그냥 꽉 찬 판이다.
 export function sendCueBall(rng, bodies, earth, stage, tag, limit = CFG.CUE_DRY) {
-  const live = bodies.filter(b => b.alive && b.type !== 'debris' && !b.comet)
+  const live = bodies.filter(b => b.alive && b.type !== 'debris' && !b.visitor)
   if (live.length >= CFG.SYSTEM_CAP) return null
   const cueBalls = live.filter(b => !b.isEarth && !b.zorg).length
   if (cueBalls >= limit) return null
@@ -436,13 +436,12 @@ function placeFort(rng, pool, earth, aMax, stage, tag, heavy, wantOuter, verifyI
 }
 
 // ── 조르그 투석기 ────────────────────────────────────────
-// 궤도 **안쪽**에 앉는다 — 큐볼을 골라 지구로
-// 처박는 것이 하는 일 전부이므로(siege.js) 굴릴 공이 널린 지구 궤도
-// 언저리에 있어야 그 수 자체가 성립한다.
+// 궤도 **안쪽**에 앉는다 — 하는 일이 지구에 탄을 쏘는 것 하나이므로(siege.js)
+// 그 탄이 수명(SIEGE_TTL) 안에 닿는 거리에 있어야 한다. 그 거리가 곧 지구
+// 궤도 언저리다.
 //
-// 그래서 옆자리 요구가 여기서는 연출이 아니라 **기능**이다. 요새는 옆에
-// 밀 공이 없어도 그냥 표적으로 서 있을 수 있지만(플레이어가 못 치는 게
-// 문제일 뿐), 이놈은 밀 공이 없으면 아무 일도 안 하는 큰 돌덩이가 된다.
+// ※ 예전에는 "옆에 밀 공이 있는 자리"까지 요구했다(SIEGE_NEAR_BAND). 저놈이
+//   당구를 치던 시절의 조건이라 지금은 뜻이 없다 — 걷어냈다.
 const siegeBand = (earth) => {
   const rE = Math.hypot(earth.pos.x, earth.pos.y)
   return [rE * CFG.SIEGE_BAND[0], rE * CFG.SIEGE_BAND[1]]
@@ -452,8 +451,7 @@ function makeSiege(rng, bodies, aMax, earth) {
   const band = siegeBand(earth)
   // 제약을 하나씩 푼다 — 마지막 폴백은 대역이 아니라
   // 이웃 간격을 푼다). 자리가 없으면 이번 판에는 안 온다(다음 판에 다시 시도).
-  const orb = freeOrbit(rng, bodies, aMax, CFG.SIEGE_R, CFG.SIEGE_NEAR_BAND, band)
-    ?? freeOrbit(rng, bodies, aMax, CFG.SIEGE_R, 0, band)
+  const orb = freeOrbit(rng, bodies, aMax, CFG.SIEGE_R, 0, band)
     ?? freeOrbit(rng, bodies, aMax, CFG.SIEGE_R, 0, [band[0] * 0.85, band[1] * 1.2])
     ?? freeOrbit(rng, bodies, aMax, CFG.SIEGE_R * 0.35, 0, [band[0] * 0.85, band[1] * 1.2])
   if (!orb) return null
@@ -474,9 +472,9 @@ function makeSiege(rng, bodies, aMax, earth) {
 // 깨끗이 비웠으면 많이 오고, 중립 행성이 잔뜩 남았으면 적게 온다.
 export function reinforce(rng, bodies, earth, stage) {
   const aMax = aMaxOf(stage)
-  // 혜성은 안 센다 — **상주 인구가 아니다.** 판을 넘길 때 걷히는 물건이라
-  // (game.loadStage) 정원을 차지한 적도, 큐볼 재고에 든 적도 없어야 한다.
-  const live = bodies.filter(b => b.alive && b.type !== 'debris' && !b.comet)
+  // 손님(혜성·순회선)은 안 센다 — **상주 인구가 아니다.** 판을 넘길 때 걷히는
+  // 물건이라(game.loadStage) 정원을 차지한 적도, 큐볼 재고에 든 적도 없어야 한다.
+  const live = bodies.filter(b => b.alive && b.type !== 'debris' && !b.visitor)
   const room = Math.max(0, CFG.SYSTEM_CAP - live.length)
 
   // 두 판에 한 기씩, 8기에서 멎는다(config.REINF_* 표 참고).

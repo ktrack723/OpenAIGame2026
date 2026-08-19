@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { CFG, VIS, hitRadiusOf } from '../game/config.js'
+import { CFG, UFO_KINDS, VIS, hitRadiusOf } from '../game/config.js'
 import { CameraRig } from './CameraRig.js'
 import { Particles } from './Particles.js'
 import { Markers } from './Markers.js'
@@ -28,6 +28,9 @@ const MATS = {
   earth: { rough: 0.55, metal: 0.10, emis: 0.08 },
   zorg: { rough: 0.28, metal: 0.88, emis: 0.30 },   // 조르그 모성 — 검은 강철
   siege: { rough: 0.34, metal: 0.82, emis: 0.10 },  // 투석기 — 장갑판
+  // 순회선 — 조르그가 아닌 종족의 선체. 매끈한 금속에 제 빛이 옅게 돈다.
+  // (몸통 구체는 작게 그리고 그 위에 선체를 세운다 — attachUfoFx.)
+  ufo: { rough: 0.26, metal: 0.90, emis: 0.22 },
   debris: { rough: 1.00, metal: 0.10, emis: 0.00 },
 }
 
@@ -59,6 +62,9 @@ const PALETTE = {
   // 몸통 색은 같은 계열 안에서 밝기만 벌려 둔다.
   zorg: [0x1c0508],        // 조르그 모성 — 빛을 안 되돌린다
   siege: [0x3a0a12],       // 투석기 — 그 사이
+  // 순회선의 **속**. 겉 선체 색은 형태마다 다르고(config.UFO_KINDS.tone) 이건
+  // 그 안에 앉은 몸통이라, 어느 형태든 같은 어두운 비취색이다.
+  ufo: [0x093026, 0x0b382c, 0x07281f],
   debris: [0x8b8f96],
 }
 // 산탄의 색 — 팔레트를 안 탄다. 이건 "이 조각이 어느 행성에서 나왔나"가 아니라
@@ -169,41 +175,52 @@ function missileParts() {
   return { body, nose, fin }
 }
 
-// ─── 조르그 탄두의 형상 ─────────────────────────────────────────
-// 내 탄두와 **닮으면 안 된다.** 화면에 두 발이 같이 날고 있을 때 어느 쪽이
-// 내 것인지 0.1초 안에 갈려야 하고, 그 판단이 틀리면 플레이어는 자기 탄을
-// 피하려 든다.
+// ─── 순회선의 선체 셋 ───────────────────────────────────────────
+// 저건 공이 아니라 **배**다. 그런데 판정은 여전히 원이어야 한다(이 게임의 공은
+// 전부 원이고, 그림과 판정이 어긋나면 그게 곧 거짓말이다). 그래서 요새와 같은
+// 해법을 쓴다: 판정 원은 그대로 두고 그 안에 진짜 입체 구조물을 세우되,
+// **몸통 구체는 작게 줄인다**(UFO_CORE). 가스 행성이 고리에 자리를 내주는 것과
+// 같은 규칙이다 — 공이 작아지는 게 아니라 같은 자리에 다른 그림이 들어간다.
 //
-// 갈리는 곳이 셋이다:
-//   ① 실루엣 — 내 탄은 뾰족한 창(원뿔 노즈 + 후퇴익)이고, 이쪽은 **뭉툭한
-//      말뚝**이다(둥근 탄두 + 굵은 동체 + 십자 안정핀 넷). 유선형이 아니라
-//      "던져 놓은 쇠뭉치"로 읽혀야 한다 — 실제로 이건 유도탄이라 공기도
-//      중력도 안 읽는다.
-//   ② 자세 — 내 탄은 속도 방향으로 눕지만 이쪽은 거기에 **자전**이 붙는다
-//      (syncFoeShots). 굴러오는 물건은 조준된 물건과 다르게 보인다.
-//   ③ 색 — 아래 FOE_TONE.
-function foeMissileParts() {
-  // 동체 — 굵고 짧다. 내 탄(0.28 × 1.5)의 두 배 굵기에 3분의 2 길이.
-  const body = new THREE.CylinderGeometry(0.5, 0.44, 1.05, 16)
-  body.rotateZ(-Math.PI / 2); body.translate(-0.1, 0, 0)
-  // 탄두 — 둥글다. 뾰족한 노즈와 정반대의 신호다.
-  const head = new THREE.SphereGeometry(0.5, 18, 12)
-  head.scale(0.85, 1, 1)
-  head.translate(0.5, 0, 0)
-  // 안정핀 — 십자로 넷. 탑다운에서 둘은 실루엣으로, 둘은 위에서 보인다.
-  const fin = new THREE.BoxGeometry(0.62, 0.86, 0.06)
-  fin.translate(-0.5, 0, 0)
-  // 허리띠 — 동체를 감는 고리 하나. 이 한 줄이 "손으로 만든 물건"의 표시다.
-  const belt = new THREE.TorusGeometry(0.52, 0.075, 8, 24)
-  belt.rotateY(Math.PI / 2)
-  return { body, head, fin, belt }
+// 셋은 실루엣부터 갈린다(config.UFO_KINDS와 같은 순서다):
+//   원반(disc) — 눌린 접시 + 적도 테. 제자리에서 천천히 돈다.
+//   방주(ark)  — 길쭉한 선체 + 옆구리 포드 둘. **진행 방향으로 눕는다.**
+//   고리(ring) — 가운데가 뚫린 고리 + 작은 심. 반대로 돈다.
+// 단위는 요새·기함과 같다: 1.0이 판정 반경이다.
+const UFO_CORE = 0.30                    // 몸통 구체 반지름 (판정 반경 대비)
+// 선체가 스스로 내는 빛. 0.22로 잡았다가 내렸다 — 그 값에서는 접시가 통째로
+// 초록으로 떠서 **행성 하나가 더 늘어난 것처럼** 보였다(계측용 스크린샷).
+// 색을 내는 것은 등(lamp)이어야 하고 선체는 어두워야 한다.
+const UFO_GLOW = 0.07
+function ufoParts() {
+  // 접시 — 구체를 납작하게 눌렀다. 위에서 보면 원이라 판정 원과 그림이 맞는다.
+  const saucer = new THREE.SphereGeometry(1, 28, 14); saucer.scale(1, 1, 0.20)
+  const dome = new THREE.SphereGeometry(0.40, 18, 10); dome.scale(1, 1, 0.85); dome.translate(0, 0, 0.14)
+  const rim = new THREE.TorusGeometry(1, 0.045, 8, 48)
+  // 방주 — 길쭉한 선체. +x가 뱃머리다(진행 방향으로 눕힌다).
+  const hull = new THREE.SphereGeometry(1, 24, 12); hull.scale(1, 0.40, 0.26)
+  const pod = new THREE.SphereGeometry(0.20, 14, 10); pod.scale(1.5, 1, 0.9)
+  const spine = new THREE.TorusGeometry(0.42, 0.05, 8, 28); spine.rotateY(Math.PI / 2)
+  // 고리 — 가운데가 뚫려 있다. 이 형태만 판 너머가 비쳐 보인다.
+  const hoop = new THREE.TorusGeometry(0.82, 0.20, 12, 44); hoop.scale(1, 1, 0.55)
+  const core = new THREE.SphereGeometry(0.26, 16, 10)
+  return { saucer, dome, rim, hull, pod, spine, hoop, core }
 }
 
-// 조르그 탄두의 색 — 내 탄은 흰 몸통에 붉은 노즈다(밝다). 이쪽은 그 반대로
-// **검은 몸통에 백열 탄두**이고, 배기가 자주색이다. 궤적 리본까지 붉어서
-// 화면에서 두 줄이 절대 안 헷갈린다(syncLines).
+// ─── 조르그 탄두의 색 ───────────────────────────────────────────
+// **형상은 내 탄과 같은 것을 쓴다**(missileParts). 저건 이제 유도탄이 아니라
+// 내가 쏘는 것과 같은 물건이기 때문이다 — 같은 적분기로 날고, 중력에 휘고,
+// 길에 걸린 아무 공에나 꽂힌다(siege.js). 그림만 다른 물건으로 그려 놓으면
+// **판에서 배운 규칙이 저쪽 탄에는 안 통한다고 말하는 셈**이 된다.
+//
+// 그래서 가르는 것은 색 하나다. 내 탄은 흰 몸통에 붉은 노즈고, 이쪽은 그
+// 반대로 검은 몸통에 백열 탄두이며 배기가 자주색이다. 궤적 리본까지 붉어서
+// (syncLines) 두 줄이 한 화면에 있어도 헷갈릴 자리가 없다.
+//
+// ※ 예전에는 뭉툭한 말뚝을 따로 만들어 썼다(foeMissileParts). 저것이 중력을
+//   안 받는 유도탄이던 시절의 그림이라, 규칙이 바뀐 지금은 걷어냈다.
 const FOE_TONE = {
-  hull: 0x2a0a12, head: 0xffd9c0, fin: 0x7a1226, belt: 0xff4d2a,
+  hull: 0x2a0a12, head: 0xffd9c0, fin: 0x7a1226,
   glow: 0xc026d3, trail: 0xff3b1f,
 }
 
@@ -1033,7 +1050,7 @@ export class SceneView {
     this.glowTex = glowTexture()
     this.softGlowTex = whiteGlowTexture()   // 색을 안 섞은 후광 — 태양이 물들 수 있게
     this.missileGeo = missileParts()
-    this.foeGeo = foeMissileParts()
+    this.ufoGeo = ufoParts()
     this.fortGeo = fortParts()
     this.capitalGeo = capitalParts()
     this.texCache = new Map()
@@ -1708,7 +1725,7 @@ void main() {
     this.orbits.sync(this.game.bodies, this.game.aMax,
       (b) => b.isEarth ? 0x60a5fa : b.isTarget ? 0x22d3ee : this.toneOf(b))
     this.syncMissiles()
-    this.syncFoeShots(dt)
+    this.syncFoeShots()
     this.syncLines()
     this.markers.update(this.game, this.rig, dt, (b) => this.renderRadius(b))
     this.pad.visible = this.game.canAim && !this.game.bare
@@ -1777,6 +1794,11 @@ void main() {
       // 같은 규칙 — 지오메트리는 capitalGeo가 공유하므로 재질만 버린다
       for (const m of [fx.cap.mats.steel, fx.cap.mats.hot, fx.cap.mats.fire]) m.dispose()
       this.scene.remove(fx.cap.grp)
+    }
+    if (fx.ufo) {
+      // 같은 규칙 — 지오메트리는 ufoGeo가 공유한다
+      for (const m of [fx.ufo.mats.steel, fx.ufo.mats.lamp]) m.dispose()
+      this.scene.remove(fx.ufo.grp)
     }
   }
 
@@ -1886,6 +1908,7 @@ void main() {
     }
     this.bodyFx.set(b.id, fx)
     if (b.role) this.attachRoleFx(fx, b)
+    if (b.ufo) this.attachUfoFx(fx, b)
     if (b.role === 'battery') this.attachFortFx(fx)
     // 기함 셋 — 저마다 다른 구조물이 선다(capitalParts 주석).
     // 모성은 role이 없다(부술 수 없는 물건이라 태그를 안 붙였다) — mothership으로 묻는다.
@@ -2000,6 +2023,59 @@ void main() {
     return m
   }
 
+  // ── 순회선의 선체 ──
+  // 형태는 config.UFO_KINDS가 정한다(그 표가 질량·크기도 같이 정하므로,
+  // 화면에서 큰 배가 실제로 안 밀리는 배다 — 그림과 규칙이 한 줄에서 나온다).
+  attachUfoFx(fx, b) {
+    const G = this.ufoGeo, grp = new THREE.Group()
+    const kind = UFO_KINDS.find(k => k.key === b.ufo) ?? UFO_KINDS[0]
+    // 선체는 금속, 불빛은 제 색. 조르그가 붉은 회로로 빛나는 자리에
+    // 이쪽은 비취색 띠가 돈다 — 색 하나로 편이 갈린다.
+    // 선체는 **어두운 금속**이고 색은 불빛이 낸다. 처음엔 선체 자체를 비취색으로
+    // 칠했는데, 그러면 화면에서 초록 행성 하나가 더 늘어난 것처럼 보였다
+    // (계측용 스크린샷: 원반형이 그냥 초록 공이었다). 몸을 어둡게 눌러야
+    // 불빛이 도드라지고, 그제야 "저건 돌이 아니라 켜져 있는 물건"이 된다.
+    const steel = new THREE.MeshStandardMaterial({
+      color: 0x051913, roughness: 0.34, metalness: 0.92,
+      emissive: new THREE.Color(kind.tone), emissiveIntensity: UFO_GLOW,
+    })
+    const lamp = new THREE.MeshBasicMaterial({
+      color: kind.tone, transparent: true, opacity: 0.9,
+      depthWrite: false, side: THREE.DoubleSide,
+    })
+    const add = (geo, mat, sx = 1, sy = sx, sz = sx, x = 0, y = 0, z = 0) => {
+      const m = new THREE.Mesh(geo, mat)
+      m.scale.set(sx, sy, sz); m.position.set(x, y, z)
+      grp.add(m)
+      return m
+    }
+    let spin = 0.5, align = false
+    if (kind.key === 'disc') {
+      add(G.saucer, steel, 0.92)
+      add(G.dome, lamp, 0.62)
+      add(G.rim, lamp, 0.96)
+      // 둘레의 등 여섯. 원반은 위에서 보면 그냥 원이라 이 불빛이 없으면
+      // 초록 공과 구분이 안 된다 — 셋 중 실루엣이 제일 약한 형태다.
+      for (let i = 0; i < 6; i++) {
+        const a = i * Math.PI / 3
+        add(G.core, lamp, 0.22, 0.22, 0.22, Math.cos(a) * 0.78, Math.sin(a) * 0.78, 0.06)
+      }
+    } else if (kind.key === 'ark') {
+      align = true; spin = 0
+      add(G.hull, steel, 0.98)
+      add(G.pod, lamp, 1, 1, 1, -0.10, 0.44, 0)
+      add(G.pod, lamp, 1, 1, 1, -0.10, -0.44, 0)
+      add(G.spine, lamp, 1, 1, 1, 0.30, 0, 0)
+    } else {
+      spin = -0.8
+      add(G.hoop, steel, 0.98)
+      add(G.hoop, lamp, 0.72)
+      add(G.core, lamp, 1)
+    }
+    this.scene.add(grp)
+    fx.ufo = { grp, spin, align, mats: { steel, lamp } }
+  }
+
   // ── 투석기 — 박격 실로 ──
   attachSiegeFx(fx) {
     const G = this.capitalGeo, grp = new THREE.Group()
@@ -2086,19 +2162,18 @@ void main() {
   //   모성     — 늘 최대. 이미 쏘고 있다.
   capAim(b) {
     const g = this.game
-    const e = g.earth
     if (b.role === 'siege') {
-      let u = 0, aim = null
+      let u = 0, ang = null
       for (const S of g.sieges ?? []) {
         if (S.from !== b) continue
-        if (S.state === 'lock') { u = Math.max(u, Math.min(1, S.t / CFG.SIEGE_LOCK_TIME)); aim = S.cue }
+        // 조준이 풀려 있으면 그 각이 곧 총구 방향이다 — 실로가 실제로 탄이
+        // 나갈 쪽을 향한다. 잠금 중에만 있는 값이라(S.ang) 없으면 지구를 본다.
+        if (S.state === 'lock') { u = Math.max(u, Math.min(1, S.t / CFG.SIEGE_LOCK_TIME)); ang = S.ang }
         else if (S.state === 'fly') u = Math.max(u, 1)
       }
-      // 물고 있으면 그 공을, 아니면 지구를 본다. 요새의 총구가 예외 없이
-      // 지구를 향하는 것과 같은 규칙이되(fortAim), 이놈이 실제로 겨누는
-      // 것은 큐볼이므로 물고 있는 동안만 거길 본다.
-      const t = aim && aim.alive ? aim : e
-      return { a: Math.atan2(t.pos.y - b.pos.y, t.pos.x - b.pos.x), u }
+      if (ang !== null) return { a: ang, u }
+      const e = g.earth
+      return { a: Math.atan2(e.pos.y - b.pos.y, e.pos.x - b.pos.x), u }
     }
     return { a: null, u: 1 }        // 모성
   }
@@ -2261,6 +2336,26 @@ void main() {
           for (const h of C.hot) h.scale.setScalar(k)
         }
       }
+      // ── 순회선의 선체 ──
+      // 워프가 아니라 **밖에서 날아 들어온** 물건이라 도착 연출이 없다(warp도 0).
+      // 방주만 진행 방향으로 눕고 나머지 둘은 제자리에서 돈다 — 그 차이가
+      // 화면에서 셋을 가르는 마지막 신호다.
+      if (fx.ufo) {
+        const show = b.alive && !waiting
+        fx.ufo.grp.visible = show
+        if (show) {
+          const U = fx.ufo
+          U.grp.position.set(b.pos.x, b.pos.y, 0)
+          U.grp.scale.setScalar(r)
+          if (U.align) U.grp.rotation.z = Math.atan2(b.vel.y, b.vel.x)
+          else U.grp.rotation.z += U.spin * dt
+          // 엔진이 살아 있는 동안만 불빛이 돈다. 한 대 맞으면(cruise 0) 그
+          // 빛이 죽어서, **저 배가 이제 그냥 공이라는 것**이 색으로 읽힌다.
+          const lit = b.cruise ? 1 : 0.25
+          U.mats.lamp.opacity = lit * (0.7 + 0.3 * Math.sin(this.lockT * 3 + fx.phase))
+          U.mats.steel.emissiveIntensity = UFO_GLOW * lit
+        }
+      }
       if (fx.role?.grp) {   // 가스 행성의 고리 — 판정 반경에 맞춰 깐다
         const show = b.alive && !waiting
         fx.role.grp.visible = show
@@ -2299,7 +2394,9 @@ void main() {
       fx.mesh.position.set(b.pos.x, b.pos.y, 0)
       // 가스 행성은 고리가 판정 반경을 채우므로 구체를 그만큼 줄인다 —
       // 공이 커지는 게 아니라 같은 자리에 다른 그림이 들어가는 것이다.
-      fx.mesh.scale.setScalar(b.role === 'volatile' ? scale * GAS_CORE : scale)
+      // 가스 행성과 순회선은 같은 규칙으로 몸통을 줄인다 — 그 자리에 고리와
+      // 선체가 들어간다(GAS_CORE · UFO_CORE 주석 참고).
+      fx.mesh.scale.setScalar(b.role === 'volatile' ? scale * GAS_CORE : b.ufo ? scale * UFO_CORE : scale)
       // 산탄은 **진행 방향으로 눕는다.** 다트의 코가 곧 "이쪽으로 간다"라,
       // 굴리는 대신 속도로 자세를 맞춘다 — 일곱 갈래가 부채꼴로 벌어지는 게
       // 조각의 방향만 봐도 읽힌다. 나머지는 예전대로 자전한다.
@@ -2462,9 +2559,9 @@ void main() {
   }
 
   // ─── 조르그 탄두 ────────────────────────────────────────────
-  // 내 탄과 **다른 풀**을 쓴다. 지오메트리도 색도 자세도 다르고(foeMissileParts),
-  // 무엇보다 배열이 갈려 있어서(game.foeShots) 여기서 섞을 이유가 없다.
-  syncFoeShots(dt) {
+  // **내 탄과 같은 지오메트리, 다른 색**이다(FOE_TONE 주석). 배열만 따로 두는데
+  // (game.foeShots) 그건 규칙이 달라서지 그림이 달라서가 아니다.
+  syncFoeShots() {
     const shots = this.game.foeShots ?? []
     if (this.foeFx.size > shots.length) {
       const live = new Set(shots)
@@ -2484,16 +2581,10 @@ void main() {
         })
         const mesh = new THREE.Group()
         const parts = [
-          new THREE.Mesh(this.foeGeo.body, mat(FOE_TONE.hull)),
-          new THREE.Mesh(this.foeGeo.head, mat(FOE_TONE.head)),
-          new THREE.Mesh(this.foeGeo.belt, mat(FOE_TONE.belt)),
+          new THREE.Mesh(this.missileGeo.body, mat(FOE_TONE.hull)),
+          new THREE.Mesh(this.missileGeo.nose, mat(FOE_TONE.head)),
+          new THREE.Mesh(this.missileGeo.fin, mat(FOE_TONE.fin)),
         ]
-        // 안정핀 넷 — 같은 판을 90°씩 돌려 십자로 세운다
-        for (let i = 0; i < 2; i++) {
-          const f = new THREE.Mesh(this.foeGeo.fin, mat(FOE_TONE.fin))
-          f.rotation.x = i * Math.PI / 2
-          parts.push(f)
-        }
         for (const o of parts) o.renderOrder = 9
         mesh.add(...parts)
         mesh.renderOrder = 9
@@ -2503,24 +2594,23 @@ void main() {
         }))
         glow.renderOrder = 5
         this.scene.add(mesh, glow)
-        fx = { mesh, glow, lx: m.pos.x, ly: m.pos.y, roll: 0 }
+        fx = { mesh, glow, lx: m.pos.x, ly: m.pos.y }
         this.foeFx.set(m, fx)
       }
       if (!m.alive) { fx.mesh.visible = false; fx.glow.visible = false; continue }
-      // 내 탄보다 **덩치가 크다**(6.5 → 8.2px). 유도탄이고 작약이 9Mt짜리라
-      // 화면에서도 더 무거운 물건으로 보여야 한다.
-      const r = Math.max(3.0, 8.2 * this.rig.worldPerPx)
+      // 내 탄보다 **조금 크게** 그린다(6.5 → 7.6px). 같은 형상이므로 크기까지
+      // 같으면 색만으로 갈리는데, 화면 구석에서는 그 색이 궤적에 묻힌다.
+      const r = Math.max(2.8, 7.6 * this.rig.worldPerPx)
       const v = Math.hypot(m.vel.x, m.vel.y) || 1
       fx.mesh.visible = true; fx.glow.visible = true
       fx.mesh.position.set(m.pos.x, m.pos.y, r)
       fx.mesh.scale.setScalar(r)
-      fx.mesh.rotation.z = Math.atan2(m.vel.y, m.vel.x)
-      // 진행축을 중심으로 굴린다 — 조준된 물건이 아니라 던져진 물건으로 읽힌다
-      fx.roll += 5.2 * dt
-      fx.mesh.rotation.x = fx.roll
-      const tx = m.pos.x - m.vel.x / v * r * 1.0, ty = m.pos.y - m.vel.y / v * r * 1.0
+      fx.mesh.rotation.z = Math.atan2(m.vel.y, m.vel.x)   // 진행 방향으로 눕는다
+      const tx = m.pos.x - m.vel.x / v * r * 1.1, ty = m.pos.y - m.vel.y / v * r * 1.1
       fx.glow.position.set(tx, ty, r)
-      fx.glow.scale.setScalar(r * 3.2)
+      fx.glow.scale.setScalar(r * 3.0)
+      // 배기 — 내 탄과 같은 자리에서 뿜되 자주색이다(parts.thrust는 흰 계열이라
+      // 여기서는 안 쓴다. 색이 같아지면 두 탄이 화면에서 다시 붙는다).
       fx.lx = m.pos.x; fx.ly = m.pos.y
     }
   }
@@ -2619,24 +2709,44 @@ void main() {
         { opacity: m.alive ? 0.95 : 0.4 * k, z: 1, depth: true })
     }
 
-    // ── 투석기의 조준선 ──
-    // 잠금 중에는 **어느 공을 어느 살에서 칠 것인가**가 판 위에 그려진다.
-    // 요새의 광선 조준선과 같은 구실이지만 말하는 것이 다르다: 광선은
-    // "이 선에서 비켜라"이고, 이쪽은 "이 공이 지구로 온다"다. 그래서 선이
-    // 둘이다 — 투석기에서 폭심까지(탄이 날 길), 그리고 폭심에서 밀려갈
-    // 방향으로 뻗은 짧은 화살(공이 갈 쪽).
+    // ── 투석기의 조준 궤적 ──
+    // **레이저와 절대로 닮으면 안 되는 자리다.** 광선의 조준은 총구에서 곧게
+    // 뻗은 실선 하나이고 뜻이 "이 선에서 비켜라"인데, 이쪽은 탄이 날 **길**이고
+    // 뜻은 "이 선 위에 뭐라도 밀어 넣어라"다. 둘이 같은 그림이면 대응이 반대인
+    // 두 위협을 화면에서 못 가른다.
+    //
+    // 그래서 셋을 다르게 잡았다:
+    //   ① 곡선이다 — 중력에 휘는 실제 궤적 그대로다(siege.solveShot이 굴려서
+    //      돌려준 점들이고, 탄은 그 길로 실제로 날아간다).
+    //   ② 끊어져 있다 — 토막 리본을 한 칸 걸러 하나씩 그린다. 광선의 실선과
+    //      한 화면에 있어도 0.1초 안에 갈린다.
+    //   ③ 끝에 표적이 있다 — 궤적 끝(꽂히는 자리)에 작은 십자를 놓는다.
+    //      이대로면 지구에 꽂히는지(붉음) 아닌지(청록)가 그 색이다.
+    // 잠금이 찰수록 굵고 밝아진다 — 남은 시간을 선 하나로 읽을 수 있다.
+    //
+    // ※ 이 선은 **미래 좌표계에 산다.** 저쪽은 잠금이 끝나는 순간의 판을 놓고
+    //   한 번 풀어 그 답을 들고 기다리므로(siege.solveShot), 지금 화면의 투석기
+    //   위치와 선의 시작점이 어긋나 보인다. 그게 맞다 — 저 선은 "지금 쏘면"이
+    //   아니라 "그때 쏘면"이고, 지구도 그 시각에 저 끝점에 와 있다.
     for (const S of g.sieges ?? []) {
-      if (S.state !== 'lock' || !S.from.alive || !S.cue?.alive) continue
+      if (S.state !== 'lock' || !S.from.alive || !S.path || S.path.length < 2) continue
       const u = Math.min(1, S.t / CFG.SIEGE_LOCK_TIME)
-      // 잠금이 찰수록 굵고 밝아진다 — 남은 시간을 선 하나로 읽을 수 있다.
-      this.ribbon([S.from.pos, { x: S.ax, y: S.ay }], 1.4 + 2.2 * u, FOE_TONE.trail,
-        { fade: false, opacity: 0.30 + 0.5 * u, z: -1, tailWidth: 1, depth: true })
-      // 밀려갈 방향 — 폭심에서 그 방향으로 판정 원 두 개 길이만큼.
-      const L = hitRadiusOf(S.cue) * 2.2
-      this.ribbon([
-        { x: S.ax, y: S.ay },
-        { x: S.ax + Math.cos(S.ang) * L, y: S.ay + Math.sin(S.ang) * L },
-      ], 2.6 + 2.6 * u, 0xffb03a, { fade: true, opacity: 0.45 + 0.45 * u, z: 0, tailWidth: 1 })
+      const tone = S.hits ? FOE_TONE.trail : 0x67e8f9
+      const pts = S.path
+      const w = 1.6 + 2.4 * u, op = 0.34 + 0.5 * u
+      // 토막 — 네 점씩 그리고 두 점 건너뛴다. 촘촘하면 실선이 되고,
+      // 성기면 무슨 선인지 안 읽힌다.
+      for (let i = 0; i + 1 < pts.length; i += 6) {
+        this.ribbon(pts.slice(i, Math.min(pts.length, i + 4)), w, tone,
+          { fade: false, opacity: op, z: -1, tailWidth: 1, depth: true })
+      }
+      // 꽂히는 자리 — 십자 둘. 지구 판정 원의 절반 크기라 "여기로 온다"가
+      // 자리로 읽히되 지구를 덮지는 않는다.
+      const e = pts[pts.length - 1], L = hitRadiusOf(g.earth) * 0.55
+      this.ribbon([{ x: e.x - L, y: e.y }, { x: e.x + L, y: e.y }], 2.2 + 1.6 * u, tone,
+        { fade: false, opacity: 0.5 + 0.4 * u, z: 0, tailWidth: 1 })
+      this.ribbon([{ x: e.x, y: e.y - L }, { x: e.x, y: e.y + L }], 2.2 + 1.6 * u, tone,
+        { fade: false, opacity: 0.5 + 0.4 * u, z: 0, tailWidth: 1 })
     }
 
     // 조준선 + 큐 예측 (§14.3 개정)

@@ -1,174 +1,199 @@
-import { CFG, contactDist, hitRadiusOf } from './config.js'
-import { cloneBodies, segCircleEntry, segHitsCircle, stepBodies } from './physics.js'
-import { propagate } from './laser.js'
-import { effDv } from './roles.js'
+import { CFG, hitRadiusOf } from './config.js'
+import {
+  buildBodyTrack, liveBodies, makeStepCache, segCircleEntry, segHitsCircle,
+  stepBodies, stepMissile, trackFrame,
+} from './physics.js'
 
-// ─── 조르그 투석기 — 저쪽도 당구를 친다 ──────────────────
+// ─── 조르그 투석기 — 지구에 핵을 쏜다 ──────────────────────────
 //
-// 5스테이지부터 성계에 한 기 앉는다. 하는 일은 요새(광선)와도
-// 다르다: **핵미사일로 중립 행성을 골라 지구에 처박는다.** 플레이어가 판
-// 내내 해 온 그 수를 그대로 되돌려 주는 물건이다.
+// 5스테이지부터 성계에 한 기 앉는다. 하는 일은 **하나뿐이다: 지구에 핵을
+// 쏜다.** 원툴이다.
 //
-// 상태는 넷이다: 조용함 → **잠금**(조준선이 보인다) → **비행** → 기폭.
+// 요새(광선)와 갈리는 자리가 여기다.
+//   · 광선은 **선**이다. 총구에서 조준점까지 곧게 뻗고, 그 선에서 비켜서면
+//     끝난다. 판 위의 다른 공은 그 판정에 안 낀다.
+//   · 이쪽은 **탄**이다. 플레이어가 쏘는 그 탄과 같은 물건이라 중력에 휘고,
+//     길에 걸린 아무 공에나 먼저 꽂힌다. 그래서 **막을 수 있다** —
+//     궤적 위에 공 하나를 밀어 넣으면 거기서 터진다.
 //
-// ① 잠금 — 큐볼 하나를 고르고 그 공의 어느 살을 칠지까지 정한다. 조준선이
-//    투석기에서 그 살까지 그려지고, 밀려갈 방향도 같이 보인다(화면 쪽 일).
-//    이 구간이 곧 **대응 시간**이다(CFG.SIEGE_LOCK_TIME). 대응은 넷 다 이미 배운 수다:
-//      · 큐볼을 먼저 쳐서 치워 놓는다 — 조준이 통째로 무의미해진다
+// 상태는 셋이다: 조용함 → **잠금**(궤적 예고가 판 위에 그려진다) → 비행.
+//
+// ① 잠금 — 각과 속도를 풀어 놓고 기다린다(CFG.SIEGE_LOCK_TIME). 이 구간이
+//    곧 대응 시간이다. 대응은 넷이다:
 //      · 잠금 중에 투석기를 끊는다 — 발사가 취소된다(요새 광선과 같은 규칙)
-//      · 밀려 오는 공을 되친다 — 궤도를 틀면 지구를 스쳐 지나간다
-//      · 지구 추진기로 비켜선다 — 회랑이 아니라 궤도를 피하는 것이라 더 쉽다
+//      · 예고된 궤적 위로 공을 하나 민다 — 탄이 거기서 터진다
+//      · 지구 추진기로 궤도를 비켜선다 — 저쪽 계산은 잠금 순간에 굳는다
+//      · 한 대 맞고(체력 한 눈금) 다음을 준비한다
 //
-// ② 비행 — **유도탄이다.** 플레이어의 탄두는 쏘고 나면 중력이 알아서 하는
-//    멍텅구리인데(그게 이 게임의 조준이다) 이쪽은 목표를 물고 직진한다.
-//    그래서 화면에서 곧은 붉은 줄로 플레이어의 흰 아치와 갈린다.
-//    다만 유도는 **발사 순간까지만** 한다: 리드를 계산해 쏘고 나면 그 방향
-//    그대로 날아간다. 그래서 발사 뒤에 큐볼을 밀어 놓으면 탄이 빗나간다.
+// ② 비행 — **유도가 아니다.** 쏘고 나면 중력이 알아서 하는 멍텅구리이고,
+//    그게 이 게임의 조준 규칙 그대로다. 화면에서도 플레이어의 탄과 같은
+//    아치를 그린다 — 색만 붉다(Scene.syncLines).
 //
-// ③ 기폭 — 닿은 첫 천체에 플레이어의 핵과 **같은 규칙**으로 임펄스가 들어간다
-//    (applyNuke: 방향은 폭심 → 중심, 크기는 작약/질량). 규칙을 갈라 두면
-//    "저쪽 핵은 다르다"가 되어 지금까지 배운 조준 감각이 전부 거짓말이 된다.
+// ③ 기폭 — 지구에 닿으면 **체력 한 눈금**이다(game.siegeDetonate). 다른 공에
+//    닿으면 내 핵과 한 글자도 다르지 않은 임펄스가 들어간다(applyNuke).
 //
 // ── 조르그의 계산은 정확하지 않다 ──
-// 표적을 푸는 시뮬레이션은 **태양·지구·큐볼 셋만** 굴린다(solveCarom).
-// 요새의 조준이 지구의 원래 궤도만 보는 것과 같은 이유다(laser.solveAim):
-// 저쪽 계산에 성계 전체의 섭동까지 넣어 주면 플레이어가 손댈 구석이 없다.
-// 그리고 그게 실제로 저쪽 실수가 된다 — 중간에 낀 목성이 큐볼을 채 가면
-// 조르그의 완벽한 한 수가 그냥 빗나간다.
+// 해를 푸는 시뮬레이션은 **거친 적분**이고(아래 COARSE/FINE), 잠금이 끝나는 그
+// 순간의 판을 기준으로 한 번 풀어 그대로 들고 기다린다. 그래서 잠금 중에 판이 바뀌면
+// (지구가 밀리거나 길목에 공이 들어오면) 저쪽 계산이 그만큼 틀어진다.
+// 그게 이 물건의 대응 셋을 성립시키는 자리다.
+//
+// ※ 예전에 이놈은 **당구를 쳤다**(중립 행성을 골라 지구에 처박는다).
+//   그 물건을 걷어낸 근거는 config.SIEGE_STAGE 주석에 적어 두었다.
 
 export const SIEGE_IDLE = 'idle'
 export const SIEGE_LOCK = 'lock'
 export const SIEGE_FLY = 'fly'
 
-// 큐볼 자격 — **밀리는 공이어야** 이 수가 성립한다. 요새가 옆자리를 고를 때
-// 쓰는 것과 같은 문턱을 쓴다(CFG.FORT_CUE_MIN_DV): 목성·토성처럼 무거운
-// 공은 6Mt로는 꿈쩍도 안 하므로 골라도 헛수다.
-// 조르그가 제 편(요새·다른 투석기)을 치지는 않는다 — 그건 당구가
-// 아니라 자해다. 파편은 공이 아니고, 모성은 아무것도 안 통한다.
-//
-// 가스(유폭)와 불안정(파열)도 뺀다. 밀리는 대신 **다른 일**을 하는 공이라,
-// 이 함수의 답을 받아 "밀면 지구에 닿는다"를 푸는 시뮬레이션(trial)이 그
-// 순간 거짓이 된다 — 가스는 반경 안을 통째로 밀어내고 불안정은 일곱 갈래로
-// 쪼개진다. 조르그의 계산이 거친 것은 상관없지만(태양·지구·큐볼만 굴린다)
-// **애초에 다른 사건이 일어나는 공**을 고르는 것은 거친 게 아니라 틀린 것이다.
-function candidates(game, from) {
-  const e = game.earth
-  const out = []
-  for (const b of game.bodies) {
-    if (!b.alive || b === from || b.isEarth) continue
-    if (b.zorg || b.role === 'battery' || b.role === 'siege') continue
-    if (b.type === 'debris' || b.mothership) continue
-    if (b.role === 'volatile' || b.role === 'unstable') continue
-    if ((b.warpIn ?? 0) > 0) continue
-    if (effDv(b, CFG.SIEGE_YIELD) < CFG.FORT_CUE_MIN_DV) continue
-    // 지구에서 너무 먼 공은 지평(150초) 안에 못 온다. 굴려 보기 전에 걸러
-    // 두면 시뮬레이션을 그만큼 덜 돈다 — 이 함수는 판이 굴러가는 중에 돈다.
-    const d = Math.hypot(b.pos.x - e.pos.x, b.pos.y - e.pos.y)
-    if (d > game.aMax * 1.25) continue
-    out.push({ b, d })
+// ── 해를 푸는 두 해상도 ─────────────────────────────────────────
+// 훑는 자리가 마흔넷이라(속도 넷 × 각 열하나) 한 벌로 다 풀면 프레임 하나를
+// 통째로 먹는다(계측: 중앙 110ms · 최대 171ms). 그래서 두 벌로 나눈다.
+//   · 훑기(coarse) — 성긴 적분으로 **순위만** 매긴다. 여기서 필요한 답은
+//     "어느 각·어느 속도가 제일 가까이 가는가" 하나다.
+//   · 다듬기(fine) — 이긴 자리 둘레만 촘촘한 적분으로 다시 본다. 실제로 쏠
+//     각이므로 여기서는 궤적도, 길에 걸리는 공도 정확해야 한다.
+// 천체 박자는 두 벌이 **같다**(1/12초). 그래야 트랙 하나를 둘이 나눠 쓴다 —
+// 트랙을 두 번 지으면 아낀 시간이 도로 나간다(buildBodyTrack이 O(n²)다).
+// 훑기는 **지구 말고는 아무것도 안 본다**(collide=false). 길에 걸리는 공을
+// 여기서까지 세면 스텝마다 천체 수만큼 스윕 판정이 붙는데, 훑기의 답은 순위
+// 하나뿐이라 그 값을 살 이유가 없다. 막혔는지는 다듬기가 정확히 본다.
+const FINE = { dt: 1 / 36, every: 3, steps: Math.round(CFG.SIEGE_TTL * 36), collide: true }
+const COARSE = { dt: 1 / 12, every: 1, steps: Math.round(CFG.SIEGE_TTL * 12), collide: false }
+// 잠금이 끝나는 순간까지 판을 미리 굴리는 해상도. **아주 성기게** 잡는다 —
+// 여기서 필요한 것은 62초 뒤의 천체 자리뿐이고, 궤도 속도가 20 GU/s대라
+// 1/8초 눈금에서도 오차가 판정 원의 몇십 분의 일이다. 이 한 줄이 O(n²)를
+// 1240번 도느냐 496번 도느냐를 가른다.
+const LEAD_DT = 1 / 8
+// 최근접을 이만큼 지나 멀어졌으면 그 각은 끝난 것으로 친다(fly의 조기 종료).
+// 지구 판정 원(48.6)의 열 배 남짓 — 되돌아와 다시 가까워지는 궤적은 34초
+// 안에서는 나오지 않는다.
+const RECEDE = 500
+
+// 총구 — 제 판정 원 밖에서 쏜다. 안에서 쏘면 첫 스텝에 제 몸에 꽂힌다
+// (플레이어가 지구에서 LAUNCH_OFFSET만큼 떨어져 쏘는 것과 같은 이유다).
+export function muzzle(from, ang) {
+  const d = hitRadiusOf(from) + 26
+  return { x: from.pos.x + Math.cos(ang) * d, y: from.pos.y + Math.sin(ang) * d }
+}
+
+// 이 탄이 저 공에 걸리는가. **조르그 것은 안 친다** — 저쪽이 제 요새에 핵을
+// 박는 그림은 아무리 굴러가도 설명이 안 된다. 해를 푸는 쪽과 실제로 나는
+// 탄이 반드시 같은 함수를 봐야 한다: 갈라 두면 저쪽이 "막힌다"고 판단한 길로
+// 탄이 그냥 지나가거나 그 반대가 된다.
+export const blocks = (b, from) =>
+  b.alive && b !== from && !b.zorg && !b.mothership && !(b.warpIn > 0)
+
+// ── 한 각을 실제로 굴려 본다 ────────────────────────────────────
+// 반환: { miss, hitEarth, blocked, pts } — 지구 중심까지의 최근접 거리와,
+// 실제로 지구에 꽂혔는지, 도중에 다른 공에 막혔는지, 그리고 그 궤적.
+// 궤적은 잠금 중에 화면에 그대로 예고선으로 그린다(Scene.syncLines) —
+// 저쪽이 계산한 길과 화면에 뜨는 선이 같은 물건이어야 예고가 거짓말이 아니다.
+function fly(track, beltR, from, earth, ang, speed, res) {
+  const sim = track.view
+  trackFrame(track, 0)
+  const p = muzzle(from, ang)
+  const m = {
+    pos: { ...p }, prev: { ...p }, vel: { x: Math.cos(ang) * speed, y: Math.sin(ang) * speed },
+    age: 0, pathN: 0, path: null, minSunDist: Infinity,
   }
-  // 가까운 공부터 본다. 가까우면 도착이 빠르고, 빠르면 플레이어가 되칠 시간이
-  // 짧다 — 조르그가 굳이 먼 공을 고를 이유가 없다.
-  out.sort((p, q) => p.d - q.d)
-  return out
-}
-
-// 천체 하나를 태양 중력만으로 seconds초 뒤까지 굴려 **그 상태의 사본**을 준다.
-// laser.propagate와 같은 적분기·같은 간격인데 위치만 돌려주는 그쪽과 달리
-// 여기서는 속도까지 필요하다(굴린 자리에서 다시 밀어 봐야 하므로).
-function advance(body, seconds) {
-  const sim = cloneBodies([body])
-  const dt = 1 / 40, n = Math.round(Math.max(0, seconds) / dt)
-  for (let i = 0; i < n; i++) stepBodies(sim, dt)
-  return sim[0]
-}
-
-// 잠금이 끝나고 탄이 날아가 꽂히기까지 걸리는 시간(인게임 초).
-// **여기가 이 물건의 계산 기준점이다.** 조르그는 "지금 밀면 어떻게 되는가"를
-// 묻지 않는다 — 그 답은 62초 뒤에는 남아 있지 않다. 잠금 62초 + 탄의 비행
-// 시간을 더한 **그 순간**을 기준으로 풀고, 그 답을 그대로 들고 기다린다.
-// ("계산은 끝났다"는 저쪽 대사가 실제로 이 함수를 가리킨다.)
-const leadTime = (from, cue) =>
-  CFG.SIEGE_LOCK_TIME + Math.hypot(cue.pos.x - from.pos.x, cue.pos.y - from.pos.y) / CFG.SIEGE_SPEED
-
-// ── 한 수를 실제로 굴려 본다 ────────────────────────────────────
-// 큐볼을 ang 방향으로 Δv만큼 밀었을 때 지구에 얼마나 가까이 오는가.
-// 굴리는 것은 **태양·지구·큐볼 셋뿐**이다(위 주석). 지구도 같이 굴려야
-// 한다 — 지구는 공전하므로 "지금 지구가 있는 곳"으로 미는 것은 답이 아니다.
-//
-// 반환: 최소 접근거리(GU). 접촉거리 아래면 그 수는 실제로 처박힌다.
-function trial(cue, earth, ang, dv, horizon) {
-  const sim = cloneBodies([cue, earth])
-  const c = sim[0], e = sim[1]
-  c.vel.x += Math.cos(ang) * dv
-  c.vel.y += Math.sin(ang) * dv
-  // dt 1/20 — 조르그의 계산은 거칠다. 요새의 조준(1/40)보다도 성긴데,
-  // 여기서 재는 것은 "닿나 안 닿나"이고 판정 반경이 50 GU를 넘으므로
-  // 이 해상도로 답이 뒤집히지 않는다(궤도 속도 20 GU/s × 1/20 = 1 GU).
-  const dt = 1 / 20, n = Math.round(horizon / dt)
-  const need = contactDist(cue, earth)
-  let best = Infinity
-  for (let i = 0; i < n; i++) {
-    stepBodies(sim, dt)
-    const d = Math.hypot(c.pos.x - e.pos.x, c.pos.y - e.pos.y)
-    if (d < best) best = d
-    if (d < need) return d          // 처박혔다 — 더 굴려 볼 이유가 없다
-    // 태양에 빠졌거나 판 밖으로 나갔으면 그 수는 끝난 것이다
-    if (Math.hypot(c.pos.x, c.pos.y) < CFG.R_STAR) break
+  const pts = [{ ...p }]
+  const beltR2 = beltR * beltR
+  const rIn2 = (CFG.R_STAR + 8) * (CFG.R_STAR + 8)
+  // 탄은 점이다 — 지구의 판정 원 안에 들어오면 꽂힌 것이다(game.contact와 같다).
+  const need = hitRadiusOf(earth)
+  let miss = Infinity, f = 0
+  const { dt, every, steps, collide } = res
+  const mark = Math.max(1, Math.round(0.19 / dt))   // 궤적 점 간격(초) — 해상도와 무관하게 같다
+  for (let i = 0; i < steps; i++) {
+    if (i % every === (every >> 1)) trackFrame(track, ++f)
+    stepMissile(m, sim, dt)
+    if (i % mark === 0) pts.push({ x: m.pos.x, y: m.pos.y })
+    const d = Math.hypot(m.pos.x - earth.pos.x, m.pos.y - earth.pos.y)
+    miss = Math.min(miss, d)
+    // 최근접을 한참 지나 멀어지는 중이면 그만 굴린다. 이 각의 점수는 이미
+    // 정해졌고(miss), 남은 스텝은 전부 헛돈다 — 훑는 자리가 마흔넷이라
+    // 이 한 줄이 곧 풀이 시간의 절반이다(계측: 73ms → 40ms).
+    if (d > miss + RECEDE) break
+    if (collide) {
+      for (const o of sim) {
+        if (!blocks(o, from)) continue
+        const r = hitRadiusOf(o)
+        if (!segHitsCircle(m.prev.x, m.prev.y, m.pos.x, m.pos.y, o.pos.x, o.pos.y, r)) continue
+        const q = segCircleEntry(m.prev.x, m.prev.y, m.pos.x, m.pos.y, o.pos.x, o.pos.y, r)
+        pts.push(q)
+        return { miss: o.isEarth ? 0 : miss, hitEarth: !!o.isEarth, blocked: !o.isEarth, pts }
+      }
+    } else if (d < need) {
+      // 훑기는 지구만 본다 — 판정 원 안에 들어온 순간이 곧 명중이다.
+      return { miss: 0, hitEarth: true, blocked: false, pts }
+    }
+    const r2 = m.pos.x * m.pos.x + m.pos.y * m.pos.y
+    if (r2 < rIn2 || r2 >= beltR2) break     // 태양에 삼켜졌다 / 벨트에서 터진다
   }
-  return best
+  return { miss, hitEarth: miss < need, blocked: false, pts }
 }
 
-// ── 표적과 방향을 고른다 ────────────────────────────────────────
-// 후보 공마다 **지구를 향하는 각 둘레를 부채로 훑는다.** 정확히 지구를 향해
-// 미는 것이 정답이 아니기 때문이다: 지구는 공전하므로 앞을 재서 밀어야 하고,
-// 그 리드는 거리·질량·궤도에 따라 다르다. 식을 푸는 대신 각을 훑어 직접
-// 굴려 보는 이유는 싸고 **틀릴 수 없기** 때문이다.
+// ── 각을 고른다 ─────────────────────────────────────────────────
+// 지구를 향하는 각 둘레를 부채로 훑고, 제일 가까이 가는 각을 고른 뒤 그 옆을
+// 한 번 더 좁게 훑는다. 정확히 지구를 향해 쏘는 것이 정답이 아니기 때문이다:
+// 탄은 중력에 휘고, 지구는 그동안 공전한다. 식을 푸는 대신 굴려 보는 이유는
+// 싸고 **틀릴 수 없기** 때문이다(플레이어의 접촉각 탐색과 같은 방법이다).
 //
-// 그리고 **미래에서** 훑는다. 각과 표적은 지금 자리가 아니라 잠금이 끝나
-// 탄이 꽂히는 그 순간의 자리에서 정해진다(leadTime) — 지금 자리에서 풀면
-// 62초 뒤에 그 각은 엉뚱한 하늘을 가리킨다(계측: 그렇게 푼 판에서 밀린 공이
-// 지구에 닿은 경우가 6시드 중 1건이었다).
+// **미래에서** 훑는다. 각은 지금 자리가 아니라 잠금이 끝나는 그 순간의 자리에서
+// 정해진다 — 지금 자리에서 풀면 62초 뒤에 그 각은 엉뚱한 하늘을 가리킨다.
 //
-// 계측 주의: 후보 셋 × 각 아홉 = 스물일곱 번 굴린다. 한 번이 3000스텝 ×
-// 천체 둘이고, 그 앞에 후보마다 미래로 한 번씩 굴린다(2700스텝 × 1체).
-// 이 함수가 도는 프레임은 **중앙 17ms · 최대 64ms**다(10시드 계측, 36회).
-// 프레임 하나를 그만큼 붙잡는 셈인데 이 주기는 200초에 한 번이라 화면에서는
+// 📐 계측: 훑기 44 + 다듬기 9 = 53번 굴린다. 이 함수가 도는 프레임은
+// **중앙 43ms · 최대 88ms**(8시드 48회)이고, 주기가 200초에 한 번이라 화면에서는
 // 안 보인다(판 전환의 자리 찾기도 같은 급의 비용이다 — system.placeFort 주석).
-// 후보를 셋으로 자르는 것이 그 예산의 전부라 여기를 늘리려면 다시 재야 한다.
-export function solveCarom(game, from) {
-  const pool = candidates(game, from).slice(0, 3)
-  let best = null
-  for (const { b } of pool) {
-    const dv = effDv(b, CFG.SIEGE_YIELD)
-    // 이 공을 치기로 하면 실제로 밀리는 시각 — 거기까지 둘을 굴려 놓고 푼다.
-    const lead = leadTime(from, b)
-    const cueF = advance(b, lead)
-    const earthF = advance(game.earth, lead)
-    // 그 순간 지구를 향하는 각. 여기서 ±SIEGE_ARC를 훑는다.
-    const base = Math.atan2(earthF.pos.y - cueF.pos.y, earthF.pos.x - cueF.pos.x)
-    for (let i = 0; i < CFG.SIEGE_ARC_N; i++) {
-      const u = CFG.SIEGE_ARC_N > 1 ? (i / (CFG.SIEGE_ARC_N - 1)) * 2 - 1 : 0
-      const ang = base + u * CFG.SIEGE_ARC
-      const miss = trial(cueF, earthF, ang, dv, CFG.SIEGE_SOLVE_HORIZON)
-      if (best && miss >= best.miss) continue
-      best = { cue: b, ang, miss, hits: miss < contactDist(b, game.earth) }
+export function solveShot(game, from) {
+  // ① 잠금이 끝나는 순간의 판을 만든다.
+  const future = liveBodies(game.bodies)
+  const cache = makeStepCache()
+  const n = Math.round(CFG.SIEGE_LOCK_TIME / LEAD_DT)
+  for (let i = 0; i < n; i++) stepBodies(future, LEAD_DT, cache)
+  const src = future.find(b => b.id === from.id)
+  const earth = future.find(b => b.isEarth)
+  if (!src || !earth || !earth.alive) return null
+  // ② 그 상태에서 천체 궤적을 한 번만 굴려 기록한다 — 각마다 재생한다.
+  const track = buildBodyTrack(future, FINE.dt, FINE.every, FINE.steps)
+  const trackEarth = track.view.find(b => b.isEarth)
+  const base = Math.atan2(earth.pos.y - src.pos.y, earth.pos.x - src.pos.x)
+
+  const half = CFG.SIEGE_ARC, N = CFG.SIEGE_ARC_N
+  const step = 2 * half / (N - 1)
+  const [sLo, sHi] = CFG.SIEGE_SPEED, sN = CFG.SIEGE_SPEED_N
+  // 막힌 길은 뒤로 민다 — 닿기는 하지만 지구가 아닌 데서 끝나는 각이다.
+  const scoreOf = (r) => r.miss + (r.blocked ? 4000 : 0)
+
+  // ── ① 훑기: 속도 넷 × 각 열다섯 ──
+  // 속도가 곧 비행 시간이고, 비행 시간이 곧 "지구가 그때 어디 있나"다.
+  // 그래서 이 둘은 따로 못 푼다 — 각만 훑으면 못 맞히는 판이 3분의 2다
+  // (계측: 속도를 44로 못 박으면 명중해가 33%, 넷을 훑으면 67%).
+  let bestAng = base, bestSpeed = sLo, bestScore = Infinity
+  for (let k = 0; k < sN; k++) {
+    const speed = sN > 1 ? sLo + (sHi - sLo) * k / (sN - 1) : sLo
+    for (let i = 0; i < N; i++) {
+      const ang = base - half + step * i
+      const sc = scoreOf(fly(track, game.beltR, src, trackEarth, ang, speed, COARSE))
+      if (sc < bestScore) { bestScore = sc; bestAng = ang; bestSpeed = speed }
     }
   }
-  // 처박히는 수가 없으면 **가장 가까이 가는 수**를 그대로 쏜다. 조르그가
-  // 한 판을 그냥 쉬는 것보다 낫다: 지구 근처로 굴러온 공은 그 자체로 판을
-  // 흔들고(폭풍·2차 충돌), 무엇보다 이 물건이 무엇을 하는 놈인지가 보인다.
-  return best
-}
-
-// 폭심 자리 — 큐볼의 **밀 방향 반대쪽 살**이다. 임펄스 방향은 폭심 → 중심
-// 하나로 정해지므로(applyNuke), 저쪽도 우리와 똑같이 "어느 살을 치는가"만
-// 고르면 된다. 0.86은 판정 원 안쪽으로 조금 들어간 자리 — 겉면 정확히
-// 위에 두면 스치는 궤적에서 판정을 놓친다.
-// at = 그 공이 있을 자리(기본은 지금 자리). 탄의 리드를 풀 때는 미래 자리를 준다.
-export function caromPoint(cue, ang, at = cue.pos) {
-  const r = hitRadiusOf(cue) * 0.86
-  return { x: at.x - Math.cos(ang) * r, y: at.y - Math.sin(ang) * r }
+  // ── ② 다듬기: 이긴 자리의 좌우 한 칸을 여덟으로 쪼갠다 ──
+  // 지구의 판정 원이 600 GU 거리에서 4.6°를 덮으므로 성긴 훑기(7.4°)만으로는
+  // 스치는 각이 남는다. 여기서부터는 촘촘한 적분이다 — 실제로 쏠 각이므로
+  // 궤적도(화면에 그린다) 길에 걸리는 공도 여기서 정해진다.
+  let best = null
+  const test = (ang) => {
+    const r = fly(track, game.beltR, src, trackEarth, ang, bestSpeed, FINE)
+    const score = scoreOf(r)
+    if (!best || score < best.score) best = { ...r, score, ang }
+  }
+  test(bestAng)
+  for (let i = 1; i <= 4; i++) {
+    test(bestAng - step * i / 5)
+    test(bestAng + step * i / 5)
+  }
+  return { ang: best.ang, speed: bestSpeed, hits: best.hitEarth, blocked: best.blocked, path: best.pts }
 }
 
 // from = 이 포를 실은 투석기. 그놈이 죽으면 같이 없어진다(game.syncSieges).
@@ -178,11 +203,10 @@ export function makeSiegeGun(rng, from, nextAt = CFG.SIEGE_FIRST) {
     t: 0,
     nextAt,
     from,
-    cue: null,            // 고른 큐볼
-    ang: 0,               // 밀 방향 (조르그가 정한 각)
-    ax: 0, ay: 0,         // 폭심 — 큐볼의 어느 살인가
-    hits: false,          // 이 수가 실제로 처박히는가 (화면이 경고를 가른다)
-    refresh: 0,
+    ang: 0,               // 풀어 둔 발사각
+    speed: CFG.SIEGE_SPEED[0],
+    hits: false,          // 이 해가 실제로 지구에 꽂히는가 (화면이 경고를 가른다)
+    path: null,           // 예고 궤적 — 잠금 중에 판 위에 그려진다
     rng,
   }
 }
@@ -196,43 +220,26 @@ export function stepSiegeGun(S, game, dt) {
 
   if (S.state === SIEGE_IDLE) {
     if (S.t < S.nextAt) return null
-    const sol = solveCarom(game, src)
-    if (!sol) {                              // 굴릴 공이 하나도 없다 — 조금 뒤에 다시 본다
+    const sol = solveShot(game, src)
+    if (!sol) {                              // 지구가 없다 — 이 판은 이미 끝났다
       S.t = 0; S.nextAt = CFG.SIEGE_PERIOD * 0.35
       return null
     }
-    S.state = SIEGE_LOCK; S.t = 0; S.refresh = 0
-    S.cue = sol.cue; S.ang = sol.ang; S.hits = sol.hits
-    const p = caromPoint(S.cue, S.ang)
-    S.ax = p.x; S.ay = p.y
-    return { kind: 'lock', src, cue: S.cue, hits: S.hits }
+    S.state = SIEGE_LOCK; S.t = 0
+    S.ang = sol.ang; S.speed = sol.speed; S.hits = sol.hits; S.path = sol.path
+    return { kind: 'lock', src, hits: S.hits }
   }
 
   if (S.state === SIEGE_LOCK) {
-    // 큐볼이 없어졌다(플레이어가 치웠거나 부서졌다) — 조준이 통째로 무의미해진다.
-    // **이게 이 물건의 첫째 대응이다.** 다시 고르는 데 온전한 주기를 쓴다.
-    if (!S.cue.alive) {
-      S.state = SIEGE_IDLE; S.t = 0; S.nextAt = CFG.SIEGE_PERIOD
-      return { kind: 'lost', src }
-    }
-    S.refresh += dt
-    if (S.refresh >= CFG.SIEGE_AIM_REFRESH) {
-      S.refresh = 0
-      // 큐볼은 계속 공전한다 — 폭심은 매번 지금 자리에서 다시 잡는다.
-      // 각(ang)은 잠금 순간에 정해진 그대로 둔다: 그게 "조준이 고정된다"이고,
-      // 플레이어가 큐볼을 밀면 그만큼 저쪽 계산이 틀어지는 자리다.
-      const p = caromPoint(S.cue, S.ang)
-      S.ax = p.x; S.ay = p.y
-    }
     if (S.t < CFG.SIEGE_LOCK_TIME) return null
-    S.state = SIEGE_FLY; S.t = 0
-    return { kind: 'fire', src, cue: S.cue, ang: S.ang, ax: S.ax, ay: S.ay }
+    S.state = SIEGE_FLY; S.t = 0; S.path = null
+    return { kind: 'fire', src, ang: S.ang, speed: S.speed }
   }
 
   // 비행 중 — 탄 자체는 game이 굴린다(stepSiegeShot). 여기서는 다음 주기만 센다.
   if (S.state === SIEGE_FLY) {
     if (S.t < CFG.SIEGE_PERIOD) return null
-    S.state = SIEGE_IDLE; S.t = 0; S.nextAt = 0; S.cue = null
+    S.state = SIEGE_IDLE; S.t = 0; S.nextAt = 0
     return null
   }
   return null
@@ -241,71 +248,34 @@ export function stepSiegeGun(S, game, dt) {
 // 발사가 취소됐다 — 잠금 중에 투석기가 부서졌을 때 game이 부른다.
 export function abortSiegeGun(S) {
   if (S.state !== SIEGE_LOCK) return false
-  S.state = SIEGE_IDLE; S.t = 0; S.nextAt = CFG.SIEGE_PERIOD; S.cue = null
+  S.state = SIEGE_IDLE; S.t = 0; S.nextAt = CFG.SIEGE_PERIOD; S.path = null
   return true
 }
 
 // ─── 탄 ─────────────────────────────────────────────────────────
-// 유도는 **발사 순간까지만** 한다. 큐볼이 어디로 갈지 재서 그 앞을 겨눈 뒤
-// (리드), 그 방향 그대로 직진한다. 모성의 마지막 한 발이 지구의 이동을 미리
-// 당기는 것과 같은 되풀기다(laser.doomAimEarth).
-//
-// **리드는 속도로 외삽하지 않는다.** 큐볼은 궤도를 도는 물건이라 직선으로
-// 늘려 잡으면 굽은 만큼 빗나간다: 비행 10초에 곡률 오차가 ½·a·t² ≈ 30 GU인데
-// 소행성의 판정 원이 23.4 GU다(계측: 여섯 시드에서 발사 18발 중 8발만
-// 제 표적에 꽂혔다). 그래서 실제 적분기로 굴려서 만나는 자리를 찾는다.
+// **플레이어의 탄과 같은 물건이다.** 같은 적분기(stepMissile)로 날고, 같은
+// 궤적 배열을 들고 다니고, 같은 스윕 판정으로 꽂힌다. 다른 것은 셋뿐이다:
+// 색(Scene), 지구에 꽂히면 체력을 깎는다는 것(game.siegeDetonate), 그리고
+// **내 발사 차례를 안 막는다**는 것(배열이 갈려 있다 — game.foeShots).
 export function makeSiegeShot(S) {
-  const src = S.from, cue = S.cue
-  const ox = src.pos.x, oy = src.pos.y
-  let px = S.ax, py = S.ay
-  for (let i = 0; i < 3; i++) {
-    const t = Math.hypot(px - ox, py - oy) / CFG.SIEGE_SPEED
-    const at = propagate(cue, t)
-    const p = caromPoint(cue, S.ang, at)
-    px = p.x; py = p.y
-  }
-  const a = Math.atan2(py - oy, px - ox)
+  const src = S.from
+  const p = muzzle(src, S.ang)
   return {
-    pos: { x: ox, y: oy }, prev: { x: ox, y: oy },
-    vel: { x: Math.cos(a) * CFG.SIEGE_SPEED, y: Math.sin(a) * CFG.SIEGE_SPEED },
+    pos: { ...p }, prev: { ...p },
+    vel: { x: Math.cos(S.ang) * S.speed, y: Math.sin(S.ang) * S.speed },
     yld: CFG.SIEGE_YIELD, alive: true, age: 0, fade: 0,
-    // 궤적은 플레이어 탄과 같은 모양으로 들고 다닌다(렌더가 같은 리본을 쓴다).
-    // 다만 색이 다르다 — 저쪽 탄은 붉다(Scene.syncLines).
-    path: [{ x: ox, y: oy }], from: src, cue,
+    path: [{ ...p }], pathN: 0, minSunDist: Infinity, from: src,
   }
 }
 
-// 한 스텝. 중력을 안 받으므로 적분이 아니라 그냥 직선이다.
-// 닿는 첫 천체에서 결판난다 — 판정은 플레이어 탄과 같은 스윕이다.
+// 한 스텝. 중력을 받으므로 플레이어의 탄과 같은 함수를 쓴다.
+// 닿는 첫 천체에서 결판난다 — 판정도 같은 스윕이다(game.contact).
 export function stepSiegeShot(m, game, dt) {
-  m.prev.x = m.pos.x; m.prev.y = m.pos.y
-  m.pos.x += m.vel.x * dt
-  m.pos.y += m.vel.y * dt
-  m.age += dt
-  // 궤적 — 직선이라 점을 촘촘히 찍을 이유가 없다. 24 GU마다 한 점이면
-  // 리본이 매끈하고(직선이므로) 배열은 몇십 개로 끝난다.
-  const last = m.path[m.path.length - 1]
-  if (Math.hypot(m.pos.x - last.x, m.pos.y - last.y) > 24) m.path.push({ x: m.pos.x, y: m.pos.y })
+  stepMissile(m, game.bodies, dt)
 
   let best = null, bestD = Infinity
   for (const b of game.bodies) {
-    if (!b.alive || b === m.from || (b.warpIn ?? 0) > 0) continue
-    // 저쪽 탄은 **저쪽 것을 안 친다.** 조르그가 제 요새에 핵을 박는 그림은
-    // 아무리 굴러가도 설명이 안 된다.
-    if (b !== m.cue && (b.zorg || b.mothership)) continue
-    // ── 그리고 **지구도 안 친다.** ──
-    // 이건 편의가 아니라 이 물건의 정의다. 조르그가 하는 일은 "지구에 핵을
-    // 쏘는 것"이 아니라 "행성을 지구에 처박는 것"이고(핵은 원래 행성을 못
-    // 부순다 — 이 게임의 전제), 그래서 이 탄은 배정된 그 공에만 무장돼 있다.
-    //
-    // 규칙으로 못 박은 이유가 하나 더 있다. 투석기 대역은 지구 궤도
-    // 언저리라 탄의 직선 경로에 지구가 걸리는 일이 흔한데, 9Mt가 지구에
-    // 직격하면 Δv 15.6이다 — 지구 궤도 속도(21)의 74%다. 계측에서 그 한 방이
-    // 근일점을 태양까지 끌어내려 400초 뒤에 판이 끝났고, 화면에는 그 인과가
-    // 아무 데도 안 남았다. **원인이 안 보이는 패배는 난이도가 아니다.**
-    // (폭풍은 여전히 지구에 닿는다 — 그쪽은 0.3배로 눌린 값이라 경고 한 줄로
-    //  읽히고 되돌릴 수 있다. siegeDetonate의 blastWave 참고.)
-    if (b.isEarth) continue
+    if (!blocks(b, m.from)) continue
     const r = hitRadiusOf(b)
     if (!segHitsCircle(m.prev.x, m.prev.y, m.pos.x, m.pos.y, b.pos.x, b.pos.y, r)) continue
     const p = segCircleEntry(m.prev.x, m.prev.y, m.pos.x, m.pos.y, b.pos.x, b.pos.y, r)

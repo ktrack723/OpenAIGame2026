@@ -25,6 +25,9 @@ const CAT_STYLE = {
   gas: { icon: '🪐', color: '#fcd34d' },
   shard: { icon: '💥', color: '#bef264' },
   comet: { icon: '☄', color: '#bae6fd' },
+  // 순회선 — 조르그가 아닌 다른 종족의 배. 배지 하나로 "저건 편이 다르다"가
+  // 읽혀야 하므로 조르그의 붉은 계열과 제일 먼 비취색을 쓴다(roles.visitor와 같은 색).
+  ufo: { icon: '◇', color: '#34d399' },
   earth: { icon: '🌍', color: '#93c5fd' },
   zorg: { icon: '👁', color: '#e879f9' },
   siege: { icon: '🚀', color: '#ff8a6a' },

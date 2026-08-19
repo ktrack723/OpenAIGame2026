@@ -43,6 +43,10 @@ document.querySelector('.boot')?.remove()
 // 붙는 자리가 갈려 있어서 둘이 동시에 떠도 겹치지 않는다.
 const comms = new Comms(game, view)
 const ground = new Ground(game, view)
+// 창 두 개도 손잡이를 밖에 내놓는다 — 위의 __game·__view와 같은 이유다:
+// 화면을 실제로 띄워 놓고 확인하는 자리(헤드리스 브라우저 검증)에서 이 둘만
+// 못 부르면 "저 창이 실제로 뜨는가"를 눈으로 확인할 방법이 없다.
+window.__comms = comms; window.__ground = ground
 
 // ─── 소리 ───────────────────────────────────────────────────────
 // 사건은 game.addFx가 흘려보내는 큐에서 줍는다(지상 관제와 같은 자리).
