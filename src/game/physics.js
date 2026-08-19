@@ -26,6 +26,11 @@ function accelAll(bodies, ax, ay) {
 }
 
 // ─── T1-2: KDK 리프프로그 (§4.4). 트레일은 최근 20초 잔상(§14.2) ───
+// ※ 엔진으로 가는 천체(b.cruise = 순회선)는 **가속만 건너뛴다.** 속도는
+//   그대로 실려 위치가 갱신되므로 곧게 나아가고, 남에게 미치는 중력은 그대로
+//   준다(accelAll의 합에는 여전히 든다). 한 번 얻어맞아 엔진이 죽으면
+//   (game.nudgeVisitor에서 cruise=0) 그다음 스텝부터 판의 중력에 그대로 든다 —
+//   예측선도 같은 함수를 쓰므로 그 전환이 조준 화면에서 그대로 보인다.
 // 가속도 버퍼는 재사용한다 — 예측선 한 번이 수천 스텝을 도는데 스텝마다
 // 천체 수만큼 객체를 새로 만들면 그게 곧 프레임 드랍이다(행성이 20개로 늘면서
 // 이 비용이 세 배가 됐다). 재귀 호출이 없으므로 모듈 스코프 버퍼로 충분하다.
@@ -55,7 +60,7 @@ export function stepBodies(bodies, dt, cache) {
   }
   for (let i = 0; i < n; i++) {
     const b = bodies[i]
-    if (!b.alive) continue
+    if (!b.alive || b.cruise) continue
     b.vel.x += ax[i] * h; b.vel.y += ay[i] * h
   }
   _frame++
@@ -75,7 +80,7 @@ export function stepBodies(bodies, dt, cache) {
   accelAll(bodies, ax, ay)
   for (let i = 0; i < n; i++) {
     const b = bodies[i]
-    if (!b.alive) continue
+    if (!b.alive || b.cruise) continue
     b.vel.x += ax[i] * h; b.vel.y += ay[i] * h
   }
   if (cache) cache.valid = true
@@ -233,6 +238,24 @@ export function updateEncounters(m, bodies, ev) {
   }
 }
 
+// ─── 손님을 한 번 건드렸다 ──────────────────────────────────────
+// 밖에서 들어온 손님(혜성·순회선)이 들고 있는 두 가지 — 카이퍼 벨트 통행권과
+// (순회선만) 엔진 — 은 **아무도 안 건드렸을 때만** 유효하다. 궤도가 한 번
+// 비틀리는 순간 둘 다 사라지고, 그때부터 이 천체는 다른 공과 한 글자도 다르지
+// 않다: 중력에 끌리고, 벽에 튕기고, 판의 식구가 된다.
+//
+// 그래서 "밀어서 붙잡는다"가 이 게임의 수가 된다 — 지나가는 것을 잡으려면
+// 한 번 쳐야 하고, 치는 순간 그것은 더 이상 지나가는 것이 아니다.
+//
+// 부르는 자리는 **공을 실제로 미는 곳 전부**다(핵 임펄스·폭풍·충돌·유폭).
+// 여기 한 줄로 모아 두는 이유가 그것이다: 미는 자리가 넷인데 규칙을 넷에
+// 나눠 적으면 그중 하나는 반드시 조용히 빠진다.
+export function nudge(o) {
+  if (!o || !o.visitor) return
+  o.cruise = 0
+  o.pass = 0
+}
+
 // ─── 핵 임펄스 — 이 게임의 큐 (§6.2 개정) ────────────────────────
 // 규칙 한 줄: **입사각도 입사속도도 보지 않는다.**
 // 방향 = 폭심 → 행성 중심 (= 공의 어느 살을 쳤는가),
@@ -243,6 +266,7 @@ export function applyNuke(b, blastX, blastY, yld) {
   dx /= d; dy /= d
   const dv = effDv(b, yld)   // 장갑은 절반으로 깎인다 (roles.js)
   b.vel.x += dx * dv; b.vel.y += dy * dv
+  nudge(b)
   b.hitFlash = 0.9; b.trailFlash = 2.0
   b.scorch = Math.min(3, (b.scorch || 0) + 1)   // 핵 맞은 자국이 표면에 남는다
   return { dx, dy, dv }
@@ -257,6 +281,7 @@ export function blastWave(bodies, blastX, blastY, yld, skip) {
     const p = blastPushOn(o, blastX, blastY, yld)
     if (!p) continue
     o.vel.x += p.dx * p.dv; o.vel.y += p.dy * p.dv
+    nudge(o)
     o.trailFlash = 1.5
     out.push({ body: o, dv: p.dv })
   }
@@ -352,6 +377,8 @@ export function elasticBounce(a, b) {
     const j = -(1 + CFG.BOUNCE_RESTITUTION) * vn / (1 / a.mu + 1 / b.mu)
     a.vel.x -= j * nx / a.mu; a.vel.y -= j * ny / a.mu
     b.vel.x += j * nx / b.mu; b.vel.y += j * ny / b.mu
+    // 부딪힌 손님은 그 자리에서 통행권을 잃는다 — 핵으로 민 것과 같은 일이다.
+    nudge(a); nudge(b)
   }
   // 겹침 해소 — 안 떼어 놓으면 다음 스텝에 다시 접촉으로 잡혀 서로 물고 늘어진다
   const want = contactDist(a, b) * 1.02
@@ -431,6 +458,18 @@ export function resolveBodyPairs(bodies, game) {
 // 복제본도 정본 형태로 만든다 — 예측선이 이 배열 위에서 수천 스텝을 도는데,
 // 형태가 흐트러지면 그 자리에서 프레임이 무너진다(body.js 주석 참고).
 export function cloneBodies(bodies) { return bodies.map(cloneBody) }
+
+// 예측용 복제 — **죽은 것은 안 데려간다.**
+// 판의 배열에는 부서진 천체가 그대로 남아 있다(연출이 끝까지 돌아야 하고,
+// 정리는 판이 넘어갈 때 한 번에 한다 — game.loadStage). 그런데 예측은 그
+// 시체까지 복제해 수천 스텝을 돌리고, stepBodies는 O(n²)라 그 값이 그대로
+// 프레임 예산이 된다: 손님이 드나드는 판에서는 한 판 안에 배열이 여든을 넘고
+// 그중 살아 있는 것은 열댓이다.
+//
+// 결과는 한 톨도 안 바뀐다. accelAll은 죽은 천체를 이미 건너뛰고(합에 안 든다),
+// 살아 있는 것들의 **순서**는 그대로이므로 합산 순서도 그대로다 —
+// 부동소수 결과까지 같다는 뜻이고, 그게 이 최적화를 해도 되는 이유다.
+export const liveBodies = (bodies) => cloneBodies(bodies.filter(b => b.alive))
 
 // ─── 예측 공용: 천체 궤적 트랙 ──────────────────────────────────
 // 예측 안에서 미사일은 천체에 아무 영향도 주지 않는다 — fieldAccel은 단방향이고,

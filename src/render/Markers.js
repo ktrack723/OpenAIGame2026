@@ -29,6 +29,7 @@ const ARROW_PX = 13
 const EARTH_TONE = 0x60a5fa   // 지구 — 파랑(공 테두리와 같은 색)
 const FOE_TONE = 0xf43f5e     // 조르그 요새 — 붉은색(표적 테두리와 같은 색)
 const COMET_TONE = 0x7dd3fc   // 혜성 — 얼음빛. 표적이 아니라 **손님**이라는 게 색으로 갈린다
+const UFO_TONE = 0x34d399     // 순회선 — 비취색. 같은 손님이되 저건 배다(조르그 붉은색과 제일 멀다)
 
 function labelSprite(text, color, bg) {
   const dpr = Math.min(3, devicePixelRatio || 1)
@@ -83,7 +84,7 @@ export class Markers {
   foeArrow(b) {
     let a = this.foeArrows.get(b.id)
     if (!a) {
-      a = arrowMesh(b.comet ? COMET_TONE : FOE_TONE)
+      a = arrowMesh(b.ufo ? UFO_TONE : b.comet ? COMET_TONE : FOE_TONE)
       a.userData.scale = 1
       this.scene.add(a); this.foeArrows.set(b.id, a)
     }
@@ -187,17 +188,19 @@ export class Markers {
     // 여럿이면 나머지는 체력을 알 길이 없었다(화살표는 방향만 말한다).
     // 아직 워프해 들어오지 않은 증원은 아직 성계에 없는 것이므로 세지
     // 않는다(place가 걸러 낸다).
-    // 혜성도 같이 문다. 표적은 아니지만 **화면 밖에서 들어오는 물건**이라
-    // 표식이 없으면 도착을 통째로 놓친다 — 그리고 지나가는 동안에만 쓸 수
-    // 있으므로, 어디쯤 와 있는지가 곧 남은 시간이다. 색으로 갈라 준다:
-    // 요새는 장미빛, 혜성은 얼음빛.
-    const marked = game.bodies.filter(b => b.alive && (game.isTarget(b) || b.comet))
+    // 손님도 같이 문다(혜성·순회선). 표적은 아니지만 **화면 밖에서 들어오는
+    // 물건**이라 표식이 없으면 도착을 통째로 놓친다 — 그리고 지나가는 동안에만
+    // 쓸 수 있으므로, 어디쯤 와 있는지가 곧 남은 시간이다. 색으로 셋을 가른다:
+    // 요새는 장미빛, 혜성은 얼음빛, 순회선은 청록.
+    const marked = game.bodies.filter(b => b.alive && (game.isTarget(b) || b.visitor))
     this.reap(new Set(marked.map(b => b.id)))
     for (const b of marked) {
-      const foe = !b.comet
-      const label = this.fortLabel(b, loc(foe ? 'mark.target' : 'mark.comet', {
+      const key = b.ufo ? 'mark.ufo' : b.visitor ? 'mark.comet' : 'mark.target'
+      const ink = b.ufo ? '#b8fff0' : b.visitor ? '#cbf3ff' : '#ffc9cf'
+      const bg = b.ufo ? 'rgba(6,44,40,.92)' : b.visitor ? 'rgba(8,38,54,.92)' : 'rgba(58,10,17,.92)'
+      const label = this.fortLabel(b, loc(key, {
         hp: b.hp ?? CFG.PLANET_HP, hpMax: b.hpMax ?? CFG.PLANET_HP,
-      }), foe ? '#ffc9cf' : '#cbf3ff', foe ? 'rgba(58,10,17,.92)' : 'rgba(8,38,54,.92)')
+      }), ink, bg)
       this.place(label, this.foeArrow(b), b, rig, radiusOfRender(b))
     }
     this.place(this.earthLabel, this.earthArrow, e, rig, radiusOfRender(e))

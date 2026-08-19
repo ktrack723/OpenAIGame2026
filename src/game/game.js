@@ -2,7 +2,7 @@ import { fromAngle, len } from '../core/vector.js'
 import { Rng } from '../core/random.js'
 import { CFG, aMaxOf, beltRadius, escapeSpeed, hitRadiusOf } from './config.js'
 import {
-  applyNuke, beltBounce, blastWave, cloneBodies, elasticBounce, missilePush, resolveBodyPairs,
+  applyNuke, beltBounce, blastWave, cloneBodies, elasticBounce, missilePush, nudge, resolveBodyPairs,
   segCircleEntry, segHitsCircle, shardBurst, shatter, stepBodies, stepMissile, sweepMeet,
   updateEncounters, volatilePushOn,
 } from './physics.js'
@@ -13,6 +13,7 @@ import { bearing } from '../core/angle.js'
 import { createSystem, reinforce, sendCueBall } from './system.js'
 import { earthShove } from './aim.js'
 import { stepComets } from './comet.js'
+import { stepUfos } from './ufo.js'
 import { makeBody } from './body.js'
 import { chargeLeft, impactLeft, makeDoom, makeLaser, propagate, stepDoom, stepLaser, stepSpent, LASER_CHARGE, LASER_SPENT, LASER_TRAVEL } from './laser.js'
 import {
@@ -133,11 +134,13 @@ export class Game {
     // 잔해만 **제자리에서** 걷어낸다. 배열을 새로 만들면 렌더러가 성계를 통째로
     // 다시 짓고 카메라가 튀어서 판 사이에 화면이 끊긴다 — 이 게임은 성계가
     // 런 내내 하나로 이어지는 게 전제이므로 그 끊김이 거짓말이 된다.
-    // (혜성도 같이 걷는다 — 판을 넘기면 그 손님은 지나간 것이다. 남겨 두면
-    //  다음 판의 증원이 "지나가는 공" 옆에 요새를 세우는 일이 생긴다.)
+    // (손님도 같이 걷는다 — 혜성이든 순회선이든 판을 넘기면 지나간 것이다.
+    //  남겨 두면 다음 판의 증원이 "지나가는 공" 옆에 요새를 세우는 일이 생긴다.
+    //  밀어서 붙잡아 둔 손님도 마찬가지다: 붙잡아 둔 값은 **그 판 안에서** 쓰는
+    //  것이지 다음 판까지 가져가는 재산이 아니다.)
     for (let i = this.bodies.length - 1; i >= 0; i--) {
       const b = this.bodies[i]
-      if (!b.alive || b.type === 'debris' || b.comet) this.bodies.splice(i, 1)
+      if (!b.alive || b.type === 'debris' || b.visitor) this.bodies.splice(i, 1)
     }
     // 조르그 증원 — 지금 성계에 남은 것을 보고 그만큼만 보낸다.
     // 한꺼번에 뿅 나타나지 않고 **순서대로** 워프해 들어온다(stepWarpIns).
@@ -163,6 +166,8 @@ export class Game {
     this.siegeHere = this.targets.some(b => b.role === 'siege')
     // 혜성 시계 — 판마다 처음부터 센다(첫 방문은 COMET_FIRST 뒤)
     this.cometT = 0; this.cometN = 0
+    // 순회선 시계 — 같은 규칙, 다른 주기(UFO_FIRST / UFO_PERIOD)
+    this.ufoT = 0; this.ufoN = 0
     // 포대 명단은 판마다 새로 짠다 — 시차(순번)를 처음부터 다시 세워야 하고,
     // 새 판이 시작하자마자 지난 판의 충전이 이어져 발사되면 안 된다.
     // 투석기의 포와 그 탄도 같은 이유로 같이 비운다: 판이 열리는 순간에
@@ -553,11 +558,10 @@ export class Game {
       if (!ev) continue
       if (ev.kind === 'lock') {
         this.addFx({ kind: 'siegeLock', x: ev.src.pos.x, y: ev.src.pos.y, r: hitRadiusOf(ev.src) })
-        this.message = msg('msg.siege.lock', { name: nameOf(ev.src), cue: nameOf(ev.cue) })
-        this.setToast(msg(ev.hits ? 'toast.siege.lock' : 'toast.siege.graze', { cue: nameOf(ev.cue) }))
-      } else if (ev.kind === 'lost') {
-        // 큐볼이 사라졌다 — 플레이어가 조준을 통째로 무의미하게 만든 것이다.
-        this.setToast(msg('toast.siege.lost'))
+        this.message = msg('msg.siege.lock', { name: nameOf(ev.src) })
+        // 이 해가 실제로 꽂히는가에 따라 말이 갈린다 — 길목에 공이 걸려
+        // 있으면(blocked) 저쪽 계산은 이미 그 공에서 끝난다.
+        this.setToast(msg(ev.hits ? 'toast.siege.lock' : 'toast.siege.graze'))
       } else if (ev.kind === 'fire') {
         const m = makeSiegeShot(S)
         this.foeShots.push(m)
@@ -565,19 +569,20 @@ export class Game {
           kind: 'siegeFire', x: m.pos.x, y: m.pos.y,
           a: Math.atan2(m.vel.y, m.vel.x), r: hitRadiusOf(ev.src),
         })
-        this.message = msg('msg.siege.fire', { name: nameOf(ev.src), cue: nameOf(ev.cue) })
+        this.message = msg('msg.siege.fire', { name: nameOf(ev.src) })
       }
     }
   }
 
   // ─── 투석기의 탄 ───────────────────────────────────────────
-  // 내 탄(missiles)과 배열을 따로 두는 이유는 규칙이 다르기 때문이다:
-  // 이쪽은 중력을 안 받고(유도탄), 마릿수 제한이 없고, 무엇보다
+  // **내 탄과 같은 물건이다** — 같은 적분기로 날고(stepMissile) 같은 스윕으로
+  // 꽂힌다. 그런데도 배열을 따로 두는 이유는 규칙 셋이 다르기 때문이다:
+  // 마릿수 제한이 없고, 지구에 꽂히면 체력을 깎고(siegeDetonate), 무엇보다
   // **내 발사 차례를 막지 않는다**(flying은 missiles만 센다). 한 배열에
   // 섞으면 조르그가 쏜 탄이 내 재장전을 잠그는 사고가 난다.
   // 탄끼리의 충돌(crossFire)도 내 탄들 사이에서만 본다 — 저쪽 탄을 내 탄으로
   // 쳐서 막는 건 다른 규칙이고(그건 광선 요격이 하는 일이다), 여기서 조용히
-  // 딸려 나오면 안 된다.
+  // 딸려 나오면 안 된다. 저 탄을 막는 길은 **공으로 막는 것**이다.
   stepFoeShots(dt) {
     // 모성이 왔으면 저쪽 탄도 멎는다. 판돈을 회수하러 본대가 직접 온 자리에서
     // 부하가 쏜 탄이 마저 날아와 지구를 한 대 더 때리면, 그 한 대가 난사보다
@@ -600,19 +605,34 @@ export class Game {
   // 판 내내 배운 조준 감각이 그 순간 거짓말이 된다.
   //
   // 다른 것은 둘이다. ① 이 기폭으로는 **정치자금이 안 붙는다.**
-  // ② 지구에는 애초에 안 꽂힌다 — 이 탄은 배정된 공에만 무장돼 있다
-  // (siege.stepSiegeShot의 지구 제외 주석에 근거가 있다). 지구가 받는 것은
-  // 폭풍뿐이고, 그건 0.3배로 눌린 값이라 경고 한 줄로 읽히고 되돌릴 수 있다.
+  // ② **지구에 꽂히면 체력 한 눈금이다** — 아래 첫 분기.
+  //
+  // ── 지구는 밀리지 않는다. 깎일 뿐이다 ──
+  // 저 탄이 지구를 미는 것까지 허용하면 직격 한 방이 Δv 10.4다(6Mt ÷ 지구의
+  // 실효 질량 300). 그건 지구 궤도 속도(21)의 절반이다. 계측(9Mt·Δv 15.6)에서
+  // 그 한 방이 근일점을 태양까지 끌어내려 400초 뒤에 판이 끝났고, 화면에는
+  // 그 인과가 아무 데도 안 남았다 —
+  // **원인이 안 보이는 패배는 난이도가 아니다.** 그래서 지구가 받는 것은
+  // 눈금 하나뿐이고(EARTH_MAX_DMG), 궤도는 한 톨도 안 변한다. 세 번 맞으면
+  // 끝나는 것은 그대로이고, 그 세 번이 화면에 세 번으로 보인다.
+  // (폭풍은 여전히 판을 흔든다 — 다만 지구만 그 명단에서 빠진다.)
   siegeDetonate(m, b, point) {
     const yld = m.yld
-    this.addFx({ kind: 'siegeNuke', x: point.x, y: point.y, yld, r: b.radius })
+    this.addFx({ kind: 'siegeNuke', x: point.x, y: point.y, yld, r: b.radius, earth: !!b.isEarth })
 
+    if (b.isEarth) {
+      // 폭풍은 그대로 터진다 — 지구 옆에 있던 공은 밀린다. 지구만 뺀다(skip).
+      blastWave(this.bodies, point.x, point.y, yld, b)
+      this.message = msg('msg.siege.earth')
+      this.damage(b, CFG.EARTH_MAX_DMG, 'siege', { reason: 'EARTH_SIEGE', text: msg('msg.fail.siege') })
+      return
+    }
     // 모성에는 저쪽 핵도 안 통한다 — 그건 공을 던져야만 부서진다.
     if (b.mothership) return
     // 아래 셋은 **내 핵과 같은 분기**다(detonate). 저쪽 핵이라고 가스가 안 터지거나
     // 불안정 행성이 안 쪼개지면, 이 판의 규칙이 쏘는 쪽에 따라 갈리는 것이 된다.
-    // (조르그는 이런 공을 큐볼로 고르지 않는다 — siege.candidates가 걸러 낸다.
-    //  여기 오는 것은 탄이 표적으로 가는 길에 걸린 공이고, 그건 저쪽 실수다.)
+    // (여기 오는 것은 지구로 가던 탄의 **길에 걸린 공**이다. 플레이어가 일부러
+    //  밀어 넣었다면 그건 막은 것이고, 저절로 걸렸다면 저쪽 계산이 틀린 것이다.)
     // 가스는 내 핵과 같다: 밀리고, 터지고, 체력 1을 잃는다(volatileBlast).
     if (b.role === 'volatile') { applyNuke(b, point.x, point.y, yld); this.volatileBlast(b); return }
     if (b.role === 'unstable') { this.shardShot(b, b.pos.x - point.x, b.pos.y - point.y); return }
@@ -698,6 +718,7 @@ export class Game {
     stepBodies(this.bodies, dt)
     this.stepDodge(dt)
     stepComets(this, dt)
+    stepUfos(this, dt)
     this.stepCueSupply(dt)
     this.stepOrbitKeep(dt)
     // 분사 주기 — 인게임 시계로 찬다(조준 중에는 멈춘다. 시한과 같은 시계다).
@@ -842,13 +863,30 @@ export class Game {
   // ─── 혜성이 왔다 ─────────────────────────────────────────────
   // 워프가 아니다. 저건 조르그가 보낸 게 아니라 **원래 지나가던 것**이라
   // 도착 연출도 다르다: 벨트를 뚫고 들어오는 자리에 얼음 파문 한 겹뿐이다.
+  // 무리로 들어오므로(config.COMET_GROUP) 파문도 마릿수만큼 인다 —
+  // 문구는 한 줄이다. 같은 사건을 세 번 적으면 그게 곧 잡음이다.
   // (comet.js가 이 자리를 부른다.)
-  onComet(b) {
-    this.addFx({ kind: 'comet', x: b.pos.x, y: b.pos.y, r: hitRadiusOf(b), a: Math.atan2(b.vel.y, b.vel.x) })
+  onComet(group) {
+    for (const b of group) {
+      this.addFx({ kind: 'comet', x: b.pos.x, y: b.pos.y, r: hitRadiusOf(b), a: Math.atan2(b.vel.y, b.vel.x) })
+    }
     // 범례는 판이 열릴 때 한 번 짜인다 — 판 도중에 온 태그는 여기서 얹어 준다.
     this.stageRoles = this.presentRoles()
-    this.message = msg('msg.comet', { name: nameOf(b) })
-    this.setToast(msg('toast.comet'))
+    this.message = msg('msg.comet', { name: nameOf(group[0]), n: group.length })
+    this.setToast(msg('toast.comet', { n: group.length }))
+  }
+
+  // ─── 순회선이 지나간다 ───────────────────────────────────────
+  // 혜성과 같은 자리다(ufo.js가 부른다). 다른 것은 이쪽이 **누군가**라는 것
+  // 하나다 — 저 배 안에는 조르그가 아닌 다른 종족이 타고 있고, 관측 모드에서
+  // 가끔 한 마디씩 건넨다(ui/Comms.js). 판에 대고 하는 일은 아무것도 없다.
+  onUfo(group) {
+    for (const b of group) {
+      this.addFx({ kind: 'ufo', x: b.pos.x, y: b.pos.y, r: hitRadiusOf(b), a: Math.atan2(b.vel.y, b.vel.x) })
+    }
+    this.stageRoles = this.presentRoles()
+    this.message = msg('msg.ufo', { name: nameOf(group[0]), n: group.length })
+    this.setToast(msg('toast.ufo', { n: group.length }))
   }
 
   // ─── 태양 둘레의 두 이체 궤도 ────────────────────────────────
@@ -894,7 +932,7 @@ export class Game {
   stepOrbitKeep(dt) {
     const beltR = this.beltR
     for (const b of this.bodies) {
-      if (!b.alive || b.type === 'debris' || b.comet) continue
+      if (!b.alive || b.type === 'debris' || b.visitor) continue
       if (!b.isEarth && !b.zorg) continue
       if ((b.warpIn ?? 0) > 0) continue
       const r = Math.hypot(b.pos.x, b.pos.y) || CFG.EPS
@@ -1519,6 +1557,7 @@ export class Game {
       const p = volatilePushOn(o, b, R)
       if (!p) continue
       o.vel.x += p.dx * p.dv; o.vel.y += p.dy * p.dv
+      nudge(o)          // 유폭도 미는 일이다 — 손님은 여기서 통행권을 잃는다
       o.trailFlash = 2
     }
     this.message = msg('msg.volatile', { name: nameOf(b), r: R.toFixed(0) })
@@ -1864,11 +1903,13 @@ export class Game {
     for (const b of this.bodies) {
       if (!b.alive) continue
       const r = len(b.pos)
-      // ── 혜성만은 벽을 안 느낀다 ──
-      // 이 판에서 카이퍼 벨트를 통과하는 유일한 천체다. 들어올 때도 나갈 때도
-      // 그냥 지나간다(퇴장 판정은 comet.stepComets). **태양 낙하는 그대로
-      // 적용된다** — 예외는 벨트 하나뿐이라는 게 이 태그의 전부다.
-      if (b.comet && r >= this.beltR) continue
+      // ── 통행권을 든 손님만 벽을 안 느낀다 ──
+      // 혜성과 순회선이 벨트를 통과하는 유일한 천체다. 들어올 때도 나갈 때도
+      // 그냥 지나간다(퇴장 판정은 comet.exitVisitors). **태양 낙하는 그대로
+      // 적용된다** — 예외는 벨트 하나뿐이라는 게 이 통행권의 전부다.
+      // 그리고 그 통행권은 **한 번 얻어맞으면 사라진다**(physics.nudge):
+      // 그때부터 이놈도 다른 공처럼 쿠션에 튕겨 판 안에 남는다.
+      if (b.pass && r >= this.beltR) continue
       if (r < CFG.R_STAR + 15) {
         if (b.isEarth) {
           this.addFx({ kind: 'sun', x: b.pos.x, y: b.pos.y })
@@ -1880,6 +1921,11 @@ export class Game {
       } else if (r >= this.beltR && b.type === 'debris') {
         this.killBody(b, 'belt', { fx: false, shatterIt: false })
       } else if (r >= this.beltR) {
+        // 밖에서 **들어오는 중**인 손님은 그냥 들어오게 둔다. 통행권을 벨트
+        // 바깥에서 잃는 경우가 있는데(폭풍이 벨트 너머까지 닿는다), beltBounce는
+        // 안으로 오는 공의 속도는 안 건드리지만 자리를 벨트 안쪽으로 끌어당긴다 —
+        // 그 순간이동이 곧 "밖에 있던 배를 판 안으로 잡아채는" 그림이 된다.
+        if (b.visitor && b.pos.x * b.vel.x + b.pos.y * b.vel.y < 0) continue
         const hit = beltBounce(b, this.beltR)
         if (!hit) continue
         if (this.time - (b.lastBelt ?? -99) < CFG.BELT_COOLDOWN) continue

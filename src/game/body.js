@@ -36,9 +36,25 @@ export function makeBody(spec = {}) {
     isTarget: !!spec.isTarget,
     zorg: !!spec.zorg,
     mothership: !!spec.mothership,   // 시한 종료 시 오는 조르그 모성
-    // 카이퍼 벨트를 뚫고 지나가는 손님. 벨트 반사만 안 받고 나머지는 전부 같다
-    // (game.bodyBounds). 판을 넘길 때는 지나간 것으로 치고 걷는다(loadStage).
+    // 카이퍼 벨트 밖에서 들어온 손님인가 — 혜성(comet.js)과 순회선(ufo.js).
+    // 판을 넘길 때는 지나간 것으로 치고 걷고(loadStage), 성계의 상주 인구를
+    // 세는 자리에서도 빠진다(system.js·comet.js의 큐볼 재고).
+    visitor: spec.visitor ?? 0,
+    // 그중 혜성인가. 종류(type)로 물어도 되지만 이 깃발은 **판 위의 규칙이
+    // 아니라 이름표**를 가른다(표식·범례·문구).
     comet: !!spec.comet,
+    // 순회선이면 그 형태 키(config.UFO_KINDS의 key), 아니면 0.
+    ufo: spec.ufo ?? 0,
+    // ── 통행권 ──
+    // 카이퍼 벨트를 그냥 지나간다(game.bodyBounds). 손님이 들고 들어오는
+    // 것이고, **궤도가 한 번 비틀리면 사라진다**(game.nudgeVisitor) — 그때부터는
+    // 다른 공과 한 글자도 다르지 않게 벽에 튕긴다.
+    pass: spec.pass ?? 0,
+    // ── 엔진 ──
+    // 1이면 중력을 안 받는다(physics.stepBodies). 순회선만 그렇다 — 저건 돌이
+    // 아니라 배라서, 판의 중력에 안 끌리고 곧게 지나간다. 한 번 얻어맞으면
+    // 0이 되고(엔진이 죽는다) 그 순간부터 그냥 공이다.
+    cruise: spec.cruise ?? 0,
     // 부서졌지만 아직 안 터진 시간(실시간 초). 조르그만 0보다 크다 —
     // 그동안 몸통이 흰빛으로 달아오르고 사방으로 빛기둥이 뻗는다(game.stepDying).
     dying: spec.dying ?? 0,

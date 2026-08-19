@@ -487,7 +487,7 @@ function firstContact(bodies, wantId, pos, vel, seconds, after = 0) {
 //   큐볼 — 핵 한 방에 잘 밀리는 것. 무거우면 이야기가 안 굴러간다.
 function castOf(g) {
   const solar = g.bodies.filter(b =>
-    b.alive && !b.isEarth && !b.zorg && !b.comet && b.type !== 'debris')
+    b.alive && !b.isEarth && !b.zorg && !b.visitor && b.type !== 'debris')
   const big = (list) => list.slice().sort((a, b) => b.radius - a.radius)[0]
   const swing = big(solar.filter(b => b.role === 'volatile')) ?? big(solar)
   // 큐볼의 Δv는 **중간**이어야 한다. 가벼운 얼음은 300~480 GU/s로 튕겨 나가
@@ -569,7 +569,7 @@ function setUp(g, mode) {
 function pickInterceptor(g, cast) {
   const keep = [cast.earth, cast.fort, cast.swing, cast.cue]
   return g.bodies
-    .filter(b => b.alive && b.type !== 'debris' && !keep.includes(b) && !b.comet
+    .filter(b => b.alive && b.type !== 'debris' && !keep.includes(b) && !b.visitor
       && b.role !== 'volatile' && b.role !== 'unstable'
       && b.role !== 'battery')
     .sort((a, b) => a.radius - b.radius)[0] ?? null
