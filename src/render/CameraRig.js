@@ -219,7 +219,21 @@ export class CameraRig {
       this.zoomBy(Math.pow(1.0016, -e.deltaY), e.clientX, e.clientY)
     }, { passive: false })
 
+    // 끌기가 브라우저의 "글 고르기"로 새지 않게 한다 ─────────────
+    // 캔버스를 누르고 끌면 브라우저는 그것을 텍스트 선택의 시작으로 읽는다.
+    // 판 위에는 글이 없지만 그 위에 얹힌 HUD에는 있어서, 조준하려고 끄는 동안
+    // 패널 문구가 통째로 파랗게 잡히고 손을 떼도 남는다. CSS(user-select:none)로
+    // 문서 전체를 잠갔고, 여기서 기본 동작 자체를 한 번 더 끊는다 — 잠금을
+    // 안 지키는 브라우저가 있어도 이 자리에서 막힌다.
+    // 끊는 시점은 **판정보다 앞**이다. locked이든 조준이 이 손가락을 가져가든
+    // 선택은 끌기의 첫 프레임에 시작되므로, 그 뒤에 막으면 이미 늦다.
     el.addEventListener('pointerdown', (e) => {
+      if (e.cancelable) e.preventDefault()
+      // 기본 동작을 끊으면 포커스도 안 옮겨진다. 그대로 두면 방금 누른 HUD
+      // 버튼이 계속 포커스를 쥐고 있어서 SPACE가 발사와 그 버튼을 동시에
+      // 때린다 — 원래 캔버스를 누르면 풀리던 것이니 손으로 풀어 준다.
+      const act = document.activeElement
+      if (act && act !== document.body && act.blur) act.blur()
       if (this.locked) return
       // 조준이 이 손가락을 먼저 가져갈 수 있다(발사대를 짚었을 때). 가져갔으면
       // 카메라는 그 손가락을 **아예 못 본 것으로** 친다 — pointers에 넣지 않으니
@@ -255,6 +269,10 @@ export class CameraRig {
     el.addEventListener('pointercancel', up)
     el.addEventListener('pointerleave', up)
     el.addEventListener('contextmenu', (e) => e.preventDefault())
+    // 위의 preventDefault가 듣지 않는 경로(합성 마우스 이벤트로 시작하는
+    // 선택, 캔버스를 이미지처럼 끌어가기)를 여기서 닫는다.
+    el.addEventListener('selectstart', (e) => e.preventDefault())
+    el.addEventListener('dragstart', (e) => e.preventDefault())
     addEventListener('keydown', (e) => {
       if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return
       if (this.locked) return
