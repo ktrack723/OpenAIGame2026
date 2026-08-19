@@ -10,6 +10,20 @@
 }
 html,body,#app{margin:0;width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--ink);
   font-family:Inter,system-ui,Apple SD Gothic Neo,Malgun Gothic,sans-serif;touch-action:none}
+
+/* ── 끌어도 글자가 잡히지 않게 ──────────────────────────────────
+   조준은 화면 위를 **끄는** 조작이다. 그런데 브라우저의 기본 동작은
+   "누른 자리에서 끌면 글을 고른다"라서, 판을 끌 때마다 그 밑을 지나는 HUD
+   문구가 파랗게 잡히고(선택 하이라이트) 손을 뗄 때까지 남는다. 판정에는
+   영향이 없지만 눈에는 계속 걸린다 — 여기서 문서 전체의 선택을 끈다.
+   읽을 수는 있어야 하지만 **고를** 일은 이 화면에 없다(입력칸이 없다).
+   나중에 고를 수 있어야 하는 자리가 생기면 그 자리에만 .selectable을 준다. */
+html,body,#app{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.selectable{user-select:text;-webkit-user-select:text}
+/* 드래그 중에 남은 선택이 보이지 않게 — 선택 자체를 못 하게 막았으니
+   여기 걸릴 것은 없지만, 막지 못하는 브라우저에서도 화면은 조용하다. */
+canvas::selection{background:transparent}
+
 canvas{display:block;position:fixed;inset:0;touch-action:none}
 /* 조준 손잡이(발사대) 위의 커서. 손가락에는 커서가 없으므로 이건 데스크톱
    전용 신호고, 화면 쪽 신호(고리가 커진다)는 양쪽 모두에 뜬다. */
